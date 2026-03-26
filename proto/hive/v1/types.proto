@@ -1,0 +1,161 @@
+syntax = "proto3";
+
+package hive.v1;
+
+option go_package = "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1;hivev1";
+
+import "google/protobuf/timestamp.proto";
+
+// ─── Node ──────────────────────────────────────────────────────
+
+message Node {
+  string id = 1;
+  string name = 2;
+  string advertise_addr = 3;
+  uint32 grpc_port = 4;
+  NodeStatus status = 5;
+  NodeCapabilities capabilities = 6;
+  NodeResources resources = 7;
+  map<string, string> labels = 8;
+  google.protobuf.Timestamp joined_at = 9;
+  google.protobuf.Timestamp last_seen = 10;
+}
+
+enum NodeStatus {
+  NODE_STATUS_UNSPECIFIED = 0;
+  NODE_STATUS_READY = 1;
+  NODE_STATUS_DRAINING = 2;
+  NODE_STATUS_DOWN = 3;
+}
+
+message NodeCapabilities {
+  string os = 1;           // "linux" | "windows"
+  string arch = 2;         // "amd64" | "arm64"
+  repeated string platforms = 3;  // ["linux/amd64", "windows/amd64"]
+  string container_runtime = 4;   // "docker" | "podman" | "containerd"
+}
+
+message NodeResources {
+  uint32 cpu_cores = 1;
+  uint64 memory_total_bytes = 2;
+  uint64 memory_available_bytes = 3;
+  uint64 disk_total_bytes = 4;
+  uint64 disk_available_bytes = 5;
+  double cpu_usage_percent = 6;
+  double temperature_celsius = 7;  // -1 if unavailable
+}
+
+// ─── Service ───────────────────────────────────────────────────
+
+message Service {
+  string id = 1;
+  string name = 2;
+  string image = 3;
+  uint32 replicas_desired = 4;
+  uint32 replicas_running = 5;
+  ServiceStatus status = 6;
+  string platform = 7;            // "linux/amd64" etc, empty = auto
+  string node_constraint = 8;     // pin to node name, empty = any
+  map<string, string> labels = 9;
+  DeployStrategy deploy_strategy = 10;
+  HealthCheck health_check = 11;
+  ResourceSpec resource_spec = 12;
+  map<string, string> env = 13;
+  map<string, string> ports = 14;
+  repeated VolumeMount volumes = 15;
+  repeated string depends_on = 16;
+  google.protobuf.Timestamp created_at = 17;
+  google.protobuf.Timestamp updated_at = 18;
+}
+
+enum ServiceStatus {
+  SERVICE_STATUS_UNSPECIFIED = 0;
+  SERVICE_STATUS_RUNNING = 1;
+  SERVICE_STATUS_DEGRADED = 2;
+  SERVICE_STATUS_STOPPED = 3;
+  SERVICE_STATUS_DEPLOYING = 4;
+  SERVICE_STATUS_ROLLING_BACK = 5;
+}
+
+enum DeployStrategy {
+  DEPLOY_STRATEGY_UNSPECIFIED = 0;
+  DEPLOY_STRATEGY_ROLLING = 1;
+  DEPLOY_STRATEGY_RECREATE = 2;
+  DEPLOY_STRATEGY_BLUE_GREEN = 3;
+}
+
+message HealthCheck {
+  HealthCheckType type = 1;
+  string path = 2;          // HTTP path
+  uint32 port = 3;
+  string interval = 4;      // e.g. "30s"
+  string timeout = 5;       // e.g. "5s"
+  uint32 retries = 6;
+  repeated string exec_command = 7;  // for exec-type checks
+}
+
+enum HealthCheckType {
+  HEALTH_CHECK_TYPE_UNSPECIFIED = 0;
+  HEALTH_CHECK_TYPE_HTTP = 1;
+  HEALTH_CHECK_TYPE_TCP = 2;
+  HEALTH_CHECK_TYPE_EXEC = 3;
+  HEALTH_CHECK_TYPE_GRPC = 4;
+}
+
+message ResourceSpec {
+  string memory_limit = 1;   // e.g. "512M"
+  double cpu_limit = 2;      // e.g. 1.0
+}
+
+message VolumeMount {
+  string name = 1;           // named volume
+  string source = 2;         // host path (platform-aware)
+  string target = 3;         // container path
+  bool read_only = 4;
+}
+
+// ─── Container (runtime instance of a service) ────────────────
+
+message Container {
+  string id = 1;
+  string service_name = 2;
+  string node_id = 3;
+  string image = 4;
+  ContainerStatus status = 5;
+  google.protobuf.Timestamp started_at = 6;
+  map<string, string> ports = 7;
+}
+
+enum ContainerStatus {
+  CONTAINER_STATUS_UNSPECIFIED = 0;
+  CONTAINER_STATUS_RUNNING = 1;
+  CONTAINER_STATUS_STOPPED = 2;
+  CONTAINER_STATUS_RESTARTING = 3;
+  CONTAINER_STATUS_FAILED = 4;
+}
+
+// ─── Events ────────────────────────────────────────────────────
+
+message Event {
+  string id = 1;
+  EventType type = 2;
+  string source = 3;        // node name or service name
+  string message = 4;
+  google.protobuf.Timestamp timestamp = 5;
+}
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_NODE_JOINED = 1;
+  EVENT_TYPE_NODE_LEFT = 2;
+  EVENT_TYPE_NODE_FAILED = 3;
+  EVENT_TYPE_SERVICE_DEPLOYED = 4;
+  EVENT_TYPE_SERVICE_STOPPED = 5;
+  EVENT_TYPE_SERVICE_SCALED = 6;
+  EVENT_TYPE_CONTAINER_STARTED = 7;
+  EVENT_TYPE_CONTAINER_STOPPED = 8;
+  EVENT_TYPE_CONTAINER_RESTARTED = 9;
+  EVENT_TYPE_CONTAINER_FAILED = 10;
+  EVENT_TYPE_HEALTH_CHECK_FAILED = 11;
+  EVENT_TYPE_SECRET_UPDATED = 12;
+}

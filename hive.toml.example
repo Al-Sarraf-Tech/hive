@@ -1,0 +1,64 @@
+# Hive Service Definition (Hivefile)
+#
+# Deploy with: hive deploy hive.toml
+
+[service.web]
+image = "nginx:alpine"
+replicas = 2
+
+  [service.web.health]
+  type = "http"
+  path = "/"
+  port = 80
+  interval = "30s"
+  timeout = "5s"
+
+  [service.web.ports]
+  "8080" = "80"
+
+  [service.web.deploy]
+  strategy = "rolling"
+
+[service.api]
+image = "myapp/api:latest"
+replicas = 1
+node = "amarillo"          # pin to specific node (optional)
+
+  [service.api.health]
+  type = "http"
+  path = "/health"
+  port = 3000
+
+  [service.api.env]
+  DATABASE_URL = "{{ secret:db-url }}"
+  API_KEY = "{{ secret:api-key }}"
+
+  [service.api.ports]
+  "3000" = "3000"
+
+  [service.api.resources]
+  memory = "512M"
+  cpus = 1.0
+
+  [service.api.depends_on]
+  services = ["db"]
+
+[service.db]
+image = "postgres:16-alpine"
+replicas = 1
+
+  [service.db.health]
+  type = "tcp"
+  port = 5432
+
+  [service.db.env]
+  POSTGRES_DB = "myapp"
+  POSTGRES_USER = "app"
+  POSTGRES_PASSWORD = "{{ secret:db-password }}"
+
+  [[service.db.volumes]]
+  linux = "/mnt/data/postgres:/var/lib/postgresql/data"
+  windows = "D:\\data\\postgres:/var/lib/postgresql/data"
+
+  [service.db.ports]
+  "5432" = "5432"

@@ -1,0 +1,26 @@
+[package]
+name = "hivetop"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "TUI dashboard for the Hive container orchestrator"
+license = "MIT"
+repository = "https://github.com/jalsarraf0/hive"
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+anyhow = "1"
+tonic = "0.13"
+prost = "0.13"
+prost-types = "0.13"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+clap = { version = "4", features = ["derive"] }
+
+[build-dependencies]
+tonic-build = "0.13"
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true

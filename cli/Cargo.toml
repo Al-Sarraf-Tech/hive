@@ -1,0 +1,28 @@
+[package]
+name = "hive"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "CLI for the Hive container orchestrator"
+license = "MIT"
+repository = "https://github.com/jalsarraf0/hive"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+tabled = "0.17"
+anyhow = "1"
+colored = "3"
+tonic = "0.13"
+prost = "0.13"
+prost-types = "0.13"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[build-dependencies]
+tonic-build = "0.13"
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true

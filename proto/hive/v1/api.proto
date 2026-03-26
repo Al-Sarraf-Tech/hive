@@ -1,0 +1,171 @@
+syntax = "proto3";
+
+package hive.v1;
+
+option go_package = "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1;hivev1";
+
+import "hive/v1/types.proto";
+import "google/protobuf/empty.proto";
+
+// HiveAPI is the primary API exposed by hived for CLI and Console interaction.
+service HiveAPI {
+
+  // ─── Cluster ───────────────────────────────────────────────
+  rpc GetClusterStatus(google.protobuf.Empty) returns (ClusterStatusResponse);
+
+  // ─── Cluster Management ─────────────────────────────────────
+  rpc InitCluster(InitClusterRequest) returns (InitClusterResponse);
+  rpc JoinCluster(JoinClusterRequest) returns (JoinClusterResponse);
+
+  // ─── Nodes ─────────────────────────────────────────────────
+  rpc ListNodes(google.protobuf.Empty) returns (ListNodesResponse);
+  rpc GetNode(GetNodeRequest) returns (Node);
+  rpc DrainNode(DrainNodeRequest) returns (google.protobuf.Empty);
+
+  // ─── Services ──────────────────────────────────────────────
+  rpc DeployService(DeployServiceRequest) returns (DeployServiceResponse);
+  rpc ListServices(google.protobuf.Empty) returns (ListServicesResponse);
+  rpc GetService(GetServiceRequest) returns (Service);
+  rpc StopService(StopServiceRequest) returns (google.protobuf.Empty);
+  rpc ScaleService(ScaleServiceRequest) returns (google.protobuf.Empty);
+  rpc RollbackService(RollbackServiceRequest) returns (google.protobuf.Empty);
+
+  // ─── Containers ────────────────────────────────────────────
+  rpc ListContainers(ListContainersRequest) returns (ListContainersResponse);
+  rpc ContainerLogs(ContainerLogsRequest) returns (stream LogEntry);
+
+  // ─── Secrets ───────────────────────────────────────────────
+  rpc SetSecret(SetSecretRequest) returns (google.protobuf.Empty);
+  rpc ListSecrets(google.protobuf.Empty) returns (ListSecretsResponse);
+  rpc DeleteSecret(DeleteSecretRequest) returns (google.protobuf.Empty);
+
+  // ─── Events ────────────────────────────────────────────────
+  rpc StreamEvents(google.protobuf.Empty) returns (stream Event);
+}
+
+// ─── Cluster Management ───────────────────────────────────────
+
+message InitClusterRequest {
+  string cluster_name = 1;  // optional, defaults to "hive"
+}
+
+message InitClusterResponse {
+  string cluster_id = 1;
+  string node_name = 2;
+  string gossip_addr = 3;
+}
+
+message JoinClusterRequest {
+  repeated string seed_addrs = 1;  // gossip addresses to join
+}
+
+message JoinClusterResponse {
+  uint32 nodes_joined = 1;
+  repeated Node nodes = 2;
+}
+
+// ─── Cluster Status ──────────────────────────────────────────
+
+message ClusterStatusResponse {
+  uint32 total_nodes = 1;
+  uint32 healthy_nodes = 2;
+  uint32 total_services = 3;
+  uint32 running_containers = 4;
+  repeated Node nodes = 5;
+  repeated Event recent_events = 6;
+}
+
+// ─── Nodes ───────────────────────────────────────────────────
+
+message ListNodesResponse {
+  repeated Node nodes = 1;
+}
+
+message GetNodeRequest {
+  string name = 1;
+}
+
+message DrainNodeRequest {
+  string name = 1;
+}
+
+// ─── Services ────────────────────────────────────────────────
+
+message DeployServiceRequest {
+  // Raw TOML content of the Hivefile (or the service section)
+  string hivefile_toml = 1;
+}
+
+message DeployServiceResponse {
+  repeated Service services = 1;
+}
+
+message ListServicesResponse {
+  repeated Service services = 1;
+}
+
+message GetServiceRequest {
+  string name = 1;
+}
+
+message StopServiceRequest {
+  string name = 1;
+}
+
+message ScaleServiceRequest {
+  string name = 1;
+  uint32 replicas = 2;
+}
+
+message RollbackServiceRequest {
+  string name = 1;
+}
+
+// ─── Containers ──────────────────────────────────────────────
+
+message ListContainersRequest {
+  string service_name = 1;  // filter by service, empty = all
+  string node_name = 2;     // filter by node, empty = all
+}
+
+message ListContainersResponse {
+  repeated Container containers = 1;
+}
+
+message ContainerLogsRequest {
+  string container_id = 1;
+  bool follow = 2;
+  uint32 tail_lines = 3;
+  string service_name = 4;  // alternative to container_id — looks up by service name
+}
+
+message LogEntry {
+  string container_id = 1;
+  string node_name = 2;
+  string service_name = 3;
+  string line = 4;
+  string stream = 5;  // "stdout" | "stderr"
+  int64 timestamp_unix = 6;
+}
+
+// ─── Secrets ─────────────────────────────────────────────────
+
+message SetSecretRequest {
+  string key = 1;
+  bytes value = 2;
+}
+
+message ListSecretsResponse {
+  repeated SecretMeta secrets = 1;
+}
+
+message SecretMeta {
+  string key = 1;
+  string created_by = 2;
+  int64 created_at_unix = 3;
+  int64 updated_at_unix = 4;
+}
+
+message DeleteSecretRequest {
+  string key = 1;
+}

@@ -1,0 +1,59 @@
+use anyhow::Result;
+use tabled::{Table, Tabled};
+
+use crate::grpc_client;
+
+#[derive(Tabled)]
+struct NodeRow {
+    #[tabled(rename = "STATUS")]
+    status: String,
+    #[tabled(rename = "NAME")]
+    name: String,
+    #[tabled(rename = "OS")]
+    os: String,
+    #[tabled(rename = "ARCH")]
+    arch: String,
+    #[tabled(rename = "RUNTIME")]
+    runtime: String,
+    #[tabled(rename = "PLATFORMS")]
+    platforms: String,
+}
+
+pub async fn run(addr: &str) -> Result<()> {
+    let mut client = grpc_client::connect(addr).await?;
+
+    let resp = client.list_nodes(()).await?.into_inner();
+
+    if resp.nodes.is_empty() {
+        println!("No nodes in cluster.");
+        println!("Start hived on a machine to register it as a node.");
+        return Ok(());
+    }
+
+    let rows: Vec<NodeRow> = resp
+        .nodes
+        .iter()
+        .map(|n| {
+            let caps = n.capabilities.as_ref();
+            NodeRow {
+                status: match n.status {
+                    1 => "● ready".into(),
+                    2 => "◐ draining".into(),
+                    3 => "○ down".into(),
+                    _ => "? unknown".into(),
+                },
+                name: n.name.clone(),
+                os: caps.map(|c| c.os.clone()).unwrap_or_default(),
+                arch: caps.map(|c| c.arch.clone()).unwrap_or_default(),
+                runtime: caps
+                    .map(|c| c.container_runtime.clone())
+                    .unwrap_or_default(),
+                platforms: caps.map(|c| c.platforms.join(", ")).unwrap_or_default(),
+            }
+        })
+        .collect();
+
+    let table = Table::new(&rows).to_string();
+    println!("{table}");
+    Ok(())
+}

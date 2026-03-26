@@ -1,0 +1,47 @@
+# Build artifacts
+dist/
+target/
+
+# Go
+daemon/hived
+daemon/hived.exe
+
+# Rust
+cli/target/
+tui/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env*.local
+
+# Node (console)
+console/node_modules/
+console/dist/
+console/.svelte-kit/
+
+# Protobuf generated Go code is committed and tracked.
+# Do NOT add daemon/internal/api/gen/ here — it must be visible to git.
+
+# Test artifacts
+*.test
+*.test.exe
+coverage.out
+coverage.html
+
+# Binary output
+hive
+hived
+hivetop
+*.exe

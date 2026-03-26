@@ -1,0 +1,35 @@
+[recipe]
+name = "Nginx"
+description = "High-performance reverse proxy and web server"
+icon = "nginx.svg"
+category = "networking"
+tags = ["proxy", "web-server", "load-balancer"]
+min_memory = "64M"
+platforms = ["linux/amd64", "linux/arm64"]
+
+[recipe.config]
+  [recipe.config.port]
+  label = "Exposed Port"
+  type = "string"
+  default = "8080"
+  required = true
+
+[service.nginx]
+image = "nginx:alpine"
+replicas = 1
+
+  [service.nginx.health]
+  type = "http"
+  path = "/"
+  port = 80
+  interval = "15s"
+
+  [service.nginx.ports]
+  "8080" = "80"
+
+  [service.nginx.resources]
+  memory = "64M"
+  cpus = 0.25
+
+  [service.nginx.deploy]
+  strategy = "rolling"

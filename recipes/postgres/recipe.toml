@@ -1,0 +1,51 @@
+[recipe]
+name = "PostgreSQL"
+description = "Production-ready PostgreSQL database server"
+icon = "postgres.svg"
+category = "database"
+tags = ["sql", "relational", "database"]
+min_memory = "256M"
+platforms = ["linux/amd64", "linux/arm64"]
+
+[recipe.config]
+  [recipe.config.db_name]
+  label = "Database Name"
+  type = "string"
+  default = "app"
+  required = true
+
+  [recipe.config.db_user]
+  label = "Database User"
+  type = "string"
+  default = "app"
+  required = true
+
+  [recipe.config.db_password]
+  label = "Database Password"
+  type = "secret"
+  required = true
+
+[service.postgres]
+image = "postgres:16-alpine"
+replicas = 1
+
+  [service.postgres.env]
+  POSTGRES_DB = "app"
+  POSTGRES_USER = "app"
+  POSTGRES_PASSWORD = "{{ secret:postgres-password }}"
+
+  [service.postgres.health]
+  type = "tcp"
+  port = 5432
+  interval = "15s"
+
+  [service.postgres.ports]
+  "5432" = "5432"
+
+  [[service.postgres.volumes]]
+  name = "pg-data"
+  target = "/var/lib/postgresql/data"
+
+  [service.postgres.resources]
+  memory = "256M"
+  cpus = 0.5

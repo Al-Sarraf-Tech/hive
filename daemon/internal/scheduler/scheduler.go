@@ -1,0 +1,122 @@
+// Package scheduler determines which node should run a given service.
+package scheduler
+
+import (
+	"fmt"
+	"sort"
+
+	"github.com/jalsarraf0/hive/daemon/internal/hivefile"
+	"github.com/jalsarraf0/hive/daemon/internal/mesh"
+)
+
+// Candidate is a node that can run a service, with a fitness score.
+type Candidate struct {
+	NodeName string
+	Score    float64
+	Local    bool // true if this is the local node
+}
+
+// Scheduler picks the best node for a service based on constraints and scoring.
+type Scheduler struct {
+	mesh      *mesh.Mesh
+	localName string
+}
+
+// New creates a scheduler that uses the mesh for peer awareness.
+func New(m *mesh.Mesh, localName string) *Scheduler {
+	return &Scheduler{mesh: m, localName: localName}
+}
+
+// Pick selects the best node to run the given service.
+// Returns an error if no node satisfies the constraints.
+func (s *Scheduler) Pick(svc hivefile.ServiceDef) (Candidate, error) {
+	candidates := s.buildCandidates(svc)
+
+	if len(candidates) == 0 {
+		return Candidate{}, fmt.Errorf("no available node satisfies constraints for service (node=%q, platform=%q)", svc.Node, svc.Platform)
+	}
+
+	// Sort by score descending
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Score > candidates[j].Score
+	})
+
+	return candidates[0], nil
+}
+
+func (s *Scheduler) buildCandidates(svc hivefile.ServiceDef) []Candidate {
+	if s.mesh == nil {
+		return nil
+	}
+
+	var candidates []Candidate
+
+	// Check local node (skip if draining or down)
+	local := s.mesh.LocalNode()
+	if local.Status == int(mesh.NodeStatusReady) && s.matchesConstraints(local, svc) {
+		candidates = append(candidates, Candidate{
+			NodeName: local.Name,
+			Score:    s.score(local, true),
+			Local:    true,
+		})
+	}
+
+	// Check remote peers
+	for _, peer := range s.mesh.Peers() {
+		if peer.Info.Status != int(mesh.NodeStatusReady) {
+			continue // skip draining/down nodes
+		}
+		if s.matchesConstraints(peer.Info, svc) {
+			candidates = append(candidates, Candidate{
+				NodeName: peer.Info.Name,
+				Score:    s.score(peer.Info, false),
+				Local:    false,
+			})
+		}
+	}
+
+	return candidates
+}
+
+// matchesConstraints checks hard constraints: node pin and platform.
+func (s *Scheduler) matchesConstraints(node mesh.NodeInfo, svc hivefile.ServiceDef) bool {
+	// Node pin constraint
+	if svc.Node != "" && svc.Node != node.Name {
+		return false
+	}
+
+	// Platform constraint
+	if svc.Platform != "" {
+		found := false
+		for _, p := range node.Platforms {
+			if p == svc.Platform {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+
+	return true
+}
+
+// score computes a fitness score for a node. Higher is better.
+func (s *Scheduler) score(node mesh.NodeInfo, isLocal bool) float64 {
+	score := 100.0
+
+	// Spread: fewer containers = higher score (max 50 points)
+	containerPenalty := float64(node.Containers) * 5.0
+	if containerPenalty > 50 {
+		containerPenalty = 50
+	}
+	score -= containerPenalty
+
+	// Local bonus: small preference for local to avoid unnecessary network hops
+	if isLocal {
+		score += 5.0
+	}
+
+	return score
+}

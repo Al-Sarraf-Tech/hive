@@ -1,0 +1,35 @@
+[recipe]
+name = "Redis"
+description = "In-memory key-value store for caching and message brokering"
+icon = "redis.svg"
+category = "database"
+tags = ["cache", "key-value", "message-broker"]
+min_memory = "128M"
+platforms = ["linux/amd64", "linux/arm64"]
+
+[recipe.config]
+  [recipe.config.max_memory]
+  label = "Max Memory"
+  type = "select"
+  options = ["64mb", "128mb", "256mb", "512mb", "1gb"]
+  default = "128mb"
+
+[service.redis]
+image = "redis:7-alpine"
+replicas = 1
+
+  [service.redis.health]
+  type = "tcp"
+  port = 6379
+  interval = "10s"
+
+  [service.redis.ports]
+  "6379" = "6379"
+
+  [[service.redis.volumes]]
+  name = "redis-data"
+  target = "/data"
+
+  [service.redis.resources]
+  memory = "128M"
+  cpus = 0.25

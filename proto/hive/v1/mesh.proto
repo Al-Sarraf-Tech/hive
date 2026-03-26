@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package hive.v1;
+
+option go_package = "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1;hivev1";
+
+import "hive/v1/types.proto";
+import "hive/v1/api.proto";
+import "google/protobuf/empty.proto";
+
+// HiveMesh is the internal API for daemon-to-daemon communication.
+// This is NOT exposed to CLI/TUI — only used between hived instances.
+service HiveMesh {
+
+  // ─── State Sync ────────────────────────────────────────────
+  // Pull full cluster state from a peer (used on join/recovery)
+  rpc SyncState(google.protobuf.Empty) returns (ClusterState);
+
+  // ─── Container Operations ─────────────────────────────────
+  // Request a node to start a container for a service
+  rpc StartContainer(StartContainerRequest) returns (StartContainerResponse);
+
+  // Request a node to stop a container
+  rpc StopContainer(StopContainerRequest) returns (google.protobuf.Empty);
+
+  // Pull logs from a specific container on this node
+  rpc PullLogs(PullLogsRequest) returns (stream LogEntry);
+
+  // ─── Health ────────────────────────────────────────────────
+  // Lightweight ping for health verification beyond gossip
+  rpc Ping(google.protobuf.Empty) returns (PingResponse);
+
+  // ─── Secrets ───────────────────────────────────────────────
+  // Replicate an encrypted secret to a peer
+  rpc ReplicateSecret(ReplicateSecretRequest) returns (google.protobuf.Empty);
+}
+
+// ─── State Sync ──────────────────────────────────────────────
+
+message ClusterState {
+  repeated Node nodes = 1;
+  repeated Service services = 2;
+  repeated Container containers = 3;
+  uint64 state_version = 4;  // monotonic version for conflict resolution
+}
+
+// ─── Container Operations ────────────────────────────────────
+
+message StartContainerRequest {
+  Service service = 1;
+  map<string, bytes> secrets = 2;  // decrypted secrets for env injection
+}
+
+message StartContainerResponse {
+  Container container = 1;
+}
+
+message StopContainerRequest {
+  string container_id = 1;
+  uint32 timeout_seconds = 2;
+}
+
+message PullLogsRequest {
+  string container_id = 1;
+  bool follow = 2;
+  uint32 tail_lines = 3;
+}
+
+// ─── Health ──────────────────────────────────────────────────
+
+message PingResponse {
+  string node_id = 1;
+  string node_name = 2;
+  NodeResources resources = 3;
+  uint32 running_containers = 4;
+}
+
+// ─── Secrets ─────────────────────────────────────────────────
+
+message ReplicateSecretRequest {
+  string key = 1;
+  bytes encrypted_value = 2;   // age-encrypted blob
+  int64 updated_at_unix = 3;
+}

@@ -1,0 +1,213 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"log/slog"
+	"net"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/jalsarraf0/hive/daemon/internal/api"
+	"github.com/jalsarraf0/hive/daemon/internal/container"
+	"github.com/jalsarraf0/hive/daemon/internal/health"
+	"github.com/jalsarraf0/hive/daemon/internal/mesh"
+	"github.com/jalsarraf0/hive/daemon/internal/platform"
+	"github.com/jalsarraf0/hive/daemon/internal/scheduler"
+	"github.com/jalsarraf0/hive/daemon/internal/secrets"
+	"github.com/jalsarraf0/hive/daemon/internal/store"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
+)
+
+func main() {
+	// CLI flags
+	flagNodeName := flag.String("name", "", "Node name (default: hostname)")
+	flagGRPCPort := flag.Int("grpc-port", 7947, "gRPC API port")
+	flagGossipPort := flag.Int("gossip-port", 7946, "SWIM gossip port")
+	flagAdvertiseAddr := flag.String("advertise-addr", "", "Address to advertise to peers (auto-detect if empty)")
+	flagJoinAddrs := flag.String("join", "", "Comma-separated gossip addresses to join on startup")
+	flagDataDir := flag.String("data-dir", "", "Data directory (default: platform-specific)")
+	flagLogLevel := flag.String("log-level", "info", "Log level (debug, info, warn, error)")
+	flag.Parse()
+
+	// Configure logging
+	var level slog.Level
+	switch *flagLogLevel {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
+	slog.SetDefault(logger)
+
+	// Resolve configuration
+	nodeName := *flagNodeName
+	if nodeName == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			hostname = "hive-node"
+		}
+		nodeName = hostname
+	}
+	grpcPort := *flagGRPCPort
+	gossipPort := *flagGossipPort
+	dataDir := *flagDataDir
+	if dataDir == "" {
+		dataDir = platform.DefaultDataDir()
+	}
+
+	slog.Info("starting hived",
+		"node", nodeName,
+		"os", platform.OS(),
+		"arch", platform.Arch(),
+		"data_dir", dataDir,
+		"grpc_port", grpcPort,
+		"gossip_port", gossipPort,
+	)
+
+	// Initialize data directory
+	if err := os.MkdirAll(dataDir, 0o750); err != nil {
+		slog.Error("failed to create data directory", "path", dataDir, "error", err)
+		os.Exit(1)
+	}
+
+	// Initialize local state store
+	stateStore, err := store.Open(dataDir)
+	if err != nil {
+		slog.Error("failed to open state store", "error", err)
+		os.Exit(1)
+	}
+	defer stateStore.Close()
+
+	// Initialize container provider
+	containerProvider, err := container.NewDockerProvider()
+	if err != nil {
+		slog.Error("failed to connect to container runtime", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("container runtime connected",
+		"runtime", containerProvider.RuntimeName(),
+		"capabilities", containerProvider.DetectCapabilities(),
+	)
+
+	// Initialize health checker
+	healthChecker := health.NewChecker()
+
+	// Initialize mesh (gossip layer)
+	meshCfg := mesh.Config{
+		NodeName:      nodeName,
+		AdvertiseAddr: *flagAdvertiseAddr,
+		GRPCPort:      grpcPort,
+		GossipPort:    gossipPort,
+	}
+	hiveMesh, err := mesh.New(meshCfg, containerProvider.RuntimeName(), containerProvider.DetectCapabilities())
+	if err != nil {
+		slog.Error("failed to initialize mesh", "error", err)
+		os.Exit(1)
+	}
+
+	// Initialize scheduler
+	sched := scheduler.New(hiveMesh, nodeName)
+
+	// Start gRPC server
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", grpcPort))
+	if err != nil {
+		slog.Error("failed to listen", "port", grpcPort, "error", err)
+		os.Exit(1)
+	}
+
+	// Initialize secrets vault (age encryption)
+	vault, err := secrets.NewVault(dataDir)
+	if err != nil {
+		slog.Error("failed to initialize secrets vault", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("secrets vault initialized", "public_key", vault.PublicKey())
+
+	grpcServer := grpc.NewServer()
+	apiServer := api.NewServer(stateStore, containerProvider, healthChecker, nodeName, hiveMesh, sched, vault)
+	api.Register(grpcServer, apiServer)
+
+	meshServer := api.NewMeshServer(stateStore, containerProvider, nodeName)
+	api.RegisterMesh(grpcServer, meshServer)
+
+	reflection.Register(grpcServer)
+
+	// Auto-join if --join flag provided
+	if *flagJoinAddrs != "" {
+		addrs := strings.Split(*flagJoinAddrs, ",")
+		n, err := hiveMesh.Join(addrs)
+		if err != nil {
+			slog.Error("failed to join cluster", "addrs", addrs, "error", err)
+			os.Exit(1)
+		}
+		slog.Info("joined cluster", "nodes_contacted", n, "total_members", hiveMesh.Members())
+	}
+
+	// Start health check loop
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	healthLoop := health.NewLoop(healthChecker, containerProvider, stateStore, 30*time.Second, hiveMesh.UpdateContainerCount)
+	go healthLoop.Start(ctx)
+
+	// Graceful shutdown with timeout and second-signal force-quit
+	sigCh := make(chan os.Signal, 2)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigCh
+		slog.Info("received signal, shutting down gracefully", "signal", sig)
+
+		// Second signal = force quit
+		go func() {
+			<-sigCh
+			slog.Warn("received second signal, forcing exit")
+			os.Exit(1)
+		}()
+
+		cancel()
+		healthLoop.Stop()
+		_ = hiveMesh.Leave(5 * time.Second)
+
+		// Give in-flight RPCs 10 seconds to finish
+		done := make(chan struct{})
+		go func() {
+			grpcServer.GracefulStop()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			slog.Warn("graceful shutdown timed out, forcing stop")
+			grpcServer.Stop()
+		}
+		_ = hiveMesh.Shutdown()
+	}()
+
+	slog.Info("hived listening",
+		"node", nodeName,
+		"grpc", fmt.Sprintf(":%d", grpcPort),
+		"gossip", fmt.Sprintf(":%d", gossipPort),
+		"members", hiveMesh.Members(),
+	)
+
+	if err := grpcServer.Serve(lis); err != nil {
+		if ctx.Err() != nil {
+			slog.Info("hived stopped gracefully")
+		} else {
+			slog.Error("grpc server failed", "error", err)
+			os.Exit(1)
+		}
+	}
+}
