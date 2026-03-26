@@ -32,6 +32,14 @@ struct Cli {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    // Restore terminal on panic so the user's shell isn't left corrupted
+    let original_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = disable_raw_mode();
+        let _ = stdout().execute(LeaveAlternateScreen);
+        original_hook(info);
+    }));
+
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
@@ -54,9 +62,9 @@ async fn run(
     // Channel for async data updates
     let (tx, mut rx) = mpsc::channel(16);
 
-    // Spawn background data fetcher
+    // Spawn background data fetcher — tokio interval fires immediately on first tick
     let fetch_addr = addr.to_string();
-    let fetch_tx = tx.clone();
+    let fetch_tx = tx;
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(refresh_secs));
         loop {
@@ -67,9 +75,6 @@ async fn run(
             }
         }
     });
-
-    // Also fetch immediately
-    let _ = tx.send(fetch_cluster_data(addr).await).await;
 
     loop {
         // Process any pending data updates

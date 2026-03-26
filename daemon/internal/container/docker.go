@@ -51,8 +51,9 @@ func NewDockerProvider() (Provider, error) {
 	return &dockerProvider{cli: cli, runtimeName: name}, nil
 }
 
-// shortID safely truncates a container ID to at most 12 characters.
-func shortID(id string) string {
+// ShortID safely truncates a container ID to at most 12 characters for display.
+// Use only for logging and user-facing output — never for API operations.
+func ShortID(id string) string {
 	if len(id) > 12 {
 		return id[:12]
 	}
@@ -84,7 +85,7 @@ func (d *dockerProvider) ListContainers(ctx context.Context, filters map[string]
 			cname = strings.TrimPrefix(c.Names[0], "/")
 		}
 		out = append(out, ContainerInfo{
-			ID:        shortID(c.ID),
+			ID:        c.ID,
 			Name:      cname,
 			Image:     c.Image,
 			Status:    string(c.State),
@@ -176,9 +177,8 @@ func (d *dockerProvider) CreateAndStart(ctx context.Context, spec ContainerSpec)
 		return "", fmt.Errorf("start container %q: %w", spec.Name, err)
 	}
 
-	id := shortID(resp.ID)
-	slog.Info("container started", "name", spec.Name, "id", id)
-	return id, nil
+	slog.Info("container started", "name", spec.Name, "id", ShortID(resp.ID))
+	return resp.ID, nil
 }
 
 func (d *dockerProvider) Stop(ctx context.Context, id string, timeoutSeconds int) error {
@@ -226,7 +226,7 @@ func (d *dockerProvider) Inspect(ctx context.Context, id string) (*ContainerInfo
 	}
 	info := result.Container
 	return &ContainerInfo{
-		ID:     shortID(info.ID),
+		ID:     info.ID,
 		Name:   strings.TrimPrefix(info.Name, "/"),
 		Image:  info.Config.Image,
 		Status: string(info.State.Status),

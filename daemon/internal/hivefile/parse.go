@@ -207,5 +207,9 @@ func ParseMemory(s string) (int64, error) {
 	if val == 0 && multiplier > 1 {
 		return 0, fmt.Errorf("invalid memory value: zero with unit suffix is not allowed")
 	}
+	// Guard against integer overflow
+	if multiplier > 1 && val > (1<<63-1)/multiplier {
+		return 0, fmt.Errorf("invalid memory value: %q overflows int64", s)
+	}
 	return val * multiplier, nil
 }

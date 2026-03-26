@@ -37,6 +37,7 @@ func (d *meshEventDelegate) NotifyJoin(node *memberlist.Node) {
 	select {
 	case d.mesh.eventCh <- MeshEvent{Type: EventNodeJoined, Node: node.Name, Info: info}:
 	default:
+		slog.Warn("event channel full, dropped node join event", "node", node.Name)
 	}
 }
 
@@ -54,6 +55,7 @@ func (d *meshEventDelegate) NotifyLeave(node *memberlist.Node) {
 	select {
 	case d.mesh.eventCh <- MeshEvent{Type: EventNodeLeft, Node: node.Name}:
 	default:
+		slog.Warn("event channel full, dropped node leave event", "node", node.Name)
 	}
 }
 
@@ -93,6 +95,7 @@ func (d *meshEventDelegate) NotifyUpdate(node *memberlist.Node) {
 	select {
 	case d.mesh.eventCh <- MeshEvent{Type: EventNodeUpdated, Node: node.Name, Info: info}:
 	default:
+		slog.Warn("event channel full, dropped node update event", "node", node.Name)
 	}
 }
 

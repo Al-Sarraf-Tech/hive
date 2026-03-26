@@ -45,25 +45,29 @@ echo "Latest release: $LATEST"
 
 BASE_URL="https://github.com/$REPO/releases/download/$LATEST"
 
+# Use a secure temp directory to avoid symlink attacks on multi-user systems
+TMPDIR=$(mktemp -d)
+trap 'rm -rf "$TMPDIR"' EXIT
+
 # Download binaries
 echo "Downloading hived..."
-curl -fsSL "$BASE_URL/hived-$OS-$ARCH" -o /tmp/hived
-chmod +x /tmp/hived
+curl -fsSL "$BASE_URL/hived-$OS-$ARCH" -o "$TMPDIR/hived"
+chmod +x "$TMPDIR/hived"
 
 echo "Downloading hive..."
-curl -fsSL "$BASE_URL/hive-$OS-$ARCH" -o /tmp/hive
-chmod +x /tmp/hive
+curl -fsSL "$BASE_URL/hive-$OS-$ARCH" -o "$TMPDIR/hive"
+chmod +x "$TMPDIR/hive"
 
 echo "Downloading hivetop..."
-curl -fsSL "$BASE_URL/hivetop-$OS-$ARCH" -o /tmp/hivetop
-chmod +x /tmp/hivetop
+curl -fsSL "$BASE_URL/hivetop-$OS-$ARCH" -o "$TMPDIR/hivetop"
+chmod +x "$TMPDIR/hivetop"
 
 # Install
 if [ -w "$INSTALL_DIR" ]; then
-    mv /tmp/hived /tmp/hive /tmp/hivetop "$INSTALL_DIR/"
+    mv "$TMPDIR/hived" "$TMPDIR/hive" "$TMPDIR/hivetop" "$INSTALL_DIR/"
 else
     echo "Installing to $INSTALL_DIR requires sudo..."
-    sudo mv /tmp/hived /tmp/hive /tmp/hivetop "$INSTALL_DIR/"
+    sudo mv "$TMPDIR/hived" "$TMPDIR/hive" "$TMPDIR/hivetop" "$INSTALL_DIR/"
 fi
 
 echo ""

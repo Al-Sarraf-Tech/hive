@@ -34,9 +34,8 @@ build-daemon-all:
 		ext=""; \
 		if [ "$$os" = "windows" ]; then ext=".exe"; fi; \
 		echo "    Building hived-$$os-$$arch$$ext"; \
-		cd daemon && CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch \
-			go build -o ../dist/hived-$$os-$$arch$$ext ./cmd/hived || exit 1; \
-		cd ..; \
+		(cd daemon && CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch \
+			go build -o ../dist/hived-$$os-$$arch$$ext ./cmd/hived) || exit 1; \
 	done
 	@echo "==> All daemon binaries in dist/"
 
@@ -73,7 +72,7 @@ lint: lint-daemon lint-rust
 
 lint-daemon:
 	cd daemon && go vet ./...
-	cd daemon && staticcheck ./... 2>/dev/null || true
+	@command -v staticcheck >/dev/null 2>&1 && (cd daemon && staticcheck ./...) || echo "staticcheck not installed, skipping"
 
 lint-rust:
 	cd cli && cargo fmt --check

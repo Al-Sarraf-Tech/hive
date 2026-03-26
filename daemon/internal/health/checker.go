@@ -4,6 +4,7 @@ package health
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -47,7 +48,8 @@ type Checker struct {
 func NewChecker() *Checker {
 	return &Checker{
 		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
+			// No client-level timeout — each check uses its own context timeout
+			// from the health check configuration.
 		},
 	}
 }
@@ -102,7 +104,10 @@ func (c *Checker) checkHTTP(ctx context.Context, cfg Config) Result {
 	if err != nil {
 		return Result{Healthy: false, Message: fmt.Sprintf("request failed: %v", err)}
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body) // drain body for connection reuse
+		resp.Body.Close()
+	}()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
 		return Result{Healthy: true, Message: fmt.Sprintf("HTTP %d", resp.StatusCode)}

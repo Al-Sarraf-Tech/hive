@@ -70,6 +70,7 @@ func (s *Server) makeNode() *hivev1.Node {
 		grpcPort = uint32(local.GRPCPort)
 	}
 	return &hivev1.Node{
+		Id:            s.nodeName,
 		Name:          s.nodeName,
 		AdvertiseAddr: advertiseAddr,
 		GrpcPort:      grpcPort,
@@ -94,7 +95,9 @@ func (s *Server) InitCluster(_ context.Context, req *hivev1.InitClusterRequest) 
 		clusterName = "hive"
 	}
 	// Store cluster info
-	_ = s.store.Put("meta", "cluster_name", []byte(clusterName))
+	if err := s.store.Put("meta", "cluster_name", []byte(clusterName)); err != nil {
+		slog.Error("failed to store cluster name", "error", err)
+	}
 
 	local := s.mesh.LocalNode()
 	return &hivev1.InitClusterResponse{
@@ -331,11 +334,17 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 		deployed = append(deployed, svcProto)
 
 		// Record placement
-		_ = s.store.SetPlacement(name, targetNode)
+		if err := s.store.SetPlacement(name, targetNode); err != nil {
+			slog.Error("failed to record service placement", "service", name, "node", targetNode, "error", err)
+		}
 
 		// Persist service definition
-		svcJSON, _ := json.Marshal(svcDef)
-		_ = s.store.Put("services", name, svcJSON)
+		svcJSON, err := json.Marshal(svcDef)
+		if err != nil {
+			slog.Error("failed to marshal service definition", "service", name, "error", err)
+		} else if err := s.store.Put("services", name, svcJSON); err != nil {
+			slog.Error("failed to persist service definition", "service", name, "error", err)
+		}
 
 		slog.Info("service deployed", "name", name, "node", targetNode, "id", svcProto.Id)
 	}
