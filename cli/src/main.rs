@@ -20,12 +20,17 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Initialize a new Hive cluster
-    Init,
+    Init {
+        /// Cluster name (default: "hive")
+        #[arg(long, default_value = "hive")]
+        name: String,
+    },
 
     /// Join an existing cluster
     Join {
-        /// Address of an existing node (host:port)
-        address: String,
+        /// Addresses of existing nodes (gossip host:port)
+        #[arg(required = true)]
+        addresses: Vec<String>,
     },
 
     /// List cluster nodes
@@ -96,12 +101,12 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum SecretAction {
-    /// Set a secret value
+    /// Set a secret value (reads value from stdin if not provided)
     Set {
         /// Secret key
         key: String,
-        /// Secret value
-        value: String,
+        /// Secret value (omit to read from stdin)
+        value: Option<String>,
     },
     /// List all secrets
     Ls,
@@ -129,8 +134,8 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Init => commands::init::run(&cli.addr).await,
-        Commands::Join { address } => commands::join::run(&address, &cli.addr).await,
+        Commands::Init { name } => commands::init::run(&name, &cli.addr).await,
+        Commands::Join { addresses } => commands::join::run(&addresses, &cli.addr).await,
         Commands::Nodes => commands::nodes::run(&cli.addr).await,
         Commands::Deploy { file } => commands::deploy::run(&file, &cli.addr).await,
         Commands::Ps => commands::ps::run(&cli.addr).await,
@@ -146,7 +151,7 @@ async fn main() -> Result<()> {
         Commands::Rollback { service } => commands::rollback::run(&service, &cli.addr).await,
         Commands::Secret { action } => match action {
             SecretAction::Set { key, value } => {
-                commands::secret::set(&key, &value, &cli.addr).await
+                commands::secret::set(&key, value.as_deref(), &cli.addr).await
             }
             SecretAction::Ls => commands::secret::list(&cli.addr).await,
             SecretAction::Rm { key } => commands::secret::remove(&key, &cli.addr).await,
@@ -158,6 +163,6 @@ async fn main() -> Result<()> {
             DaemonAction::Stop => commands::daemon::stop(),
             DaemonAction::Status => commands::daemon::status(),
         },
-        Commands::Top => commands::top::run(),
+        Commands::Top => commands::top::run(&cli.addr),
     }
 }

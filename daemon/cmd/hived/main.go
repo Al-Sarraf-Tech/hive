@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -33,6 +34,7 @@ func main() {
 	flagJoinAddrs := flag.String("join", "", "Comma-separated gossip addresses to join on startup")
 	flagDataDir := flag.String("data-dir", "", "Data directory (default: platform-specific)")
 	flagLogLevel := flag.String("log-level", "info", "Log level (debug, info, warn, error)")
+	flagGossipKey := flag.String("gossip-key", "", "AES-256 key (hex-encoded) for gossip encryption")
 	flag.Parse()
 
 	// Configure logging
@@ -104,11 +106,28 @@ func main() {
 	healthChecker := health.NewChecker()
 
 	// Initialize mesh (gossip layer)
+	// Parse gossip encryption key if provided
+	var gossipKey []byte
+	if *flagGossipKey != "" {
+		var err error
+		gossipKey, err = hex.DecodeString(*flagGossipKey)
+		if err != nil {
+			slog.Error("invalid gossip key (must be hex-encoded)", "error", err)
+			os.Exit(1)
+		}
+		if len(gossipKey) != 16 && len(gossipKey) != 24 && len(gossipKey) != 32 {
+			slog.Error("gossip key must be 16, 24, or 32 bytes (32, 48, or 64 hex chars)")
+			os.Exit(1)
+		}
+		slog.Info("gossip encryption enabled", "key_bytes", len(gossipKey))
+	}
+
 	meshCfg := mesh.Config{
 		NodeName:      nodeName,
 		AdvertiseAddr: *flagAdvertiseAddr,
 		GRPCPort:      grpcPort,
 		GossipPort:    gossipPort,
+		GossipKey:     gossipKey,
 	}
 	hiveMesh, err := mesh.New(meshCfg, containerProvider.RuntimeName(), containerProvider.DetectCapabilities())
 	if err != nil {

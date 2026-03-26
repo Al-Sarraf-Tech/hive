@@ -47,11 +47,11 @@ pub fn draw(frame: &mut Frame, area: Rect, data: &Option<ClusterData>) {
     let table = Table::new(
         rows,
         [
-            Constraint::Length(10),
+            Constraint::Length(12),
             Constraint::Min(15),
             Constraint::Length(10),
             Constraint::Length(7),
-            Constraint::Length(10),
+            Constraint::Length(12),
             Constraint::Min(15),
         ],
     )

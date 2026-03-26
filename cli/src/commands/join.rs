@@ -4,12 +4,12 @@ use colored::Colorize;
 use crate::grpc_client;
 use crate::grpc_client::hive_proto::JoinClusterRequest;
 
-pub async fn run(address: &str, addr: &str) -> Result<()> {
+pub async fn run(addresses: &[String], addr: &str) -> Result<()> {
     let mut client = grpc_client::connect(addr).await?;
 
     let resp = client
         .join_cluster(JoinClusterRequest {
-            seed_addrs: vec![address.to_string()],
+            seed_addrs: addresses.to_vec(),
         })
         .await?
         .into_inner();

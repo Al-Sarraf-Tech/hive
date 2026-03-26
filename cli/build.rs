@@ -4,7 +4,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // without explicit rerun-if-changed directives.
     println!("cargo:rerun-if-changed=../proto/hive/v1/types.proto");
     println!("cargo:rerun-if-changed=../proto/hive/v1/api.proto");
-    println!("cargo:rerun-if-changed=../proto/hive/v1/mesh.proto");
 
     tonic_build::configure()
         .build_server(false) // CLI only needs the client

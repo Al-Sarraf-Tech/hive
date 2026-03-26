@@ -4,12 +4,12 @@ use colored::Colorize;
 use crate::grpc_client;
 use crate::grpc_client::hive_proto::InitClusterRequest;
 
-pub async fn run(addr: &str) -> Result<()> {
+pub async fn run(name: &str, addr: &str) -> Result<()> {
     let mut client = grpc_client::connect(addr).await?;
 
     let resp = client
         .init_cluster(InitClusterRequest {
-            cluster_name: String::new(),
+            cluster_name: name.to_string(),
         })
         .await?
         .into_inner();

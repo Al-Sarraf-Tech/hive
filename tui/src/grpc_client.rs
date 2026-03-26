@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use std::time::Duration;
 use tonic::transport::Channel;
 
@@ -7,17 +8,18 @@ pub mod hive_proto {
 
 pub use hive_proto::hive_api_client::HiveApiClient;
 
-pub async fn connect(
-    addr: &str,
-) -> Result<HiveApiClient<Channel>, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn connect(addr: &str) -> Result<HiveApiClient<Channel>> {
     let url = if addr.starts_with("http") {
         addr.to_string()
     } else {
         format!("http://{addr}")
     };
-    let endpoint = Channel::builder(url.parse()?)
+    let endpoint = Channel::builder(url.parse().context("invalid address format")?)
         .connect_timeout(Duration::from_secs(3))
         .timeout(Duration::from_secs(10));
-    let channel = endpoint.connect().await?;
+    let channel = endpoint
+        .connect()
+        .await
+        .context("failed to connect to hived — is it running?")?;
     Ok(HiveApiClient::new(channel))
 }

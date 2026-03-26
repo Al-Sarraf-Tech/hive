@@ -26,11 +26,11 @@ pub async fn run(file: &str, addr: &str) -> Result<()> {
 
     for svc in &resp.services {
         println!(
-            "{} {} deployed (image: {}, container: {})",
+            "{} {} deployed (image: {}, id: {})",
             "✓".green(),
             svc.name.bold(),
             svc.image.cyan(),
-            svc.id
+            &svc.id[..svc.id.len().min(12)]
         );
     }
 

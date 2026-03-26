@@ -525,23 +525,43 @@ func (s *Server) ListServices(ctx context.Context, _ *emptypb.Empty) (*hivev1.Li
 		}
 	}
 
-	// Fan-out to remote peers — skip containers already seen locally
+	// Fan-out to remote peers concurrently — skip containers already seen locally
 	if s.mesh != nil {
-		for _, peer := range s.mesh.Peers() {
-			peerConn, err := s.mesh.PeerByName(peer.Info.Name)
-			if err != nil {
-				continue
-			}
-			peerCtx, peerCancel := context.WithTimeout(ctx, 5*time.Second)
-			state, err := peerConn.MeshClient().SyncState(peerCtx, &emptypb.Empty{})
-			peerCancel()
-			if err != nil {
-				slog.Debug("failed to sync state from peer", "peer", peer.Info.Name, "error", err)
-				continue
-			}
-			for _, c := range state.Containers {
+		type peerResult struct {
+			peerName   string
+			containers []*hivev1.Container
+		}
+
+		peers := s.mesh.Peers()
+		resultCh := make(chan peerResult, len(peers))
+
+		fanoutCtx, fanoutCancel := context.WithTimeout(ctx, 10*time.Second)
+		defer fanoutCancel()
+
+		for _, peer := range peers {
+			go func(peerName string) {
+				peerConn, err := s.mesh.PeerByName(peerName)
+				if err != nil {
+					resultCh <- peerResult{peerName: peerName}
+					return
+				}
+				peerCtx, peerCancel := context.WithTimeout(fanoutCtx, 5*time.Second)
+				state, err := peerConn.MeshClient().SyncState(peerCtx, &emptypb.Empty{})
+				peerCancel()
+				if err != nil {
+					slog.Debug("failed to sync state from peer", "peer", peerName, "error", err)
+					resultCh <- peerResult{peerName: peerName}
+					return
+				}
+				resultCh <- peerResult{peerName: peerName, containers: state.Containers}
+			}(peer.Info.Name)
+		}
+
+		for range peers {
+			pr := <-resultCh
+			for _, c := range pr.containers {
 				if seenContainers[c.Id] {
-					continue // already counted from local Docker
+					continue
 				}
 				seenContainers[c.Id] = true
 				svcName := c.ServiceName
@@ -555,7 +575,7 @@ func (s *Server) ListServices(ctx context.Context, _ *emptypb.Empty) (*hivev1.Li
 						Name:            svcName,
 						Image:           c.Image,
 						ReplicasDesired: 1,
-						NodeConstraint:  peer.Info.Name,
+						NodeConstraint:  pr.peerName,
 					}
 					serviceMap[svcName] = svc
 				}
@@ -879,6 +899,39 @@ func (s *Server) StreamEvents(_ *emptypb.Empty, stream hivev1.HiveAPI_StreamEven
 	if err != nil {
 		return err
 	}
+
+	// Forward mesh events to the stream until the client disconnects
+	if s.mesh != nil {
+		eventCh := s.mesh.Events()
+		for {
+			select {
+			case <-stream.Context().Done():
+				return nil
+			case ev, ok := <-eventCh:
+				if !ok {
+					return nil
+				}
+				evType := hivev1.EventType_EVENT_TYPE_UNSPECIFIED
+				switch ev.Type {
+				case mesh.EventNodeJoined:
+					evType = hivev1.EventType_EVENT_TYPE_NODE_JOINED
+				case mesh.EventNodeLeft:
+					evType = hivev1.EventType_EVENT_TYPE_NODE_LEFT
+				case mesh.EventNodeFailed:
+					evType = hivev1.EventType_EVENT_TYPE_NODE_FAILED
+				}
+				if err := stream.Send(&hivev1.Event{
+					Type:      evType,
+					Source:    ev.Node,
+					Message:   fmt.Sprintf("Node %s: %v", ev.Node, ev.Type),
+					Timestamp: timestamppb.Now(),
+				}); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
 	<-stream.Context().Done()
 	return nil
 }

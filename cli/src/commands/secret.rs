@@ -1,15 +1,34 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use colored::Colorize;
+use std::io::{self, BufRead, IsTerminal};
 
 use crate::grpc_client;
 use crate::grpc_client::hive_proto::{DeleteSecretRequest, SetSecretRequest};
 
-pub async fn set(key: &str, value: &str, addr: &str) -> Result<()> {
+pub async fn set(key: &str, value: Option<&str>, addr: &str) -> Result<()> {
+    let secret_value = match value {
+        Some(v) => v.to_string(),
+        None => {
+            // Read from stdin to avoid exposing secrets in ps/shell history
+            if io::stdin().is_terminal() {
+                eprintln!("Enter secret value (then press Enter):");
+            }
+            let mut line = String::new();
+            io::stdin()
+                .lock()
+                .read_line(&mut line)
+                .context("failed to read secret from stdin")?;
+            line.trim_end_matches('\n')
+                .trim_end_matches('\r')
+                .to_string()
+        }
+    };
+
     let mut client = grpc_client::connect(addr).await?;
     client
         .set_secret(SetSecretRequest {
             key: key.into(),
-            value: value.as_bytes().to_vec(),
+            value: secret_value.as_bytes().to_vec(),
         })
         .await?;
 

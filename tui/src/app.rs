@@ -21,7 +21,12 @@ pub enum Tab {
 
 impl Tab {
     fn titles() -> Vec<&'static str> {
-        vec!["[1] Overview", "[2] Nodes", "[3] Services", "[4] Logs"]
+        vec![
+            "[1] Overview",
+            "[2] Nodes",
+            "[3] Services",
+            "[4] Logs (wip)",
+        ]
     }
 
     fn index(self) -> usize {
