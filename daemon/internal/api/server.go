@@ -20,6 +20,7 @@ import (
 	"github.com/jalsarraf0/hive/daemon/internal/health"
 	"github.com/jalsarraf0/hive/daemon/internal/hivefile"
 	"github.com/jalsarraf0/hive/daemon/internal/mesh"
+	"github.com/jalsarraf0/hive/daemon/internal/metrics"
 	"github.com/jalsarraf0/hive/daemon/internal/pki"
 	"github.com/jalsarraf0/hive/daemon/internal/scheduler"
 	"github.com/jalsarraf0/hive/daemon/internal/secrets"
@@ -135,7 +136,11 @@ func (s *Server) InitCluster(_ context.Context, req *hivev1.InitClusterRequest) 
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "generate cluster CA: %v", err)
 	}
-	if err := pki.SaveCA(s.dataDir, caCertPEM, caKeyPEM); err != nil {
+	var encryptFn func([]byte) ([]byte, error)
+	if s.vault != nil {
+		encryptFn = s.vault.Encrypt
+	}
+	if err := pki.SaveCA(s.dataDir, caCertPEM, caKeyPEM, encryptFn); err != nil {
 		return nil, status.Errorf(codes.Internal, "save cluster CA: %v", err)
 	}
 
@@ -250,6 +255,9 @@ func (s *Server) GetClusterStatus(ctx context.Context, _ *emptypb.Empty) (*hivev
 			running += peer.Info.Containers
 		}
 	}
+
+	metrics.NodeCount.Set(float64(totalNodes))
+	metrics.ServiceCount.Set(float64(len(serviceNames)))
 
 	return &hivev1.ClusterStatusResponse{
 		TotalNodes:        totalNodes,
@@ -470,6 +478,24 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 	}
 	slog.Debug("deploy order resolved", "order", deployOrder)
 
+	// Create an isolated Docker network for this deployment.
+	// All services in the same Hivefile share a network; separate Hivefiles are isolated.
+	networkName := "hive-" + deployOrder[0]
+	if len(deployOrder) > 1 {
+		// Use a hash of all service names for multi-service deployments
+		h := fmt.Sprintf("%x", len(deployOrder))
+		for _, n := range deployOrder {
+			h += "-" + n
+		}
+		networkName = "hive-" + h
+	}
+	if _, netErr := s.container.CreateNetwork(ctx, networkName); netErr != nil {
+		slog.Warn("failed to create deployment network", "network", networkName, "error", netErr)
+		networkName = "" // fall back to default bridge
+	} else {
+		slog.Info("deployment network created", "network", networkName)
+	}
+
 	var deployed []*hivev1.Service
 	for _, name := range deployOrder {
 		svcDef := hf.Service[name]
@@ -478,6 +504,44 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 		env, err := hivefile.ResolveEnv(svcDef.Env, secrets)
 		if err != nil {
 			return nil, status.Errorf(codes.FailedPrecondition, "service %q: %v — set missing secrets with 'hive secret set'", name, err)
+		}
+
+		// Inject service discovery env vars for depends_on services.
+		// Topo sort guarantees dependencies are already deployed, so placements exist.
+		for _, depName := range svcDef.DependsOn.Services {
+			upperName := strings.ToUpper(strings.ReplaceAll(depName, "-", "_"))
+			hostKey := "HIVE_SERVICE_" + upperName + "_HOST"
+			portKey := "HIVE_SERVICE_" + upperName + "_PORT"
+
+			// Only set if user has not already defined these env vars
+			if _, exists := env[hostKey]; !exists {
+				host := "127.0.0.1"
+				if placement := s.store.GetPlacement(depName); placement != "" && placement != s.nodeName && s.mesh != nil {
+					for _, peer := range s.mesh.Peers() {
+						if peer.Info.Name == placement {
+							host = peer.Info.AdvertiseAddr
+							break
+						}
+					}
+				} else if s.mesh != nil {
+					local := s.mesh.LocalNode()
+					if local.AdvertiseAddr != "" {
+						host = local.AdvertiseAddr
+					}
+				}
+				env[hostKey] = host
+			}
+
+			if _, exists := env[portKey]; !exists {
+				if depDef, ok := hf.Service[depName]; ok && len(depDef.Ports) > 0 {
+					portKeys := make([]string, 0, len(depDef.Ports))
+					for k := range depDef.Ports {
+						portKeys = append(portKeys, k)
+					}
+					sort.Strings(portKeys)
+					env[portKey] = portKeys[0]
+				}
+			}
 		}
 
 		// Parse memory limit
@@ -542,7 +606,7 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 
 				var id string
 				if targetNode == s.nodeName {
-					id, err = s.deployLocalReplica(ctx, name, i, svcDef, env, memBytes)
+					id, err = s.deployLocalReplica(ctx, name, i, svcDef, env, memBytes, networkName)
 				} else {
 					id, err = s.deployRemoteReplica(ctx, name, i, svcDef, env, targetNode)
 				}
@@ -618,7 +682,7 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 
 				var id string
 				if targetNode == s.nodeName {
-					id, err = s.deployLocalReplica(ctx, name, i, svcDef, env, memBytes)
+					id, err = s.deployLocalReplica(ctx, name, i, svcDef, env, memBytes, networkName)
 				} else {
 					id, err = s.deployRemoteReplica(ctx, name, i, svcDef, env, targetNode)
 				}
@@ -633,6 +697,7 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 		}
 
 		if replicasRunning == 0 {
+			metrics.DeployTotal.WithLabelValues("failure").Inc()
 			return nil, status.Errorf(codes.Internal, "all replicas of %q failed to deploy", name)
 		}
 
@@ -670,11 +735,12 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 		slog.Info("service deployed", "name", name, "replicas", fmt.Sprintf("%d/%d", replicasRunning, replicas))
 	}
 
+	metrics.DeployTotal.WithLabelValues("success").Inc()
 	return &hivev1.DeployServiceResponse{Services: deployed}, nil
 }
 
 // deployLocalReplica creates a single replica container on this node.
-func (s *Server) deployLocalReplica(ctx context.Context, name string, replicaIndex int, svcDef hivefile.ServiceDef, env map[string]string, memBytes int64) (string, error) {
+func (s *Server) deployLocalReplica(ctx context.Context, name string, replicaIndex int, svcDef hivefile.ServiceDef, env map[string]string, memBytes int64, networkName ...string) (string, error) {
 	memMB := memBytes / (1024 * 1024)
 	containerName := fmt.Sprintf("hive-%s-%d", name, replicaIndex)
 	spec := container.ContainerSpec{
@@ -690,6 +756,9 @@ func (s *Server) deployLocalReplica(ctx context.Context, name string, replicaInd
 		MemoryMB:      memMB,
 		CPUs:          svcDef.Resources.CPUs,
 		RestartPolicy: svcDef.RestartPolicy,
+	}
+	if len(networkName) > 0 && networkName[0] != "" {
+		spec.NetworkName = networkName[0]
 	}
 
 	// Add volumes
@@ -1199,11 +1268,24 @@ func (s *Server) RollbackService(ctx context.Context, req *hivev1.RollbackServic
 
 	replicasStarted := 0
 	for i := 0; i < replicas; i++ {
-		// TODO: Use scheduler to distribute across nodes (currently local-only)
-		if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, prevDef, env, memBytes); deployErr != nil {
-			slog.Error("failed to deploy rollback replica", "service", req.Name, "replica", i, "error", deployErr)
+		targetNode := s.nodeName
+		if s.scheduler != nil {
+			if candidate, pickErr := s.scheduler.Pick(prevDef); pickErr == nil {
+				targetNode = candidate.NodeName
+			}
+		}
+		if targetNode == s.nodeName {
+			if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, prevDef, env, memBytes); deployErr != nil {
+				slog.Error("failed to deploy rollback replica", "service", req.Name, "replica", i, "target", targetNode, "error", deployErr)
+			} else {
+				replicasStarted++
+			}
 		} else {
-			replicasStarted++
+			if _, deployErr := s.deployRemoteReplica(ctx, req.Name, i, prevDef, env, targetNode); deployErr != nil {
+				slog.Error("failed to deploy rollback replica", "service", req.Name, "replica", i, "target", targetNode, "error", deployErr)
+			} else {
+				replicasStarted++
+			}
 		}
 	}
 
@@ -1264,13 +1346,27 @@ func (s *Server) RestartService(ctx context.Context, req *hivev1.RestartServiceR
 
 	slog.Info("restarting service", "name", req.Name, "replicas", replicas)
 
-	// Rolling restart: replace each replica one at a time
+	// Rolling restart: replace each replica one at a time, using scheduler for placement
 	restarted := 0
 	for i := 0; i < replicas; i++ {
-		if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, svcDef, env, memBytes); deployErr != nil {
-			slog.Error("failed to restart replica", "service", req.Name, "replica", i, "error", deployErr)
+		targetNode := s.nodeName
+		if s.scheduler != nil {
+			if candidate, pickErr := s.scheduler.Pick(svcDef); pickErr == nil {
+				targetNode = candidate.NodeName
+			}
+		}
+		if targetNode == s.nodeName {
+			if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, svcDef, env, memBytes); deployErr != nil {
+				slog.Error("failed to restart replica", "service", req.Name, "replica", i, "target", targetNode, "error", deployErr)
+			} else {
+				restarted++
+			}
 		} else {
-			restarted++
+			if _, deployErr := s.deployRemoteReplica(ctx, req.Name, i, svcDef, env, targetNode); deployErr != nil {
+				slog.Error("failed to restart replica", "service", req.Name, "replica", i, "target", targetNode, "error", deployErr)
+			} else {
+				restarted++
+			}
 		}
 	}
 

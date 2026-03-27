@@ -44,22 +44,29 @@ type Provider interface {
 	// DetectCapabilities returns what platforms this runtime can run.
 	DetectCapabilities() []string
 
+	// CreateNetwork creates a Docker/Podman bridge network, returning its ID.
+	CreateNetwork(ctx context.Context, name string) (string, error)
+
+	// RemoveNetwork removes a network by name. Ignores "not found" errors.
+	RemoveNetwork(ctx context.Context, name string) error
+
 	// Close releases any resources held by the provider (e.g., HTTP client connections).
 	Close() error
 }
 
 // ContainerSpec defines what to create.
 type ContainerSpec struct {
-	Name       string
-	Image      string
-	Env        map[string]string
-	Ports      map[string]string // host:container
-	Volumes    []VolumeSpec
-	Labels     map[string]string
-	MemoryMB   int64
-	CPUs       float64
-	Command    []string
+	Name          string
+	Image         string
+	Env           map[string]string
+	Ports         map[string]string // host:container
+	Volumes       []VolumeSpec
+	Labels        map[string]string
+	MemoryMB      int64
+	CPUs          float64
+	Command       []string
 	RestartPolicy string // "always", "on-failure", "no"
+	NetworkName   string // Docker network to attach to (empty = default bridge)
 }
 
 // VolumeSpec defines a volume mount.

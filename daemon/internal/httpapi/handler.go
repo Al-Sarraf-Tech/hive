@@ -5,9 +5,14 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	hivev1 "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1"
+	"github.com/jalsarraf0/hive/daemon/internal/logs"
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -17,14 +22,15 @@ import (
 
 // Handler wraps a HiveAPI gRPC client to serve HTTP/JSON endpoints.
 type Handler struct {
-	api   hivev1.HiveAPIServer
-	mux   *http.ServeMux
-	token string // bearer token for authentication (empty = no auth)
+	api       hivev1.HiveAPIServer
+	mux       *http.ServeMux
+	token     string           // bearer token for authentication (empty = no auth)
+	logBuffer *logs.RingBuffer // nil if log aggregation is disabled
 }
 
 // New creates an HTTP handler that delegates to the given gRPC API server.
-func New(api hivev1.HiveAPIServer, token string) *Handler {
-	h := &Handler{api: api, mux: http.NewServeMux(), token: token}
+func New(api hivev1.HiveAPIServer, token string, logBuffer *logs.RingBuffer) *Handler {
+	h := &Handler{api: api, mux: http.NewServeMux(), token: token, logBuffer: logBuffer}
 	h.registerRoutes()
 	return h
 }
@@ -46,7 +52,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Bearer token authentication (skip for OPTIONS already handled above)
-	if h.token != "" {
+	// /metrics is unauthenticated — Prometheus scrapers should not need a token
+	if h.token != "" && !strings.HasPrefix(r.URL.Path, "/metrics") {
 		auth := r.Header.Get("Authorization")
 		if auth != "Bearer "+h.token {
 			w.Header().Set("Content-Type", "application/json")
@@ -60,6 +67,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) registerRoutes() {
+	h.mux.Handle("GET /metrics", promhttp.Handler())
+	h.mux.HandleFunc("GET /api/v1/logs", h.getLogs)
+	h.mux.HandleFunc("GET /api/v1/logs/{service}", h.getServiceLogs)
 	h.mux.HandleFunc("GET /api/v1/status", h.getStatus)
 	h.mux.HandleFunc("GET /api/v1/nodes", h.listNodes)
 	h.mux.HandleFunc("GET /api/v1/services", h.listServices)
@@ -74,6 +84,35 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("POST /api/v1/nodes/{name}/drain", h.drainNode)
 	h.mux.HandleFunc("POST /api/v1/secrets/{key}", h.setSecret)
 	h.mux.HandleFunc("DELETE /api/v1/secrets/{key}", h.deleteSecret)
+}
+
+func (h *Handler) getLogs(w http.ResponseWriter, r *http.Request) {
+	if h.logBuffer == nil {
+		writeJSON(w, []logs.Entry{})
+		return
+	}
+	n := 200
+	if q := r.URL.Query().Get("lines"); q != "" {
+		if parsed, err := strconv.Atoi(q); err == nil && parsed > 0 {
+			n = parsed
+		}
+	}
+	writeJSON(w, h.logBuffer.Last(n))
+}
+
+func (h *Handler) getServiceLogs(w http.ResponseWriter, r *http.Request) {
+	if h.logBuffer == nil {
+		writeJSON(w, []logs.Entry{})
+		return
+	}
+	service := r.PathValue("service")
+	n := 200
+	if q := r.URL.Query().Get("lines"); q != "" {
+		if parsed, err := strconv.Atoi(q); err == nil && parsed > 0 {
+			n = parsed
+		}
+	}
+	writeJSON(w, h.logBuffer.ForService(service, n))
 }
 
 func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
@@ -309,8 +348,8 @@ func writeError(w http.ResponseWriter, err error) {
 }
 
 // NewServer creates an *http.Server with timeouts, ready for graceful shutdown.
-func NewServer(addr string, api hivev1.HiveAPIServer, token string) *http.Server {
-	h := New(api, token)
+func NewServer(addr string, api hivev1.HiveAPIServer, token string, logBuffer *logs.RingBuffer) *http.Server {
+	h := New(api, token, logBuffer)
 	return &http.Server{
 		Addr:         addr,
 		Handler:      h,

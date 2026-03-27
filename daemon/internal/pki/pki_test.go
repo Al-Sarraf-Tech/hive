@@ -35,7 +35,7 @@ func TestSaveLoadCA(t *testing.T) {
 		t.Fatalf("GenerateCA: %v", err)
 	}
 
-	if err := SaveCA(dir, certPEM, keyPEM); err != nil {
+	if err := SaveCA(dir, certPEM, keyPEM, nil); err != nil {
 		t.Fatalf("SaveCA: %v", err)
 	}
 
@@ -48,7 +48,7 @@ func TestSaveLoadCA(t *testing.T) {
 		t.Errorf("ca.key permissions: %04o, want 0600", perm)
 	}
 
-	key, cert, err := LoadCA(dir)
+	key, cert, err := LoadCA(dir, nil)
 	if err != nil {
 		t.Fatalf("LoadCA: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestTLSConfigs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateCA: %v", err)
 	}
-	if err := SaveCA(dir, caCertPEM, caKeyPEM); err != nil {
+	if err := SaveCA(dir, caCertPEM, caKeyPEM, nil); err != nil {
 		t.Fatalf("SaveCA: %v", err)
 	}
 
@@ -267,7 +267,7 @@ func TestCertExpiryInfo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateCA: %v", err)
 	}
-	_ = SaveCA(dir, caCertPEM, caKeyPEM)
+	_ = SaveCA(dir, caCertPEM, caKeyPEM, nil)
 
 	certPEM, keyPEM, err := GenerateNodeCert(caKey, caCert, "test", "127.0.0.1")
 	if err != nil {
@@ -298,7 +298,7 @@ func TestHasNodeCert(t *testing.T) {
 	}
 
 	caKey, caCert, caCertPEM, caKeyPEM, _ := GenerateCA()
-	_ = SaveCA(dir, caCertPEM, caKeyPEM)
+	_ = SaveCA(dir, caCertPEM, caKeyPEM, nil)
 	certPEM, keyPEM, _ := GenerateNodeCert(caKey, caCert, "n", "127.0.0.1")
 	_ = SaveNodeCert(dir, certPEM, keyPEM)
 

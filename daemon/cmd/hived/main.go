@@ -15,15 +15,20 @@ import (
 	"time"
 
 	"github.com/jalsarraf0/hive/daemon/internal/api"
+	hivev1 "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1"
+	"github.com/jalsarraf0/hive/daemon/internal/config"
 	"github.com/jalsarraf0/hive/daemon/internal/container"
 	"github.com/jalsarraf0/hive/daemon/internal/health"
 	"github.com/jalsarraf0/hive/daemon/internal/httpapi"
+	"github.com/jalsarraf0/hive/daemon/internal/logs"
 	"github.com/jalsarraf0/hive/daemon/internal/mesh"
+	"github.com/jalsarraf0/hive/daemon/internal/metrics"
 	"github.com/jalsarraf0/hive/daemon/internal/pki"
 	"github.com/jalsarraf0/hive/daemon/internal/platform"
 	"github.com/jalsarraf0/hive/daemon/internal/scheduler"
 	"github.com/jalsarraf0/hive/daemon/internal/secrets"
 	"github.com/jalsarraf0/hive/daemon/internal/store"
+	"github.com/jalsarraf0/hive/daemon/internal/sysinfo"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
@@ -31,6 +36,7 @@ import (
 
 func main() {
 	// CLI flags
+	flagConfigPath := flag.String("config", "", "Config file path (default: platform-specific hived.toml)")
 	flagNodeName := flag.String("name", "", "Node name (default: hostname)")
 	flagGRPCPort := flag.Int("grpc-port", 7947, "gRPC API port")
 	flagGossipPort := flag.Int("gossip-port", 7946, "SWIM gossip port")
@@ -44,9 +50,50 @@ func main() {
 	flagHTTPPort := flag.Int("http-port", 7949, "HTTP API port for web console (0 to disable)")
 	flag.Parse()
 
+	// Load config file (missing file = defaults, not an error)
+	configPath := *flagConfigPath
+	if configPath == "" {
+		configPath = config.DefaultPath()
+	}
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load config %s: %v\n", configPath, err)
+		os.Exit(1)
+	}
+
+	// Build flag overrides — only flags explicitly set on the CLI override config
+	var overrides config.FlagOverrides
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "name":
+			overrides.Name = flagNodeName
+		case "grpc-port":
+			overrides.GRPCPort = flagGRPCPort
+		case "gossip-port":
+			overrides.GossipPort = flagGossipPort
+		case "advertise-addr":
+			overrides.AdvertiseAddr = flagAdvertiseAddr
+		case "join":
+			overrides.Join = flagJoinAddrs
+		case "data-dir":
+			overrides.DataDir = flagDataDir
+		case "log-level":
+			overrides.LogLevel = flagLogLevel
+		case "gossip-key":
+			overrides.GossipKey = flagGossipKey
+		case "mesh-port":
+			overrides.MeshPort = flagMeshPort
+		case "tls":
+			overrides.TLS = flagTLS
+		case "http-port":
+			overrides.HTTPPort = flagHTTPPort
+		}
+	})
+	cfg = cfg.Merge(overrides)
+
 	// Configure logging
 	var level slog.Level
-	switch *flagLogLevel {
+	switch cfg.Logging.Level {
 	case "debug":
 		level = slog.LevelDebug
 	case "warn":
@@ -60,7 +107,7 @@ func main() {
 	slog.SetDefault(logger)
 
 	// Resolve configuration
-	nodeName := *flagNodeName
+	nodeName := cfg.Node.Name
 	if nodeName == "" {
 		hostname, err := os.Hostname()
 		if err != nil {
@@ -68,9 +115,9 @@ func main() {
 		}
 		nodeName = hostname
 	}
-	grpcPort := *flagGRPCPort
-	gossipPort := *flagGossipPort
-	dataDir := *flagDataDir
+	grpcPort := cfg.Ports.GRPC
+	gossipPort := cfg.Ports.Gossip
+	dataDir := cfg.Node.DataDir
 	if dataDir == "" {
 		dataDir = platform.DefaultDataDir()
 	}
@@ -116,7 +163,7 @@ func main() {
 	// Initialize mesh (gossip layer)
 	// Parse gossip encryption key if provided
 	var gossipKey []byte
-	gossipKeyHex := *flagGossipKey
+	gossipKeyHex := cfg.Security.GossipKey
 	if gossipKeyHex == "" {
 		gossipKeyHex = os.Getenv("HIVE_GOSSIP_KEY")
 	}
@@ -144,9 +191,9 @@ func main() {
 
 	meshCfg := mesh.Config{
 		NodeName:      nodeName,
-		AdvertiseAddr: *flagAdvertiseAddr,
+		AdvertiseAddr: cfg.Node.AdvertiseAddr,
 		GRPCPort:      grpcPort,
-		MeshPort:      *flagMeshPort,
+		MeshPort:      cfg.Ports.Mesh,
 		GossipPort:    gossipPort,
 		GossipKey:     gossipKey,
 		TLSEnabled:    tlsEnabled,
@@ -168,9 +215,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	meshLis, err := net.Listen("tcp", fmt.Sprintf(":%d", *flagMeshPort))
+	meshLis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Ports.Mesh))
 	if err != nil {
-		slog.Error("failed to listen on mesh port", "port", *flagMeshPort, "error", err)
+		slog.Error("failed to listen on mesh port", "port", cfg.Ports.Mesh, "error", err)
 		os.Exit(1)
 	}
 
@@ -184,7 +231,11 @@ func main() {
 
 	// ─── API server (CLI/TUI connections, optional TLS) ─────
 	var apiOpts []grpc.ServerOption
-	if *flagTLS && tlsEnabled {
+	apiOpts = append(apiOpts, grpc.UnaryInterceptor(func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		metrics.GRPCRequestsTotal.WithLabelValues(info.FullMethod).Inc()
+		return handler(ctx, req)
+	}))
+	if cfg.Security.TLS && tlsEnabled {
 		apiTLSCfg, err := pki.APIServerTLSConfig(dataDir)
 		if err != nil {
 			slog.Error("failed to load API TLS config", "error", err)
@@ -209,12 +260,12 @@ func main() {
 		meshOpts = append(meshOpts, grpc.Creds(credentials.NewTLS(meshTLSCfg)))
 	}
 	meshGRPC := grpc.NewServer(meshOpts...)
-	meshServer := api.NewMeshServer(stateStore, containerProvider, nodeName, dataDir)
+	meshServer := api.NewMeshServer(stateStore, containerProvider, nodeName, dataDir, vault.Decrypt)
 	api.RegisterMesh(meshGRPC, meshServer)
 
-	// Auto-join if --join flag provided
-	if *flagJoinAddrs != "" {
-		addrs := strings.Split(*flagJoinAddrs, ",")
+	// Auto-join if join address(es) provided
+	if cfg.Node.Join != "" {
+		addrs := strings.Split(cfg.Node.Join, ",")
 		n, err := hiveMesh.Join(addrs)
 		if err != nil {
 			slog.Error("failed to join cluster", "addrs", addrs, "error", err)
@@ -227,13 +278,91 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Start log aggregation collector
+	logCollector := logs.NewCollector(containerProvider, nodeName)
+	go logCollector.Start(ctx)
+
 	healthLoop := health.NewLoop(healthChecker, containerProvider, stateStore, 30*time.Second, hiveMesh.UpdateContainerCount)
 	go healthLoop.Start(ctx)
 
-	// Start certificate renewal checker (log-only mode — warns about expiring certs).
-	// TODO: Wire renewFn to perform automatic CSR-based renewal via mesh peers.
+	// System resource metrics (update every 30s alongside health checks)
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				memTotal, memAvail := sysinfo.MemInfo()
+				metrics.SystemMemoryTotal.Set(float64(memTotal))
+				metrics.SystemMemoryAvailable.Set(float64(memAvail))
+				diskTotal, diskAvail := sysinfo.DiskInfo(dataDir)
+				metrics.SystemDiskTotal.Set(float64(diskTotal))
+				metrics.SystemDiskAvailable.Set(float64(diskAvail))
+			}
+		}
+	}()
+
+	// Start certificate renewal checker with automatic CSR-based renewal.
 	if pki.HasNodeCert(dataDir) {
-		renewChecker := pki.NewRenewalChecker(dataDir, nil) // nil = log-only, no auto-renewal yet
+		renewFn := func() error {
+			local := hiveMesh.LocalNode()
+
+			// Build a CSR signing function that tries self-sign first, then peers
+			signCSR := func(csrPEM []byte) (certPEM, caCertPEM []byte, err error) {
+				joinToken, _ := stateStore.Get("meta", "join_token")
+
+				// If we hold the CA key, self-sign
+				if pki.HasCAKey(dataDir) {
+					caKey, caCert, loadErr := pki.LoadCA(dataDir, vault.Decrypt)
+					if loadErr == nil {
+						signed, signErr := pki.SignCSR(caKey, caCert, csrPEM)
+						if signErr == nil {
+							caPEM, _ := pki.LoadCACertPEM(dataDir)
+							return signed, caPEM, nil
+						}
+					}
+				}
+
+				// Otherwise, iterate peers to find one that can sign
+				for _, peer := range hiveMesh.Peers() {
+					peerConn, connErr := hiveMesh.PeerByName(peer.Info.Name)
+					if connErr != nil {
+						continue
+					}
+					resp, rpcErr := peerConn.MeshClient().SignNodeCSR(context.Background(), &hivev1.SignCSRRequest{
+						CsrPem:    csrPEM,
+						NodeName:  local.Name,
+						JoinToken: string(joinToken),
+					})
+					if rpcErr != nil {
+						slog.Debug("peer cannot sign renewal CSR", "peer", peer.Info.Name, "error", rpcErr)
+						continue
+					}
+					return resp.NodeCertPem, resp.CaCertPem, nil
+				}
+				return nil, nil, fmt.Errorf("no peer could sign the renewal CSR")
+			}
+
+			csrPEM, keyPEM, err := pki.GenerateCSR(local.Name, local.AdvertiseAddr)
+			if err != nil {
+				return fmt.Errorf("generate CSR: %w", err)
+			}
+			certPEM, caCertPEM, err := signCSR(csrPEM)
+			if err != nil {
+				return fmt.Errorf("sign CSR: %w", err)
+			}
+			if err := pki.SaveNodeCert(dataDir, certPEM, keyPEM); err != nil {
+				return fmt.Errorf("save renewed cert: %w", err)
+			}
+			if len(caCertPEM) > 0 {
+				_ = pki.SaveCACert(dataDir, caCertPEM)
+			}
+			return nil
+		}
+
+		renewChecker := pki.NewRenewalChecker(dataDir, renewFn)
 		go renewChecker.Start(ctx)
 	}
 
@@ -281,14 +410,14 @@ func main() {
 	}()
 
 	httpAddr := "disabled"
-	if *flagHTTPPort > 0 {
-		httpAddr = fmt.Sprintf(":%d", *flagHTTPPort)
+	if cfg.HTTP.Port > 0 {
+		httpAddr = fmt.Sprintf(":%d", cfg.HTTP.Port)
 	}
 
 	slog.Info("hived listening",
 		"node", nodeName,
 		"api", fmt.Sprintf(":%d", grpcPort),
-		"mesh", fmt.Sprintf(":%d", *flagMeshPort),
+		"mesh", fmt.Sprintf(":%d", cfg.Ports.Mesh),
 		"http", httpAddr,
 		"gossip", fmt.Sprintf(":%d", gossipPort),
 		"tls", tlsEnabled,
@@ -297,7 +426,7 @@ func main() {
 
 	// Start mesh gRPC server in background
 	go func() {
-		slog.Info("mesh server listening", "port", *flagMeshPort, "tls", tlsEnabled)
+		slog.Info("mesh server listening", "port", cfg.Ports.Mesh, "tls", tlsEnabled)
 		if err := meshGRPC.Serve(meshLis); err != nil {
 			if ctx.Err() == nil {
 				slog.Error("mesh grpc server failed", "error", err)
@@ -306,9 +435,9 @@ func main() {
 	}()
 
 	// Start HTTP API server for web console
-	if *flagHTTPPort > 0 {
-		addr := fmt.Sprintf(":%d", *flagHTTPPort)
-		httpServer = httpapi.NewServer(addr, apiServer, "")
+	if cfg.HTTP.Port > 0 {
+		addr := fmt.Sprintf(":%d", cfg.HTTP.Port)
+		httpServer = httpapi.NewServer(addr, apiServer, "", logCollector.Buffer())
 		go func() {
 			slog.Info("http api server listening", "addr", addr)
 			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {

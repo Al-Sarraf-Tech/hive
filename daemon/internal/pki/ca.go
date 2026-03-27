@@ -75,12 +75,25 @@ func GenerateCA() (*ecdsa.PrivateKey, *x509.Certificate, []byte, []byte, error) 
 
 // LoadCA loads the CA private key and certificate from the data directory.
 // Returns os.ErrNotExist if the CA key file does not exist (normal for non-init nodes).
-func LoadCA(dataDir string) (*ecdsa.PrivateKey, *x509.Certificate, error) {
+// If decryptFn is non-nil and the key is not valid PEM, it will be decrypted first.
+// This provides backward compatibility: plaintext PEM files work without decryptFn.
+func LoadCA(dataDir string, decryptFn func([]byte) ([]byte, error)) (*ecdsa.PrivateKey, *x509.Certificate, error) {
 	dir := filepath.Join(dataDir, pkiDir)
 
-	keyPEM, err := os.ReadFile(filepath.Join(dir, caKeyFile))
+	keyData, err := os.ReadFile(filepath.Join(dir, caKeyFile))
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// Try parsing as plaintext PEM first (backward compatibility)
+	block, _ := pem.Decode(keyData)
+	if block == nil && decryptFn != nil {
+		// Not valid PEM — try decrypting
+		decrypted, err := decryptFn(keyData)
+		if err != nil {
+			return nil, nil, fmt.Errorf("decrypt CA key: %w", err)
+		}
+		keyData = decrypted
 	}
 
 	certPEM, err := os.ReadFile(filepath.Join(dir, caCertFile))
@@ -88,7 +101,7 @@ func LoadCA(dataDir string) (*ecdsa.PrivateKey, *x509.Certificate, error) {
 		return nil, nil, fmt.Errorf("read CA cert: %w", err)
 	}
 
-	key, err := parseECKey(keyPEM)
+	key, err := parseECKey(keyData)
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse CA key: %w", err)
 	}
@@ -99,6 +112,12 @@ func LoadCA(dataDir string) (*ecdsa.PrivateKey, *x509.Certificate, error) {
 	}
 
 	return key, cert, nil
+}
+
+// HasCAKey checks if the CA private key exists in the data directory.
+func HasCAKey(dataDir string) bool {
+	_, err := os.Stat(filepath.Join(dataDir, pkiDir, caKeyFile))
+	return err == nil
 }
 
 // LoadCACert loads only the CA certificate (all nodes have this, not all have ca.key).
@@ -116,9 +135,9 @@ func LoadCACertPEM(dataDir string) ([]byte, error) {
 }
 
 // SaveCA writes the CA certificate and private key to the data directory.
-// WARNING: The CA private key is stored as plaintext PEM with mode 0600.
-// TODO: Encrypt the CA key at rest using the age vault for defense-in-depth.
-func SaveCA(dataDir string, certPEM, keyPEM []byte) error {
+// If encryptFn is non-nil, the CA key is encrypted before writing (defense-in-depth).
+// Pass nil for encryptFn to write plaintext PEM (backward compatible).
+func SaveCA(dataDir string, certPEM, keyPEM []byte, encryptFn func([]byte) ([]byte, error)) error {
 	dir := filepath.Join(dataDir, pkiDir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create pki directory: %w", err)
@@ -126,7 +145,16 @@ func SaveCA(dataDir string, certPEM, keyPEM []byte) error {
 	if err := os.WriteFile(filepath.Join(dir, caCertFile), certPEM, 0o644); err != nil {
 		return fmt.Errorf("write CA cert: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, caKeyFile), keyPEM, 0o600); err != nil {
+
+	keyData := keyPEM
+	if encryptFn != nil {
+		encrypted, err := encryptFn(keyPEM)
+		if err != nil {
+			return fmt.Errorf("encrypt CA key: %w", err)
+		}
+		keyData = encrypted
+	}
+	if err := os.WriteFile(filepath.Join(dir, caKeyFile), keyData, 0o600); err != nil {
 		return fmt.Errorf("write CA key: %w", err)
 	}
 	return nil

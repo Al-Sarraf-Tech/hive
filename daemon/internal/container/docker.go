@@ -169,10 +169,21 @@ func (d *dockerProvider) CreateAndStart(ctx context.Context, spec ContainerSpec)
 		hostCfg.Resources.NanoCPUs = int64(spec.CPUs * 1e9)
 	}
 
+	var networkingCfg *network.NetworkingConfig
+	if spec.NetworkName != "" {
+		hostCfg.NetworkMode = container.NetworkMode(spec.NetworkName)
+		networkingCfg = &network.NetworkingConfig{
+			EndpointsConfig: map[string]*network.EndpointSettings{
+				spec.NetworkName: {},
+			},
+		}
+	}
+
 	resp, err := d.cli.ContainerCreate(ctx, client.ContainerCreateOptions{
-		Config:     cfg,
-		HostConfig: hostCfg,
-		Name:       spec.Name,
+		Config:           cfg,
+		HostConfig:       hostCfg,
+		NetworkingConfig: networkingCfg,
+		Name:             spec.Name,
 	})
 	if err != nil {
 		return "", fmt.Errorf("create container %q: %w", spec.Name, err)
@@ -328,6 +339,29 @@ func (d *dockerProvider) DetectCapabilities() []string {
 		caps = append(caps, "linux/"+runtime.GOARCH)
 	}
 	return caps
+}
+
+func (d *dockerProvider) CreateNetwork(ctx context.Context, name string) (string, error) {
+	resp, err := d.cli.NetworkCreate(ctx, name, client.NetworkCreateOptions{
+		Driver: "bridge",
+		Labels: map[string]string{"hive.managed": "true"},
+	})
+	if err != nil {
+		// Idempotent: if network already exists, ignore
+		if strings.Contains(err.Error(), "already exists") {
+			return "", nil
+		}
+		return "", fmt.Errorf("create network %q: %w", name, err)
+	}
+	return resp.ID, nil
+}
+
+func (d *dockerProvider) RemoveNetwork(ctx context.Context, name string) error {
+	_, err := d.cli.NetworkRemove(ctx, name, client.NetworkRemoveOptions{})
+	if err != nil && strings.Contains(err.Error(), "not found") {
+		return nil // already gone
+	}
+	return err
 }
 
 func (d *dockerProvider) Close() error {

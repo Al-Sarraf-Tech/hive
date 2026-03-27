@@ -9,6 +9,7 @@ import (
 
 	"github.com/jalsarraf0/hive/daemon/internal/container"
 	"github.com/jalsarraf0/hive/daemon/internal/hivefile"
+	"github.com/jalsarraf0/hive/daemon/internal/metrics"
 	"github.com/jalsarraf0/hive/daemon/internal/store"
 )
 
@@ -84,6 +85,7 @@ func (l *Loop) runChecks(ctx context.Context) {
 			runningCount++
 		}
 	}
+	metrics.ContainerCount.Set(float64(runningCount))
 	if l.onContainerCountFunc != nil {
 		l.onContainerCountFunc(runningCount)
 	}
@@ -132,6 +134,7 @@ func (l *Loop) runChecks(ctx context.Context) {
 		result := l.checker.Check(ctx, cfg)
 
 		if result.Healthy {
+			metrics.HealthCheckTotal.WithLabelValues("healthy").Inc()
 			if l.failures[svcName] > 0 {
 				slog.Info("health check recovered", "service", svcName)
 			}
@@ -139,6 +142,7 @@ func (l *Loop) runChecks(ctx context.Context) {
 			continue
 		}
 
+		metrics.HealthCheckTotal.WithLabelValues("unhealthy").Inc()
 		l.failures[svcName]++
 		slog.Warn("health check failed",
 			"service", svcName,

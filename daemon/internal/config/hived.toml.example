@@ -1,0 +1,25 @@
+# Hive daemon configuration file.
+# Place at /etc/hive/hived.toml (Linux) or %ProgramData%\Hive\hived.toml (Windows).
+# All settings have sensible defaults. CLI flags override config file values.
+
+[node]
+# name = "my-node"           # Default: hostname
+# advertise_addr = "10.0.0.5" # Default: auto-detect
+# data_dir = "/var/lib/hive"  # Default: platform-specific
+# join = "10.0.0.1:7946"      # Comma-separated seed addresses
+
+[ports]
+# grpc = 7947     # CLI/TUI API
+# gossip = 7946   # SWIM gossip
+# mesh = 7948     # Daemon-to-daemon mTLS gRPC
+
+[security]
+# tls = false          # Enable TLS for CLI/TUI connections
+# gossip_key = ""      # AES-256 hex-encoded (32/48/64 hex chars)
+
+[logging]
+# level = "info"   # debug, info, warn, error
+
+[http]
+# port = 7949      # Web console HTTP API (0 to disable)
+# token = ""       # Bearer token for HTTP auth (empty = no auth)

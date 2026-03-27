@@ -28,16 +28,18 @@ type MeshServer struct {
 	store     *store.Store
 	container container.Provider
 	nodeName  string
-	dataDir   string // path to data dir for PKI operations
+	dataDir   string                         // path to data dir for PKI operations
+	decryptFn func([]byte) ([]byte, error) // decrypts CA key (nil = plaintext)
 }
 
 // NewMeshServer creates a new MeshServer.
-func NewMeshServer(s *store.Store, c container.Provider, nodeName, dataDir string) *MeshServer {
+func NewMeshServer(s *store.Store, c container.Provider, nodeName, dataDir string, decryptFn func([]byte) ([]byte, error)) *MeshServer {
 	return &MeshServer{
 		store:     s,
 		container: c,
 		nodeName:  nodeName,
 		dataDir:   dataDir,
+		decryptFn: decryptFn,
 	}
 }
 
@@ -323,7 +325,7 @@ func (s *MeshServer) SignNodeCSR(_ context.Context, req *hivev1.SignCSRRequest) 
 		return nil, status.Errorf(codes.InvalidArgument, "CSR CommonName %q does not match declared node_name %q", csr.Subject.CommonName, req.NodeName)
 	}
 
-	caKey, caCert, err := pki.LoadCA(s.dataDir)
+	caKey, caCert, err := pki.LoadCA(s.dataDir, s.decryptFn)
 	if err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "this node cannot sign certificates (no CA key): %v", err)
 	}
