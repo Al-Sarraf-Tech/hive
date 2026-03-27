@@ -5,7 +5,7 @@ use std::io::{self, BufRead, IsTerminal};
 use crate::grpc_client;
 use crate::grpc_client::hive_proto::{DeleteSecretRequest, SetSecretRequest};
 
-pub async fn set(key: &str, value: Option<&str>, addr: &str) -> Result<()> {
+pub async fn set(key: &str, value: Option<&str>, addr: &str, ca_cert: Option<&str>) -> Result<()> {
     let secret_value = match value {
         Some(v) => {
             eprintln!(
@@ -31,7 +31,7 @@ pub async fn set(key: &str, value: Option<&str>, addr: &str) -> Result<()> {
         }
     };
 
-    let mut client = grpc_client::connect(addr).await?;
+    let mut client = grpc_client::connect(addr, ca_cert).await?;
     client
         .set_secret(SetSecretRequest {
             key: key.into(),
@@ -43,8 +43,8 @@ pub async fn set(key: &str, value: Option<&str>, addr: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn list(addr: &str) -> Result<()> {
-    let mut client = grpc_client::connect(addr).await?;
+pub async fn list(addr: &str, ca_cert: Option<&str>) -> Result<()> {
+    let mut client = grpc_client::connect(addr, ca_cert).await?;
     let resp = client.list_secrets(()).await?.into_inner();
 
     if resp.secrets.is_empty() {
@@ -59,8 +59,8 @@ pub async fn list(addr: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn remove(key: &str, addr: &str) -> Result<()> {
-    let mut client = grpc_client::connect(addr).await?;
+pub async fn remove(key: &str, addr: &str, ca_cert: Option<&str>) -> Result<()> {
+    let mut client = grpc_client::connect(addr, ca_cert).await?;
     client
         .delete_secret(DeleteSecretRequest { key: key.into() })
         .await?;

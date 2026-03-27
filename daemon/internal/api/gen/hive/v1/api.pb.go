@@ -71,6 +71,7 @@ type InitClusterResponse struct {
 	ClusterId     string                 `protobuf:"bytes,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
 	NodeName      string                 `protobuf:"bytes,2,opt,name=node_name,json=nodeName,proto3" json:"node_name,omitempty"`
 	GossipAddr    string                 `protobuf:"bytes,3,opt,name=gossip_addr,json=gossipAddr,proto3" json:"gossip_addr,omitempty"`
+	CaFingerprint string                 `protobuf:"bytes,4,opt,name=ca_fingerprint,json=caFingerprint,proto3" json:"ca_fingerprint,omitempty"` // SHA-256 fingerprint of the generated cluster CA
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -122,6 +123,13 @@ func (x *InitClusterResponse) GetNodeName() string {
 func (x *InitClusterResponse) GetGossipAddr() string {
 	if x != nil {
 		return x.GossipAddr
+	}
+	return ""
+}
+
+func (x *InitClusterResponse) GetCaFingerprint() string {
+	if x != nil {
+		return x.CaFingerprint
 	}
 	return ""
 }
@@ -1217,13 +1225,14 @@ const file_hive_v1_api_proto_rawDesc = "" +
 	"\n" +
 	"\x11hive/v1/api.proto\x12\ahive.v1\x1a\x13hive/v1/types.proto\x1a\x1bgoogle/protobuf/empty.proto\"7\n" +
 	"\x12InitClusterRequest\x12!\n" +
-	"\fcluster_name\x18\x01 \x01(\tR\vclusterName\"r\n" +
+	"\fcluster_name\x18\x01 \x01(\tR\vclusterName\"\x99\x01\n" +
 	"\x13InitClusterResponse\x12\x1d\n" +
 	"\n" +
 	"cluster_id\x18\x01 \x01(\tR\tclusterId\x12\x1b\n" +
 	"\tnode_name\x18\x02 \x01(\tR\bnodeName\x12\x1f\n" +
 	"\vgossip_addr\x18\x03 \x01(\tR\n" +
-	"gossipAddr\"3\n" +
+	"gossipAddr\x12%\n" +
+	"\x0eca_fingerprint\x18\x04 \x01(\tR\rcaFingerprint\"3\n" +
 	"\x12JoinClusterRequest\x12\x1d\n" +
 	"\n" +
 	"seed_addrs\x18\x01 \x03(\tR\tseedAddrs\"]\n" +

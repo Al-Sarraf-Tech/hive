@@ -26,6 +26,7 @@ const (
 	HiveMesh_PullLogs_FullMethodName        = "/hive.v1.HiveMesh/PullLogs"
 	HiveMesh_Ping_FullMethodName            = "/hive.v1.HiveMesh/Ping"
 	HiveMesh_ReplicateSecret_FullMethodName = "/hive.v1.HiveMesh/ReplicateSecret"
+	HiveMesh_SignNodeCSR_FullMethodName     = "/hive.v1.HiveMesh/SignNodeCSR"
 )
 
 // HiveMeshClient is the client API for HiveMesh service.
@@ -51,6 +52,9 @@ type HiveMeshClient interface {
 	// ─── Secrets ───────────────────────────────────────────────
 	// Replicate an encrypted secret to a peer
 	ReplicateSecret(ctx context.Context, in *ReplicateSecretRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// ─── PKI ─────────────────────────────────────────────────
+	// Sign a joining node's certificate signing request (CSR)
+	SignNodeCSR(ctx context.Context, in *SignCSRRequest, opts ...grpc.CallOption) (*SignCSRResponse, error)
 }
 
 type hiveMeshClient struct {
@@ -130,6 +134,16 @@ func (c *hiveMeshClient) ReplicateSecret(ctx context.Context, in *ReplicateSecre
 	return out, nil
 }
 
+func (c *hiveMeshClient) SignNodeCSR(ctx context.Context, in *SignCSRRequest, opts ...grpc.CallOption) (*SignCSRResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SignCSRResponse)
+	err := c.cc.Invoke(ctx, HiveMesh_SignNodeCSR_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // HiveMeshServer is the server API for HiveMesh service.
 // All implementations must embed UnimplementedHiveMeshServer
 // for forward compatibility.
@@ -153,6 +167,9 @@ type HiveMeshServer interface {
 	// ─── Secrets ───────────────────────────────────────────────
 	// Replicate an encrypted secret to a peer
 	ReplicateSecret(context.Context, *ReplicateSecretRequest) (*emptypb.Empty, error)
+	// ─── PKI ─────────────────────────────────────────────────
+	// Sign a joining node's certificate signing request (CSR)
+	SignNodeCSR(context.Context, *SignCSRRequest) (*SignCSRResponse, error)
 	mustEmbedUnimplementedHiveMeshServer()
 }
 
@@ -180,6 +197,9 @@ func (UnimplementedHiveMeshServer) Ping(context.Context, *emptypb.Empty) (*PingR
 }
 func (UnimplementedHiveMeshServer) ReplicateSecret(context.Context, *ReplicateSecretRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReplicateSecret not implemented")
+}
+func (UnimplementedHiveMeshServer) SignNodeCSR(context.Context, *SignCSRRequest) (*SignCSRResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SignNodeCSR not implemented")
 }
 func (UnimplementedHiveMeshServer) mustEmbedUnimplementedHiveMeshServer() {}
 func (UnimplementedHiveMeshServer) testEmbeddedByValue()                  {}
@@ -303,6 +323,24 @@ func _HiveMesh_ReplicateSecret_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HiveMesh_SignNodeCSR_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SignCSRRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveMeshServer).SignNodeCSR(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveMesh_SignNodeCSR_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveMeshServer).SignNodeCSR(ctx, req.(*SignCSRRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // HiveMesh_ServiceDesc is the grpc.ServiceDesc for HiveMesh service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -329,6 +367,10 @@ var HiveMesh_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReplicateSecret",
 			Handler:    _HiveMesh_ReplicateSecret_Handler,
+		},
+		{
+			MethodName: "SignNodeCSR",
+			Handler:    _HiveMesh_SignNodeCSR_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -17,8 +17,8 @@ struct ServiceRow {
     node: String,
 }
 
-pub async fn run(addr: &str) -> Result<()> {
-    let mut client = grpc_client::connect(addr).await?;
+pub async fn run(addr: &str, ca_cert: Option<&str>) -> Result<()> {
+    let mut client = grpc_client::connect(addr, ca_cert).await?;
 
     let resp = client
         .list_services(())

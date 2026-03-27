@@ -17,6 +17,7 @@ import (
 	"github.com/jalsarraf0/hive/daemon/internal/health"
 	"github.com/jalsarraf0/hive/daemon/internal/hivefile"
 	"github.com/jalsarraf0/hive/daemon/internal/mesh"
+	"github.com/jalsarraf0/hive/daemon/internal/pki"
 	"github.com/jalsarraf0/hive/daemon/internal/scheduler"
 	"github.com/jalsarraf0/hive/daemon/internal/secrets"
 	"github.com/jalsarraf0/hive/daemon/internal/store"
@@ -40,13 +41,14 @@ type Server struct {
 	scheduler *scheduler.Scheduler // nil in single-node mode
 	vault     *secrets.Vault       // nil if encryption disabled
 	nodeName  string
+	dataDir   string
 	startedAt time.Time
 	deployMu  sync.Mutex // serializes DeployService to prevent concurrent races
 }
 
 // NewServer creates a new API server.
 // mesh, sched, and vault may be nil for single-node or unencrypted mode.
-func NewServer(s *store.Store, c container.Provider, h *health.Checker, nodeName string, m *mesh.Mesh, sched *scheduler.Scheduler, v *secrets.Vault) *Server {
+func NewServer(s *store.Store, c container.Provider, h *health.Checker, nodeName string, m *mesh.Mesh, sched *scheduler.Scheduler, v *secrets.Vault, dataDir string) *Server {
 	return &Server{
 		store:     s,
 		container: c,
@@ -55,6 +57,7 @@ func NewServer(s *store.Store, c container.Provider, h *health.Checker, nodeName
 		scheduler: sched,
 		vault:     v,
 		nodeName:  nodeName,
+		dataDir:   dataDir,
 		startedAt: time.Now(),
 	}
 }
@@ -105,11 +108,34 @@ func (s *Server) InitCluster(_ context.Context, req *hivev1.InitClusterRequest) 
 		return nil, status.Errorf(codes.Internal, "persist cluster name: %v", err)
 	}
 
+	// Generate cluster CA and node certificate
+	caKey, caCert, caCertPEM, caKeyPEM, err := pki.GenerateCA()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "generate cluster CA: %v", err)
+	}
+	if err := pki.SaveCA(s.dataDir, caCertPEM, caKeyPEM); err != nil {
+		return nil, status.Errorf(codes.Internal, "save cluster CA: %v", err)
+	}
+
 	local := s.mesh.LocalNode()
+	nodeCertPEM, nodeKeyPEM, err := pki.GenerateNodeCert(caKey, caCert, local.Name, local.AdvertiseAddr)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "generate node certificate: %v", err)
+	}
+	if err := pki.SaveNodeCert(s.dataDir, nodeCertPEM, nodeKeyPEM); err != nil {
+		return nil, status.Errorf(codes.Internal, "save node certificate: %v", err)
+	}
+
+	slog.Info("cluster PKI initialized",
+		"ca_fingerprint", pki.CACertFingerprint(caCert),
+		"node_cert_cn", local.Name,
+	)
+
 	return &hivev1.InitClusterResponse{
-		ClusterId:  clusterName,
-		NodeName:   local.Name,
-		GossipAddr: fmt.Sprintf("%s:%d", local.AdvertiseAddr, s.mesh.GossipPort()),
+		ClusterId:     clusterName,
+		NodeName:      local.Name,
+		GossipAddr:    fmt.Sprintf("%s:%d", local.AdvertiseAddr, s.mesh.GossipPort()),
+		CaFingerprint: pki.CACertFingerprint(caCert),
 	}, nil
 }
 
@@ -125,6 +151,13 @@ func (s *Server) JoinCluster(_ context.Context, req *hivev1.JoinClusterRequest) 
 	n, err := s.mesh.Join(req.SeedAddrs)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "join cluster: %v", err)
+	}
+
+	// Bootstrap node certificate via CSR signing if not already provisioned
+	if !pki.HasNodeCert(s.dataDir) {
+		if err := s.bootstrapNodeCert(); err != nil {
+			slog.Warn("node certificate bootstrap failed — mTLS will not be active until resolved", "error", err)
+		}
 	}
 
 	// Build node list from mesh
@@ -966,6 +999,43 @@ func (s *Server) StreamEvents(_ *emptypb.Empty, stream hivev1.HiveAPI_StreamEven
 
 	<-stream.Context().Done()
 	return nil
+}
+
+// bootstrapNodeCert generates a CSR and gets it signed by a peer that holds the CA key.
+func (s *Server) bootstrapNodeCert() error {
+	if s.mesh == nil {
+		return fmt.Errorf("mesh not initialized")
+	}
+	local := s.mesh.LocalNode()
+	csrPEM, keyPEM, err := pki.GenerateCSR(local.Name, local.AdvertiseAddr)
+	if err != nil {
+		return fmt.Errorf("generate CSR: %w", err)
+	}
+
+	// Try each known peer to find one that can sign (holds the CA key)
+	for _, peer := range s.mesh.Peers() {
+		peerConn, err := s.mesh.PeerByName(peer.Info.Name)
+		if err != nil {
+			continue
+		}
+		resp, err := peerConn.MeshClient().SignNodeCSR(context.Background(), &hivev1.SignCSRRequest{
+			CsrPem:   csrPEM,
+			NodeName: local.Name,
+		})
+		if err != nil {
+			slog.Debug("peer cannot sign CSR", "peer", peer.Info.Name, "error", err)
+			continue
+		}
+		if err := pki.SaveCACert(s.dataDir, resp.CaCertPem); err != nil {
+			return fmt.Errorf("save CA cert: %w", err)
+		}
+		if err := pki.SaveNodeCert(s.dataDir, resp.NodeCertPem, keyPEM); err != nil {
+			return fmt.Errorf("save node cert: %w", err)
+		}
+		slog.Info("node certificate bootstrapped via CSR", "signed_by", peer.Info.Name)
+		return nil
+	}
+	return fmt.Errorf("no peer could sign the CSR — the init node may be unreachable")
 }
 
 // splitVolume splits "source:target" volume strings.

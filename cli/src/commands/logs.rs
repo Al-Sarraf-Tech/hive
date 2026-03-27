@@ -4,8 +4,14 @@ use colored::Colorize;
 use crate::grpc_client;
 use crate::grpc_client::hive_proto::{ContainerLogsRequest, ListContainersRequest};
 
-pub async fn run(service: &str, follow: bool, tail: u32, addr: &str) -> Result<()> {
-    let mut client = grpc_client::connect(addr).await?;
+pub async fn run(
+    service: &str,
+    follow: bool,
+    tail: u32,
+    addr: &str,
+    ca_cert: Option<&str>,
+) -> Result<()> {
+    let mut client = grpc_client::connect(addr, ca_cert).await?;
 
     let containers = client
         .list_containers(ListContainersRequest {

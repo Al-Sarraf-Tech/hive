@@ -26,6 +26,10 @@ struct Cli {
     /// Refresh interval in seconds (minimum 1)
     #[arg(long, default_value = "2")]
     refresh: u64,
+
+    /// Path to CA certificate for TLS connections (or set HIVE_CA_CERT env var)
+    #[arg(long, env = "HIVE_CA_CERT")]
+    ca_cert: Option<String>,
 }
 
 fn default_addr() -> String {
@@ -50,7 +54,7 @@ async fn main() -> Result<()> {
     stdout().execute(EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
-    let result = run(&mut terminal, &cli.addr, refresh).await;
+    let result = run(&mut terminal, &cli.addr, refresh, cli.ca_cert.as_deref()).await;
 
     disable_raw_mode()?;
     stdout().execute(LeaveAlternateScreen)?;
@@ -62,6 +66,7 @@ async fn run(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
     addr: &str,
     refresh_secs: u64,
+    ca_cert: Option<&str>,
 ) -> Result<()> {
     let mut app = app::App::new(addr.to_string());
 
@@ -70,13 +75,14 @@ async fn run(
 
     // Spawn background data fetcher — reuses a single gRPC connection
     let fetch_addr = addr.to_string();
+    let fetch_ca = ca_cert.map(|s| s.to_string());
     let fetch_tx = tx;
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(refresh_secs));
         let mut client: Option<grpc_client::HiveApiClient<tonic::transport::Channel>> = None;
         loop {
             interval.tick().await;
-            let data = fetch_cluster_data(&fetch_addr, &mut client).await;
+            let data = fetch_cluster_data(&fetch_addr, fetch_ca.as_deref(), &mut client).await;
             if fetch_tx.send(data).await.is_err() {
                 break;
             }
@@ -122,11 +128,12 @@ async fn run(
 
 async fn fetch_cluster_data(
     addr: &str,
+    ca_cert: Option<&str>,
     client: &mut Option<grpc_client::HiveApiClient<tonic::transport::Channel>>,
 ) -> app::ClusterData {
     // Reuse existing connection, reconnect on failure
     if client.is_none() {
-        match grpc_client::connect(addr).await {
+        match grpc_client::connect(addr, ca_cert).await {
             Ok(c) => *client = Some(c),
             Err(e) => {
                 return app::ClusterData {

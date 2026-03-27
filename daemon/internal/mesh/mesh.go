@@ -12,9 +12,11 @@ import (
 
 	"github.com/hashicorp/memberlist"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
 	hivev1 "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1"
+	"github.com/jalsarraf0/hive/daemon/internal/pki"
 )
 
 // NodeInfo is the metadata broadcast via gossip for each node.
@@ -24,6 +26,7 @@ type NodeInfo struct {
 	Name          string   `json:"n" msg:"n"`
 	AdvertiseAddr string   `json:"a" msg:"a"`
 	GRPCPort      int      `json:"g" msg:"g"`
+	MeshPort      int      `json:"m" msg:"m"` // HiveMesh gRPC port (mTLS)
 	OS            string   `json:"o" msg:"o"`
 	Arch          string   `json:"r" msg:"r"`
 	Runtime       string   `json:"t" msg:"t"` // container runtime name
@@ -81,6 +84,9 @@ func New(cfg Config, containerRuntime string, platforms []string) (*Mesh, error)
 	if cfg.GRPCPort == 0 {
 		cfg.GRPCPort = 7947
 	}
+	if cfg.MeshPort == 0 {
+		cfg.MeshPort = 7948
+	}
 
 	// Auto-detect advertise address if not set
 	if cfg.AdvertiseAddr == "" {
@@ -96,6 +102,7 @@ func New(cfg Config, containerRuntime string, platforms []string) (*Mesh, error)
 		Name:          cfg.NodeName,
 		AdvertiseAddr: cfg.AdvertiseAddr,
 		GRPCPort:      cfg.GRPCPort,
+		MeshPort:      cfg.MeshPort,
 		OS:            runtime.GOOS,
 		Arch:          runtime.GOARCH,
 		Runtime:       containerRuntime,
@@ -256,15 +263,33 @@ func (m *Mesh) Members() int {
 	return m.mlist.NumMembers()
 }
 
-// dialPeer establishes a gRPC connection to a peer.
+// dialPeer establishes a gRPC connection to a peer's mesh port.
+// Uses mTLS when TLS is enabled, insecure transport otherwise.
 func (m *Mesh) dialPeer(info NodeInfo) (*grpc.ClientConn, error) {
-	if info.GRPCPort == 0 {
-		return nil, fmt.Errorf("peer %s has no gRPC port", info.Name)
+	// Use mesh port for daemon-to-daemon communication
+	port := info.MeshPort
+	if port == 0 {
+		port = info.GRPCPort // fallback for peers that haven't been updated
 	}
-	addr := fmt.Sprintf("%s:%d", info.AdvertiseAddr, info.GRPCPort)
-	conn, err := grpc.NewClient(addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	if port == 0 {
+		return nil, fmt.Errorf("peer %s has no gRPC/mesh port", info.Name)
+	}
+	addr := fmt.Sprintf("%s:%d", info.AdvertiseAddr, port)
+
+	var creds grpc.DialOption
+	if m.config.TLSEnabled && m.config.DataDir != "" {
+		tlsCfg, err := pki.MeshClientTLSConfig(m.config.DataDir)
+		if err != nil {
+			return nil, fmt.Errorf("load mesh TLS config: %w", err)
+		}
+		// Set ServerName to the peer's node name (matches cert CN)
+		tlsCfg.ServerName = info.Name
+		creds = grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg))
+	} else {
+		creds = grpc.WithTransportCredentials(insecure.NewCredentials())
+	}
+
+	conn, err := grpc.NewClient(addr, creds)
 	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", addr, err)
 	}

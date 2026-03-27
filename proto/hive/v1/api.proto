@@ -53,6 +53,7 @@ message InitClusterResponse {
   string cluster_id = 1;
   string node_name = 2;
   string gossip_addr = 3;
+  string ca_fingerprint = 4;  // SHA-256 fingerprint of the generated cluster CA
 }
 
 message JoinClusterRequest {

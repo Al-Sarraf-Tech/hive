@@ -15,6 +15,10 @@ struct Cli {
     /// hived gRPC address (or set HIVE_ADDR env var)
     #[arg(long, default_value_t = default_addr(), global = true)]
     addr: String,
+
+    /// Path to CA certificate for TLS connections (or set HIVE_CA_CERT env var)
+    #[arg(long, global = true, env = "HIVE_CA_CERT")]
+    ca_cert: Option<String>,
 }
 
 fn default_addr() -> String {
@@ -138,29 +142,42 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Init { name } => commands::init::run(&name, &cli.addr).await,
-        Commands::Join { addresses } => commands::join::run(&addresses, &cli.addr).await,
-        Commands::Nodes => commands::nodes::run(&cli.addr).await,
-        Commands::Deploy { file } => commands::deploy::run(&file, &cli.addr).await,
-        Commands::Ps => commands::ps::run(&cli.addr).await,
+        Commands::Init { name } => {
+            commands::init::run(&name, &cli.addr, cli.ca_cert.as_deref()).await
+        }
+        Commands::Join { addresses } => {
+            commands::join::run(&addresses, &cli.addr, cli.ca_cert.as_deref()).await
+        }
+        Commands::Nodes => commands::nodes::run(&cli.addr, cli.ca_cert.as_deref()).await,
+        Commands::Deploy { file } => {
+            commands::deploy::run(&file, &cli.addr, cli.ca_cert.as_deref()).await
+        }
+        Commands::Ps => commands::ps::run(&cli.addr, cli.ca_cert.as_deref()).await,
         Commands::Logs {
             service,
             follow,
             tail,
-        } => commands::logs::run(&service, follow, tail, &cli.addr).await,
-        Commands::Stop { service } => commands::stop::run(&service, &cli.addr).await,
-        Commands::Scale { service, replicas } => {
-            commands::scale::run(&service, replicas, &cli.addr).await
+        } => commands::logs::run(&service, follow, tail, &cli.addr, cli.ca_cert.as_deref()).await,
+        Commands::Stop { service } => {
+            commands::stop::run(&service, &cli.addr, cli.ca_cert.as_deref()).await
         }
-        Commands::Rollback { service } => commands::rollback::run(&service, &cli.addr).await,
+        Commands::Scale { service, replicas } => {
+            commands::scale::run(&service, replicas, &cli.addr, cli.ca_cert.as_deref()).await
+        }
+        Commands::Rollback { service } => {
+            commands::rollback::run(&service, &cli.addr, cli.ca_cert.as_deref()).await
+        }
         Commands::Secret { action } => match action {
             SecretAction::Set { key, value } => {
-                commands::secret::set(&key, value.as_deref(), &cli.addr).await
+                commands::secret::set(&key, value.as_deref(), &cli.addr, cli.ca_cert.as_deref())
+                    .await
             }
-            SecretAction::Ls => commands::secret::list(&cli.addr).await,
-            SecretAction::Rm { key } => commands::secret::remove(&key, &cli.addr).await,
+            SecretAction::Ls => commands::secret::list(&cli.addr, cli.ca_cert.as_deref()).await,
+            SecretAction::Rm { key } => {
+                commands::secret::remove(&key, &cli.addr, cli.ca_cert.as_deref()).await
+            }
         },
-        Commands::Status => commands::status::run(&cli.addr).await,
+        Commands::Status => commands::status::run(&cli.addr, cli.ca_cert.as_deref()).await,
         Commands::Daemon { action } => match action {
             DaemonAction::Install => commands::daemon::install(),
             DaemonAction::Start => commands::daemon::start(),

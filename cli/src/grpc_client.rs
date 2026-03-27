@@ -8,16 +8,32 @@ pub mod hive_proto {
 
 pub use hive_proto::hive_api_client::HiveApiClient;
 
-pub async fn connect(addr: &str) -> Result<HiveApiClient<Channel>> {
+/// Connect to hived, with optional TLS when a CA cert path is provided.
+pub async fn connect(addr: &str, ca_cert: Option<&str>) -> Result<HiveApiClient<Channel>> {
+    let use_tls = ca_cert.is_some() || addr.starts_with("https");
+
     let url = if addr.starts_with("http") {
         addr.to_string()
+    } else if use_tls {
+        format!("https://{addr}")
     } else {
         format!("http://{addr}")
     };
 
-    let endpoint = Channel::builder(url.parse().context("invalid address format")?)
+    let mut endpoint = Channel::builder(url.parse().context("invalid address format")?)
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(30));
+
+    if let Some(ca_path) = ca_cert {
+        let pem = tokio::fs::read(ca_path)
+            .await
+            .with_context(|| format!("failed to read CA cert: {ca_path}"))?;
+        let ca = tonic::transport::Certificate::from_pem(pem);
+        let tls_config = tonic::transport::ClientTlsConfig::new().ca_certificate(ca);
+        endpoint = endpoint
+            .tls_config(tls_config)
+            .context("invalid TLS configuration")?;
+    }
 
     let channel = endpoint
         .connect()
@@ -44,7 +60,6 @@ pub fn map_grpc_error(status: tonic::Status) -> anyhow::Error {
 /// Safely truncates a string ID for display. Always returns valid UTF-8.
 pub fn short_id(id: &str) -> &str {
     let mut end = id.len().min(12);
-    // Walk back to the nearest valid UTF-8 char boundary
     while end > 0 && !id.is_char_boundary(end) {
         end -= 1;
     }

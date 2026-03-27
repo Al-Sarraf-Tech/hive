@@ -17,11 +17,13 @@ import (
 	"github.com/jalsarraf0/hive/daemon/internal/container"
 	"github.com/jalsarraf0/hive/daemon/internal/health"
 	"github.com/jalsarraf0/hive/daemon/internal/mesh"
+	"github.com/jalsarraf0/hive/daemon/internal/pki"
 	"github.com/jalsarraf0/hive/daemon/internal/platform"
 	"github.com/jalsarraf0/hive/daemon/internal/scheduler"
 	"github.com/jalsarraf0/hive/daemon/internal/secrets"
 	"github.com/jalsarraf0/hive/daemon/internal/store"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -35,6 +37,8 @@ func main() {
 	flagDataDir := flag.String("data-dir", "", "Data directory (default: platform-specific)")
 	flagLogLevel := flag.String("log-level", "info", "Log level (debug, info, warn, error)")
 	flagGossipKey := flag.String("gossip-key", "", "AES-256 key (hex-encoded) for gossip encryption")
+	flagMeshPort := flag.Int("mesh-port", 7948, "gRPC port for daemon-to-daemon mesh (mTLS)")
+	flagTLS := flag.Bool("tls", false, "Enable TLS for CLI/TUI connections")
 	flag.Parse()
 
 	// Configure logging
@@ -127,12 +131,23 @@ func main() {
 		slog.Info("gossip encryption enabled", "key_bytes", len(gossipKey))
 	}
 
+	// Detect PKI material — enables mTLS if CA + node certs exist
+	tlsEnabled := pki.HasCACert(dataDir) && pki.HasNodeCert(dataDir)
+	if tlsEnabled {
+		slog.Info("mTLS enabled — PKI material found", "data_dir", dataDir)
+	} else {
+		slog.Info("mTLS disabled — run 'hive init' to generate cluster certificates")
+	}
+
 	meshCfg := mesh.Config{
 		NodeName:      nodeName,
 		AdvertiseAddr: *flagAdvertiseAddr,
 		GRPCPort:      grpcPort,
+		MeshPort:      *flagMeshPort,
 		GossipPort:    gossipPort,
 		GossipKey:     gossipKey,
+		TLSEnabled:    tlsEnabled,
+		DataDir:       dataDir,
 	}
 	hiveMesh, err := mesh.New(meshCfg, containerProvider.RuntimeName(), containerProvider.DetectCapabilities())
 	if err != nil {
@@ -143,10 +158,16 @@ func main() {
 	// Initialize scheduler
 	sched := scheduler.New(hiveMesh, nodeName)
 
-	// Start gRPC server
+	// Start gRPC listeners
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", grpcPort))
 	if err != nil {
-		slog.Error("failed to listen", "port", grpcPort, "error", err)
+		slog.Error("failed to listen on API port", "port", grpcPort, "error", err)
+		os.Exit(1)
+	}
+
+	meshLis, err := net.Listen("tcp", fmt.Sprintf(":%d", *flagMeshPort))
+	if err != nil {
+		slog.Error("failed to listen on mesh port", "port", *flagMeshPort, "error", err)
 		os.Exit(1)
 	}
 
@@ -158,14 +179,35 @@ func main() {
 	}
 	slog.Info("secrets vault initialized", "public_key", vault.PublicKey())
 
-	grpcServer := grpc.NewServer()
-	apiServer := api.NewServer(stateStore, containerProvider, healthChecker, nodeName, hiveMesh, sched, vault)
-	api.Register(grpcServer, apiServer)
+	// ─── API server (CLI/TUI connections, optional TLS) ─────
+	var apiOpts []grpc.ServerOption
+	if *flagTLS && tlsEnabled {
+		apiTLSCfg, err := pki.APIServerTLSConfig(dataDir)
+		if err != nil {
+			slog.Error("failed to load API TLS config", "error", err)
+			os.Exit(1)
+		}
+		apiOpts = append(apiOpts, grpc.Creds(credentials.NewTLS(apiTLSCfg)))
+		slog.Info("API server TLS enabled")
+	}
+	apiGRPC := grpc.NewServer(apiOpts...)
+	apiServer := api.NewServer(stateStore, containerProvider, healthChecker, nodeName, hiveMesh, sched, vault, dataDir)
+	api.Register(apiGRPC, apiServer)
+	reflection.Register(apiGRPC)
 
-	meshServer := api.NewMeshServer(stateStore, containerProvider, nodeName)
-	api.RegisterMesh(grpcServer, meshServer)
-
-	reflection.Register(grpcServer)
+	// ─── Mesh server (daemon-to-daemon, mTLS when available) ─
+	var meshOpts []grpc.ServerOption
+	if tlsEnabled {
+		meshTLSCfg, err := pki.MeshServerTLSConfig(dataDir)
+		if err != nil {
+			slog.Error("failed to load mesh TLS config", "error", err)
+			os.Exit(1)
+		}
+		meshOpts = append(meshOpts, grpc.Creds(credentials.NewTLS(meshTLSCfg)))
+	}
+	meshGRPC := grpc.NewServer(meshOpts...)
+	meshServer := api.NewMeshServer(stateStore, containerProvider, nodeName, dataDir)
+	api.RegisterMesh(meshGRPC, meshServer)
 
 	// Auto-join if --join flag provided
 	if *flagJoinAddrs != "" {
@@ -207,26 +249,40 @@ func main() {
 		// Give in-flight RPCs 10 seconds to finish
 		done := make(chan struct{})
 		go func() {
-			grpcServer.GracefulStop()
+			apiGRPC.GracefulStop()
+			meshGRPC.GracefulStop()
 			close(done)
 		}()
 		select {
 		case <-done:
 		case <-time.After(10 * time.Second):
 			slog.Warn("graceful shutdown timed out, forcing stop")
-			grpcServer.Stop()
+			apiGRPC.Stop()
+			meshGRPC.Stop()
 		}
 		_ = hiveMesh.Shutdown()
 	}()
 
 	slog.Info("hived listening",
 		"node", nodeName,
-		"grpc", fmt.Sprintf(":%d", grpcPort),
+		"api", fmt.Sprintf(":%d", grpcPort),
+		"mesh", fmt.Sprintf(":%d", *flagMeshPort),
 		"gossip", fmt.Sprintf(":%d", gossipPort),
+		"tls", tlsEnabled,
 		"members", hiveMesh.Members(),
 	)
 
-	if err := grpcServer.Serve(lis); err != nil {
+	// Start mesh gRPC server in background
+	go func() {
+		slog.Info("mesh server listening", "port", *flagMeshPort, "tls", tlsEnabled)
+		if err := meshGRPC.Serve(meshLis); err != nil {
+			if ctx.Err() == nil {
+				slog.Error("mesh grpc server failed", "error", err)
+			}
+		}
+	}()
+
+	if err := apiGRPC.Serve(lis); err != nil {
 		if ctx.Err() != nil {
 			slog.Info("hived stopped gracefully")
 		} else {

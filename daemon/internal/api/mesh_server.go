@@ -10,6 +10,7 @@ import (
 	hivev1 "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1"
 	"github.com/jalsarraf0/hive/daemon/internal/container"
 	"github.com/jalsarraf0/hive/daemon/internal/hivefile"
+	"github.com/jalsarraf0/hive/daemon/internal/pki"
 	"github.com/jalsarraf0/hive/daemon/internal/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -24,14 +25,16 @@ type MeshServer struct {
 	store     *store.Store
 	container container.Provider
 	nodeName  string
+	dataDir   string // path to data dir for PKI operations
 }
 
 // NewMeshServer creates a new MeshServer.
-func NewMeshServer(s *store.Store, c container.Provider, nodeName string) *MeshServer {
+func NewMeshServer(s *store.Store, c container.Provider, nodeName, dataDir string) *MeshServer {
 	return &MeshServer{
 		store:     s,
 		container: c,
 		nodeName:  nodeName,
+		dataDir:   dataDir,
 	}
 }
 
@@ -273,4 +276,33 @@ func (s *MeshServer) ReplicateSecret(_ context.Context, req *hivev1.ReplicateSec
 	}
 	slog.Debug("secret replicated from peer", "key", req.Key)
 	return &emptypb.Empty{}, nil
+}
+
+// SignNodeCSR signs a joining node's Certificate Signing Request using the cluster CA.
+// Only the init node (which holds ca.key) can service this request.
+func (s *MeshServer) SignNodeCSR(_ context.Context, req *hivev1.SignCSRRequest) (*hivev1.SignCSRResponse, error) {
+	if len(req.CsrPem) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "csr_pem is required")
+	}
+
+	caKey, caCert, err := pki.LoadCA(s.dataDir)
+	if err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "this node cannot sign certificates (no CA key): %v", err)
+	}
+
+	signedCertPEM, err := pki.SignCSR(caKey, caCert, req.CsrPem)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "sign CSR: %v", err)
+	}
+
+	caCertPEM, err := pki.LoadCACertPEM(s.dataDir)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "load CA cert: %v", err)
+	}
+
+	slog.Info("signed node CSR", "node", req.NodeName)
+	return &hivev1.SignCSRResponse{
+		NodeCertPem: signedCertPEM,
+		CaCertPem:   caCertPEM,
+	}, nil
 }

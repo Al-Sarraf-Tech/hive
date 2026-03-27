@@ -5,7 +5,7 @@ use std::fs;
 use crate::grpc_client;
 use crate::grpc_client::hive_proto::DeployServiceRequest;
 
-pub async fn run(file: &str, addr: &str) -> Result<()> {
+pub async fn run(file: &str, addr: &str, ca_cert: Option<&str>) -> Result<()> {
     let content =
         fs::read_to_string(file).with_context(|| format!("failed to read Hivefile: {file}"))?;
 
@@ -15,7 +15,7 @@ pub async fn run(file: &str, addr: &str) -> Result<()> {
 
     println!("Deploying from {}...", file.cyan());
 
-    let mut client = grpc_client::connect(addr).await?;
+    let mut client = grpc_client::connect(addr, ca_cert).await?;
 
     let resp = client
         .deploy_service(DeployServiceRequest {

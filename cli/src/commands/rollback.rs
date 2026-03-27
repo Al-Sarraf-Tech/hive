@@ -4,10 +4,10 @@ use colored::Colorize;
 use crate::grpc_client;
 use crate::grpc_client::hive_proto::RollbackServiceRequest;
 
-pub async fn run(service: &str, addr: &str) -> Result<()> {
+pub async fn run(service: &str, addr: &str, ca_cert: Option<&str>) -> Result<()> {
     println!("Rolling back {}...", service.cyan());
 
-    let mut client = grpc_client::connect(addr).await?;
+    let mut client = grpc_client::connect(addr, ca_cert).await?;
     client
         .rollback_service(RollbackServiceRequest {
             name: service.into(),

@@ -3,8 +3,8 @@ use colored::Colorize;
 
 use crate::grpc_client;
 
-pub async fn run(addr: &str) -> Result<()> {
-    let mut client = grpc_client::connect(addr).await?;
+pub async fn run(addr: &str, ca_cert: Option<&str>) -> Result<()> {
+    let mut client = grpc_client::connect(addr, ca_cert).await?;
 
     let resp = client
         .get_cluster_status(())

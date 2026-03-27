@@ -426,6 +426,110 @@ func (x *ReplicateSecretRequest) GetUpdatedAtUnix() int64 {
 	return 0
 }
 
+type SignCSRRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CsrPem        []byte                 `protobuf:"bytes,1,opt,name=csr_pem,json=csrPem,proto3" json:"csr_pem,omitempty"`       // PEM-encoded PKCS#10 CSR
+	NodeName      string                 `protobuf:"bytes,2,opt,name=node_name,json=nodeName,proto3" json:"node_name,omitempty"` // requesting node's name (for audit logging)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SignCSRRequest) Reset() {
+	*x = SignCSRRequest{}
+	mi := &file_hive_v1_mesh_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignCSRRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignCSRRequest) ProtoMessage() {}
+
+func (x *SignCSRRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_hive_v1_mesh_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignCSRRequest.ProtoReflect.Descriptor instead.
+func (*SignCSRRequest) Descriptor() ([]byte, []int) {
+	return file_hive_v1_mesh_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *SignCSRRequest) GetCsrPem() []byte {
+	if x != nil {
+		return x.CsrPem
+	}
+	return nil
+}
+
+func (x *SignCSRRequest) GetNodeName() string {
+	if x != nil {
+		return x.NodeName
+	}
+	return ""
+}
+
+type SignCSRResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeCertPem   []byte                 `protobuf:"bytes,1,opt,name=node_cert_pem,json=nodeCertPem,proto3" json:"node_cert_pem,omitempty"` // signed node certificate (PEM)
+	CaCertPem     []byte                 `protobuf:"bytes,2,opt,name=ca_cert_pem,json=caCertPem,proto3" json:"ca_cert_pem,omitempty"`       // cluster CA certificate (PEM)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SignCSRResponse) Reset() {
+	*x = SignCSRResponse{}
+	mi := &file_hive_v1_mesh_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignCSRResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignCSRResponse) ProtoMessage() {}
+
+func (x *SignCSRResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_hive_v1_mesh_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignCSRResponse.ProtoReflect.Descriptor instead.
+func (*SignCSRResponse) Descriptor() ([]byte, []int) {
+	return file_hive_v1_mesh_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *SignCSRResponse) GetNodeCertPem() []byte {
+	if x != nil {
+		return x.NodeCertPem
+	}
+	return nil
+}
+
+func (x *SignCSRResponse) GetCaCertPem() []byte {
+	if x != nil {
+		return x.CaCertPem
+	}
+	return nil
+}
+
 var File_hive_v1_mesh_proto protoreflect.FileDescriptor
 
 const file_hive_v1_mesh_proto_rawDesc = "" +
@@ -462,14 +566,21 @@ const file_hive_v1_mesh_proto_rawDesc = "" +
 	"\x16ReplicateSecretRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12'\n" +
 	"\x0fencrypted_value\x18\x02 \x01(\fR\x0eencryptedValue\x12&\n" +
-	"\x0fupdated_at_unix\x18\x03 \x01(\x03R\rupdatedAtUnix2\x9f\x03\n" +
+	"\x0fupdated_at_unix\x18\x03 \x01(\x03R\rupdatedAtUnix\"F\n" +
+	"\x0eSignCSRRequest\x12\x17\n" +
+	"\acsr_pem\x18\x01 \x01(\fR\x06csrPem\x12\x1b\n" +
+	"\tnode_name\x18\x02 \x01(\tR\bnodeName\"U\n" +
+	"\x0fSignCSRResponse\x12\"\n" +
+	"\rnode_cert_pem\x18\x01 \x01(\fR\vnodeCertPem\x12\x1e\n" +
+	"\vca_cert_pem\x18\x02 \x01(\fR\tcaCertPem2\xe1\x03\n" +
 	"\bHiveMesh\x12:\n" +
 	"\tSyncState\x12\x16.google.protobuf.Empty\x1a\x15.hive.v1.ClusterState\x12Q\n" +
 	"\x0eStartContainer\x12\x1e.hive.v1.StartContainerRequest\x1a\x1f.hive.v1.StartContainerResponse\x12F\n" +
 	"\rStopContainer\x12\x1d.hive.v1.StopContainerRequest\x1a\x16.google.protobuf.Empty\x129\n" +
 	"\bPullLogs\x12\x18.hive.v1.PullLogsRequest\x1a\x11.hive.v1.LogEntry0\x01\x125\n" +
 	"\x04Ping\x12\x16.google.protobuf.Empty\x1a\x15.hive.v1.PingResponse\x12J\n" +
-	"\x0fReplicateSecret\x12\x1f.hive.v1.ReplicateSecretRequest\x1a\x16.google.protobuf.EmptyBCZAgithub.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1;hivev1b\x06proto3"
+	"\x0fReplicateSecret\x12\x1f.hive.v1.ReplicateSecretRequest\x1a\x16.google.protobuf.Empty\x12@\n" +
+	"\vSignNodeCSR\x12\x17.hive.v1.SignCSRRequest\x1a\x18.hive.v1.SignCSRResponseBCZAgithub.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1;hivev1b\x06proto3"
 
 var (
 	file_hive_v1_mesh_proto_rawDescOnce sync.Once
@@ -483,7 +594,7 @@ func file_hive_v1_mesh_proto_rawDescGZIP() []byte {
 	return file_hive_v1_mesh_proto_rawDescData
 }
 
-var file_hive_v1_mesh_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_hive_v1_mesh_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_hive_v1_mesh_proto_goTypes = []any{
 	(*ClusterState)(nil),           // 0: hive.v1.ClusterState
 	(*StartContainerRequest)(nil),  // 1: hive.v1.StartContainerRequest
@@ -492,36 +603,40 @@ var file_hive_v1_mesh_proto_goTypes = []any{
 	(*PullLogsRequest)(nil),        // 4: hive.v1.PullLogsRequest
 	(*PingResponse)(nil),           // 5: hive.v1.PingResponse
 	(*ReplicateSecretRequest)(nil), // 6: hive.v1.ReplicateSecretRequest
-	nil,                            // 7: hive.v1.StartContainerRequest.SecretsEntry
-	(*Node)(nil),                   // 8: hive.v1.Node
-	(*Service)(nil),                // 9: hive.v1.Service
-	(*Container)(nil),              // 10: hive.v1.Container
-	(*NodeResources)(nil),          // 11: hive.v1.NodeResources
-	(*emptypb.Empty)(nil),          // 12: google.protobuf.Empty
-	(*LogEntry)(nil),               // 13: hive.v1.LogEntry
+	(*SignCSRRequest)(nil),         // 7: hive.v1.SignCSRRequest
+	(*SignCSRResponse)(nil),        // 8: hive.v1.SignCSRResponse
+	nil,                            // 9: hive.v1.StartContainerRequest.SecretsEntry
+	(*Node)(nil),                   // 10: hive.v1.Node
+	(*Service)(nil),                // 11: hive.v1.Service
+	(*Container)(nil),              // 12: hive.v1.Container
+	(*NodeResources)(nil),          // 13: hive.v1.NodeResources
+	(*emptypb.Empty)(nil),          // 14: google.protobuf.Empty
+	(*LogEntry)(nil),               // 15: hive.v1.LogEntry
 }
 var file_hive_v1_mesh_proto_depIdxs = []int32{
-	8,  // 0: hive.v1.ClusterState.nodes:type_name -> hive.v1.Node
-	9,  // 1: hive.v1.ClusterState.services:type_name -> hive.v1.Service
-	10, // 2: hive.v1.ClusterState.containers:type_name -> hive.v1.Container
-	9,  // 3: hive.v1.StartContainerRequest.service:type_name -> hive.v1.Service
-	7,  // 4: hive.v1.StartContainerRequest.secrets:type_name -> hive.v1.StartContainerRequest.SecretsEntry
-	10, // 5: hive.v1.StartContainerResponse.container:type_name -> hive.v1.Container
-	11, // 6: hive.v1.PingResponse.resources:type_name -> hive.v1.NodeResources
-	12, // 7: hive.v1.HiveMesh.SyncState:input_type -> google.protobuf.Empty
+	10, // 0: hive.v1.ClusterState.nodes:type_name -> hive.v1.Node
+	11, // 1: hive.v1.ClusterState.services:type_name -> hive.v1.Service
+	12, // 2: hive.v1.ClusterState.containers:type_name -> hive.v1.Container
+	11, // 3: hive.v1.StartContainerRequest.service:type_name -> hive.v1.Service
+	9,  // 4: hive.v1.StartContainerRequest.secrets:type_name -> hive.v1.StartContainerRequest.SecretsEntry
+	12, // 5: hive.v1.StartContainerResponse.container:type_name -> hive.v1.Container
+	13, // 6: hive.v1.PingResponse.resources:type_name -> hive.v1.NodeResources
+	14, // 7: hive.v1.HiveMesh.SyncState:input_type -> google.protobuf.Empty
 	1,  // 8: hive.v1.HiveMesh.StartContainer:input_type -> hive.v1.StartContainerRequest
 	3,  // 9: hive.v1.HiveMesh.StopContainer:input_type -> hive.v1.StopContainerRequest
 	4,  // 10: hive.v1.HiveMesh.PullLogs:input_type -> hive.v1.PullLogsRequest
-	12, // 11: hive.v1.HiveMesh.Ping:input_type -> google.protobuf.Empty
+	14, // 11: hive.v1.HiveMesh.Ping:input_type -> google.protobuf.Empty
 	6,  // 12: hive.v1.HiveMesh.ReplicateSecret:input_type -> hive.v1.ReplicateSecretRequest
-	0,  // 13: hive.v1.HiveMesh.SyncState:output_type -> hive.v1.ClusterState
-	2,  // 14: hive.v1.HiveMesh.StartContainer:output_type -> hive.v1.StartContainerResponse
-	12, // 15: hive.v1.HiveMesh.StopContainer:output_type -> google.protobuf.Empty
-	13, // 16: hive.v1.HiveMesh.PullLogs:output_type -> hive.v1.LogEntry
-	5,  // 17: hive.v1.HiveMesh.Ping:output_type -> hive.v1.PingResponse
-	12, // 18: hive.v1.HiveMesh.ReplicateSecret:output_type -> google.protobuf.Empty
-	13, // [13:19] is the sub-list for method output_type
-	7,  // [7:13] is the sub-list for method input_type
+	7,  // 13: hive.v1.HiveMesh.SignNodeCSR:input_type -> hive.v1.SignCSRRequest
+	0,  // 14: hive.v1.HiveMesh.SyncState:output_type -> hive.v1.ClusterState
+	2,  // 15: hive.v1.HiveMesh.StartContainer:output_type -> hive.v1.StartContainerResponse
+	14, // 16: hive.v1.HiveMesh.StopContainer:output_type -> google.protobuf.Empty
+	15, // 17: hive.v1.HiveMesh.PullLogs:output_type -> hive.v1.LogEntry
+	5,  // 18: hive.v1.HiveMesh.Ping:output_type -> hive.v1.PingResponse
+	14, // 19: hive.v1.HiveMesh.ReplicateSecret:output_type -> google.protobuf.Empty
+	8,  // 20: hive.v1.HiveMesh.SignNodeCSR:output_type -> hive.v1.SignCSRResponse
+	14, // [14:21] is the sub-list for method output_type
+	7,  // [7:14] is the sub-list for method input_type
 	7,  // [7:7] is the sub-list for extension type_name
 	7,  // [7:7] is the sub-list for extension extendee
 	0,  // [0:7] is the sub-list for field type_name
@@ -540,7 +655,7 @@ func file_hive_v1_mesh_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hive_v1_mesh_proto_rawDesc), len(file_hive_v1_mesh_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

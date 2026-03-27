@@ -5,6 +5,7 @@ package hive.v1;
 option go_package = "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1;hivev1";
 
 import "hive/v1/types.proto";
+import "hive/v1/api.proto";
 import "google/protobuf/empty.proto";
 
 // HiveMesh is the internal API for daemon-to-daemon communication.
@@ -32,6 +33,10 @@ service HiveMesh {
   // ─── Secrets ───────────────────────────────────────────────
   // Replicate an encrypted secret to a peer
   rpc ReplicateSecret(ReplicateSecretRequest) returns (google.protobuf.Empty);
+
+  // ─── PKI ─────────────────────────────────────────────────
+  // Sign a joining node's certificate signing request (CSR)
+  rpc SignNodeCSR(SignCSRRequest) returns (SignCSRResponse);
 }
 
 // ─── State Sync ──────────────────────────────────────────────
@@ -80,4 +85,16 @@ message ReplicateSecretRequest {
   string key = 1;
   bytes encrypted_value = 2;   // age-encrypted blob
   int64 updated_at_unix = 3;
+}
+
+// ─── PKI ────────────────────────────────────────────────────
+
+message SignCSRRequest {
+  bytes csr_pem = 1;           // PEM-encoded PKCS#10 CSR
+  string node_name = 2;        // requesting node's name (for audit logging)
+}
+
+message SignCSRResponse {
+  bytes node_cert_pem = 1;     // signed node certificate (PEM)
+  bytes ca_cert_pem = 2;       // cluster CA certificate (PEM)
 }
