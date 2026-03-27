@@ -162,16 +162,20 @@ func (m *Mesh) Join(addrs []string) (int, error) {
 	return n, nil
 }
 
-// Leave gracefully leaves the cluster.
+// Leave gracefully leaves the cluster and closes peer connections.
 func (m *Mesh) Leave(timeout time.Duration) error {
+	m.closePeerConns()
 	return m.mlist.Leave(timeout)
 }
 
 // Shutdown stops the mesh and closes all peer connections.
+// mlist.Shutdown() must be called before closing eventCh to prevent
+// memberlist callbacks from sending on a closed channel (panic).
 func (m *Mesh) Shutdown() error {
 	m.closePeerConns()
+	err := m.mlist.Shutdown()
 	close(m.eventCh)
-	return m.mlist.Shutdown()
+	return err
 }
 
 // GossipPort returns the gossip port this mesh is listening on.

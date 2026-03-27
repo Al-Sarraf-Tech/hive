@@ -7,12 +7,9 @@ tags = ["cache", "key-value", "message-broker"]
 min_memory = "128M"
 platforms = ["linux/amd64", "linux/arm64"]
 
-[recipe.config]
-  [recipe.config.max_memory]
-  label = "Max Memory"
-  type = "select"
-  options = ["64mb", "128mb", "256mb", "512mb", "1gb"]
-  default = "128mb"
+# Note: config placeholder syntax ({{ config:key }}) is not yet implemented.
+# max_memory config has no effect until placeholders are wired into the command.
+# When config placeholders land, add: command = ["redis-server", "--maxmemory", "{{ config:max_memory }}"]
 
 [service.redis]
 image = "redis:7-alpine"

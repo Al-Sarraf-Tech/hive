@@ -18,7 +18,8 @@ pub async fn run(
             service_name: service.into(),
             node_name: String::new(),
         })
-        .await?
+        .await
+        .map_err(grpc_client::map_grpc_error)?
         .into_inner();
 
     if containers.containers.is_empty() {
@@ -50,7 +51,8 @@ pub async fn run(
             tail_lines: tail,
             service_name: service.to_string(),
         })
-        .await?
+        .await
+        .map_err(grpc_client::map_grpc_error)?
         .into_inner();
 
     while let Some(entry) = stream

@@ -7,9 +7,7 @@ const UNIT_PATH: &str = "/etc/systemd/system/hived.service";
 
 pub fn install() -> Result<()> {
     if cfg!(not(target_os = "linux")) {
-        eprintln!("{} systemd integration is Linux-only.", "note:".cyan());
-        eprintln!("On other platforms, run hived directly.");
-        return Ok(());
+        anyhow::bail!("systemd integration is Linux-only. On other platforms, run hived directly.");
     }
 
     // Find hived binary
@@ -36,19 +34,23 @@ WantedBy=multi-user.target
 "#
     );
 
-    // Write unit file (requires root)
-    let tmp = "/tmp/hived.service.tmp";
-    std::fs::write(tmp, &unit).context("failed to write temp unit file")?;
-
+    // Write unit file via sudo tee to avoid predictable /tmp path (symlink attack vector)
     let status = Command::new("sudo")
-        .args(["cp", tmp, UNIT_PATH])
-        .status()
+        .args(["tee", UNIT_PATH])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            if let Some(ref mut stdin) = child.stdin {
+                stdin.write_all(unit.as_bytes())?;
+            }
+            child.wait()
+        })
         .context("failed to install unit file (sudo required)")?;
     if !status.success() {
-        anyhow::bail!("failed to copy unit file to {UNIT_PATH}");
+        anyhow::bail!("failed to write unit file to {UNIT_PATH}");
     }
-
-    let _ = std::fs::remove_file(tmp);
 
     let status = Command::new("sudo")
         .args(["systemctl", "daemon-reload"])
@@ -70,8 +72,7 @@ WantedBy=multi-user.target
 
 pub fn start() -> Result<()> {
     if cfg!(not(target_os = "linux")) {
-        eprintln!("{} systemd integration is Linux-only.", "note:".cyan());
-        return Ok(());
+        anyhow::bail!("systemd integration is Linux-only.");
     }
 
     println!("Starting hived...");
@@ -88,8 +89,7 @@ pub fn start() -> Result<()> {
 
 pub fn stop() -> Result<()> {
     if cfg!(not(target_os = "linux")) {
-        eprintln!("{} systemd integration is Linux-only.", "note:".cyan());
-        return Ok(());
+        anyhow::bail!("systemd integration is Linux-only.");
     }
 
     println!("Stopping hived...");
@@ -106,9 +106,9 @@ pub fn stop() -> Result<()> {
 
 pub fn status() -> Result<()> {
     if cfg!(not(target_os = "linux")) {
-        eprintln!("{} systemd integration is Linux-only.", "note:".cyan());
-        eprintln!("Use 'hive status' to check if hived is reachable.");
-        return Ok(());
+        anyhow::bail!(
+            "systemd integration is Linux-only. Use 'hive status' to check if hived is reachable."
+        );
     }
 
     let output = Command::new("systemctl")
@@ -140,8 +140,9 @@ pub fn status() -> Result<()> {
 }
 
 fn which_hived() -> Option<String> {
-    Command::new("which")
-        .arg("hived")
+    // Use POSIX 'command -v' instead of 'which' (not available on all distros)
+    Command::new("sh")
+        .args(["-c", "command -v hived"])
         .output()
         .ok()
         .filter(|o| o.status.success())

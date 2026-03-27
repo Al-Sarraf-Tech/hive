@@ -7,19 +7,11 @@ tags = ["sql", "relational", "database"]
 min_memory = "256M"
 platforms = ["linux/amd64", "linux/arm64"]
 
+# Note: config placeholder syntax ({{ config:key }}) is not yet implemented.
+# db_name and db_user are hardcoded in env below. db_password uses secret syntax.
+# When config placeholders land, restore recipe.config entries and wire them into env.
+
 [recipe.config]
-  [recipe.config.db_name]
-  label = "Database Name"
-  type = "string"
-  default = "app"
-  required = true
-
-  [recipe.config.db_user]
-  label = "Database User"
-  type = "string"
-  default = "app"
-  required = true
-
   [recipe.config.db_password]
   label = "Database Password"
   type = "secret"

@@ -12,7 +12,8 @@ pub async fn run(service: &str, addr: &str, ca_cert: Option<&str>) -> Result<()>
         .stop_service(StopServiceRequest {
             name: service.into(),
         })
-        .await?;
+        .await
+        .map_err(grpc_client::map_grpc_error)?;
 
     println!("{} Service {} stopped.", "✓".green(), service.bold());
     Ok(())

@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"log/slog"
 	"math"
+	mathrand "math/rand"
 	"time"
 )
 
@@ -34,10 +35,11 @@ func CertExpiryInfo(dataDir string) (notAfter time.Time, daysLeft int, err error
 // RenewalChecker periodically checks node certificate expiry and logs warnings.
 // Call renewFn when the cert is within renewThreshold of expiry.
 type RenewalChecker struct {
-	dataDir        string
-	checkInterval  time.Duration
-	renewThreshold time.Duration // renew when less than this time remains
-	renewFn        func() error  // called to perform renewal (e.g., CSR signing)
+	dataDir          string
+	checkInterval    time.Duration
+	renewThreshold   time.Duration // renew when less than this time remains
+	renewFn          func() error  // called to perform renewal (e.g., CSR signing)
+	consecutiveFails int           // consecutive renewal failures (for backoff)
 }
 
 // NewRenewalChecker creates a certificate renewal checker.
@@ -130,10 +132,25 @@ func (rc *RenewalChecker) tryRenew() {
 		return
 	}
 
+	// Exponential backoff with jitter on consecutive failures to avoid
+	// overwhelming the CA node when multiple nodes attempt simultaneous renewal.
+	if rc.consecutiveFails > 0 {
+		backoff := time.Duration(math.Min(
+			float64(5*time.Minute)*math.Pow(2, float64(rc.consecutiveFails-1)),
+			float64(30*time.Minute),
+		))
+		jitter := time.Duration(mathrand.Int63n(int64(backoff / 4)))
+		wait := backoff + jitter
+		slog.Info("renewal backoff", "attempt", rc.consecutiveFails+1, "wait", wait)
+		time.Sleep(wait)
+	}
+
 	slog.Info("attempting automatic certificate renewal...")
 	if err := rc.renewFn(); err != nil {
-		slog.Error("automatic certificate renewal failed", "error", err)
+		rc.consecutiveFails++
+		slog.Error("automatic certificate renewal failed", "error", err, "consecutive_failures", rc.consecutiveFails)
 	} else {
+		rc.consecutiveFails = 0
 		slog.Info("certificate renewed successfully")
 	}
 }

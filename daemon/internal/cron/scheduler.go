@@ -50,7 +50,7 @@ func (s *Scheduler) Add(name, cronExpr, service string, command []string) error 
 		Name:     name,
 		Schedule: sched,
 		Service:  service,
-		Command:  command,
+		Command:  append([]string(nil), command...),
 		NextRun:  sched.Next(now),
 	}
 	slog.Info("cron job registered", "name", name, "schedule", cronExpr, "service", service, "next_run", s.jobs[name].NextRun.Format(time.RFC3339))
@@ -106,29 +106,44 @@ func (s *Scheduler) tick(ctx context.Context) {
 		name    string
 		service string
 		command []string
+		prevRun time.Time // previous NextRun, used to compute the next schedule point
 	}
 	var toRun []jobRun
 
 	s.mu.RLock()
 	for _, j := range s.jobs {
 		if !j.NextRun.IsZero() && !now.Before(j.NextRun) {
-			toRun = append(toRun, jobRun{name: j.Name, service: j.Service, command: j.Command})
+			toRun = append(toRun, jobRun{
+				name:    j.Name,
+				service: j.Service,
+				command: append([]string(nil), j.Command...),
+				prevRun: j.NextRun,
+			})
 		}
 	}
 	s.mu.RUnlock()
 
+	// Execute jobs concurrently to prevent one slow job from blocking others
+	var wg sync.WaitGroup
 	for _, jr := range toRun {
-		slog.Info("cron job firing", "name", jr.name, "service", jr.service, "command", jr.command)
-		if err := s.execFn(ctx, jr.service, jr.command); err != nil {
-			slog.Error("cron job failed", "name", jr.name, "error", err)
-		}
+		wg.Add(1)
+		go func(jr jobRun) {
+			defer wg.Done()
+			slog.Info("cron job firing", "name", jr.name, "service", jr.service, "command", jr.command)
+			if err := s.execFn(ctx, jr.service, jr.command); err != nil {
+				slog.Error("cron job failed", "name", jr.name, "error", err)
+			}
 
-		// Update under write lock — safe from concurrent List() readers
-		s.mu.Lock()
-		if j, ok := s.jobs[jr.name]; ok {
-			j.LastRun = now
-			j.NextRun = j.Schedule.Next(now)
-		}
-		s.mu.Unlock()
+			// Update under write lock — safe from concurrent List() readers.
+			// Compute NextRun from the previous scheduled time (not `now`) to maintain
+			// schedule fidelity even if the tick ran late.
+			s.mu.Lock()
+			if j, ok := s.jobs[jr.name]; ok {
+				j.LastRun = now
+				j.NextRun = j.Schedule.Next(jr.prevRun)
+			}
+			s.mu.Unlock()
+		}(jr)
 	}
+	wg.Wait()
 }

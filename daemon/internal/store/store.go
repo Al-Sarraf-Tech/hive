@@ -116,20 +116,21 @@ func (s *Store) DeletePlacement(serviceName string) error {
 	return s.Delete("service_placements", serviceName)
 }
 
-// ListPlacements returns all service→node mappings.
+// ListPlacements returns all service→node mappings in a single read transaction
+// for consistency and performance (avoids N+1 reads).
 func (s *Store) ListPlacements() (map[string]string, error) {
-	keys, err := s.List("service_placements")
-	if err != nil {
-		return nil, err
-	}
-	placements := make(map[string]string, len(keys))
-	for _, k := range keys {
-		val, _ := s.Get("service_placements", k)
-		if val != nil {
-			placements[k] = string(val)
+	placements := make(map[string]string)
+	err := s.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketServicePlacements)
+		if b == nil {
+			return fmt.Errorf("bucket %q not found", "service_placements")
 		}
-	}
-	return placements, nil
+		return b.ForEach(func(k, v []byte) error {
+			placements[string(k)] = string(v)
+			return nil
+		})
+	})
+	return placements, err
 }
 
 // List returns all keys in a bucket.

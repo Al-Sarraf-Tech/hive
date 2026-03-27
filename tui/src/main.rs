@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use crossterm::{
     ExecutableCommand,
-    event::{self, Event, KeyCode, KeyEventKind},
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::prelude::*;
@@ -137,7 +137,7 @@ async fn run(
             if event::poll(Duration::from_millis(100)).unwrap_or(false) {
                 if let Ok(Event::Key(key)) = event::read() {
                     if key.kind == KeyEventKind::Press {
-                        return Some(key.code);
+                        return Some(key);
                     }
                 }
             }
@@ -146,9 +146,10 @@ async fn run(
         .await
         .unwrap_or(None);
 
-        if let Some(code) = key_event {
-            match code {
-                KeyCode::Char('q') | KeyCode::Esc | KeyCode::Char('c') => break,
+        if let Some(key) = key_event {
+            match key.code {
+                KeyCode::Char('q') | KeyCode::Esc => break,
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
                 KeyCode::Char('1') => app.tab = app::Tab::Overview,
                 KeyCode::Char('2') => app.tab = app::Tab::Nodes,
                 KeyCode::Char('3') => app.tab = app::Tab::Services,
@@ -227,6 +228,6 @@ fn chrono_timestamp() -> String {
     let secs = now.as_secs();
     let hours = (secs % 86400) / 3600;
     let mins = (secs % 3600) / 60;
-    let secs = secs % 60;
-    format!("{hours:02}:{mins:02}:{secs:02}")
+    let s = secs % 60;
+    format!("{hours:02}:{mins:02}:{s:02}Z")
 }

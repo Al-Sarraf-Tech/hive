@@ -213,6 +213,6 @@ async fn main() -> Result<()> {
             DaemonAction::Stop => commands::daemon::stop(),
             DaemonAction::Status => commands::daemon::status(),
         },
-        Commands::Top => commands::top::run(&cli.addr),
+        Commands::Top => commands::top::run(&cli.addr, cli.ca_cert.as_deref()),
     }
 }

@@ -14,6 +14,9 @@ const maxLogPayload = 16 * 1024 * 1024 // 16 MB max per log frame
 // stream_type: 1=stdout, 2=stderr.
 func StreamDockerLogs(reader io.Reader, sendFn func(line string, stream string) error) error {
 	header := make([]byte, 8)
+	// Reusable buffer to reduce GC pressure during sustained log streaming.
+	// Grows as needed but is reused across frames instead of allocating per frame.
+	buf := make([]byte, 0, 4096)
 	for {
 		if _, err := io.ReadFull(reader, header); err != nil {
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
@@ -35,7 +38,11 @@ func StreamDockerLogs(reader io.Reader, sendFn func(line string, stream string) 
 			return fmt.Errorf("log payload size %d exceeds maximum %d", payloadSize, maxLogPayload)
 		}
 
-		payload := make([]byte, payloadSize)
+		// Grow the reusable buffer if needed
+		if uint32(cap(buf)) < payloadSize {
+			buf = make([]byte, payloadSize)
+		}
+		payload := buf[:payloadSize]
 		if _, err := io.ReadFull(reader, payload); err != nil {
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				return nil

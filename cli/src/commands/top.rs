@@ -1,10 +1,13 @@
 use anyhow::{Context, Result};
 use std::process::Command;
 
-pub fn run(addr: &str) -> Result<()> {
-    let status = Command::new("hivetop")
-        .arg("--addr")
-        .arg(addr)
+pub fn run(addr: &str, ca_cert: Option<&str>) -> Result<()> {
+    let mut cmd = Command::new("hivetop");
+    cmd.arg("--addr").arg(addr);
+    if let Some(cert) = ca_cert {
+        cmd.arg("--ca-cert").arg(cert);
+    }
+    let status = cmd
         .status()
         .context("failed to launch hivetop — is it installed? Run: cargo install --path tui")?;
 

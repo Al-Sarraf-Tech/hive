@@ -48,6 +48,7 @@ type Checker struct {
 func NewChecker() *Checker {
 	return &Checker{
 		httpClient: &http.Client{
+			Timeout: 30 * time.Second, // safety-net timeout in case per-request context is not propagated
 			Transport: &http.Transport{
 				DisableKeepAlives: true,
 			},

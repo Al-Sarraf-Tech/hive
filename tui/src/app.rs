@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -46,7 +48,7 @@ pub struct App {
     pub tab: Tab,
     pub addr: String,
     pub data: Option<ClusterData>,
-    pub logs: Vec<String>,
+    pub logs: VecDeque<String>,
 }
 
 impl App {
@@ -55,7 +57,7 @@ impl App {
             tab: Tab::Overview,
             addr,
             data: None,
-            logs: Vec::new(),
+            logs: VecDeque::new(),
         }
     }
 
@@ -64,10 +66,10 @@ impl App {
     }
 
     pub fn push_log(&mut self, line: String) {
-        self.logs.push(line);
-        // Keep at most 500 lines
+        self.logs.push_back(line);
+        // Keep at most 500 lines — pop_front is O(1) with VecDeque
         if self.logs.len() > 500 {
-            self.logs.remove(0);
+            self.logs.pop_front();
         }
     }
 

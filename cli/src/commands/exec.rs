@@ -30,6 +30,9 @@ pub async fn run(
     if !resp.stderr.is_empty() {
         eprint!("{}", resp.stderr);
     }
+    // Flush buffered output from print!/eprint! (no trailing newline = not auto-flushed)
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
 
     if resp.exit_code != 0 {
         eprintln!(
@@ -37,8 +40,6 @@ pub async fn run(
             "!".yellow(),
             resp.exit_code
         );
-        // Flush stderr before exit (process::exit skips destructors)
-        let _ = std::io::stderr().flush();
         std::process::exit(resp.exit_code);
     }
 

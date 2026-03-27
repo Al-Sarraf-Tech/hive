@@ -3,10 +3,10 @@ use ratatui::{
     layout::Rect,
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph},
 };
 
-pub fn draw(frame: &mut Frame, area: Rect, logs: &[String]) {
+pub fn draw(frame: &mut Frame, area: Rect, logs: &std::collections::VecDeque<String>) {
     let block = Block::default().borders(Borders::ALL).title(" Events ");
 
     if logs.is_empty() {
@@ -50,10 +50,10 @@ pub fn draw(frame: &mut Frame, area: Rect, logs: &[String]) {
         0
     };
 
-    let text = Paragraph::new(lines)
-        .block(block)
-        .wrap(Wrap { trim: false })
-        .scroll((scroll, 0));
+    // Don't use Wrap — it makes lines span multiple rows, which breaks the
+    // scroll offset calculation (we assume 1 line = 1 row). Long lines are
+    // truncated instead; users can widen the terminal to see more.
+    let text = Paragraph::new(lines).block(block).scroll((scroll, 0));
 
     frame.render_widget(text, area);
 }

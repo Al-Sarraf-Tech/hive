@@ -84,9 +84,9 @@ lint-daemon:
 
 lint-rust:
 	cd cli && cargo fmt --check
-	cd cli && cargo clippy -- -D warnings
+	cd cli && cargo clippy --all-targets -- -D warnings
 	cd tui && cargo fmt --check
-	cd tui && cargo clippy -- -D warnings
+	cd tui && cargo clippy --all-targets -- -D warnings
 
 # ─── Format ────────────────────────────────────────────────────
 fmt:

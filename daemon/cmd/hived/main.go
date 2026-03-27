@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -385,9 +386,9 @@ func main() {
 		go renewChecker.Start(ctx)
 	}
 
-	// httpServer is declared here so the shutdown goroutine can reference it.
-	// It is initialized later, after the "hived listening" log line.
-	var httpServer *http.Server
+	// httpServer uses atomic.Pointer to prevent a data race between the shutdown
+	// goroutine (which reads it) and the main goroutine (which writes it later).
+	var httpServer atomic.Pointer[http.Server]
 
 	// Graceful shutdown with timeout and second-signal force-quit
 	sigCh := make(chan os.Signal, 2)
@@ -411,8 +412,8 @@ func main() {
 		// Give in-flight RPCs 10 seconds to finish
 		done := make(chan struct{})
 		go func() {
-			if httpServer != nil {
-				_ = httpServer.Shutdown(context.Background())
+			if srv := httpServer.Load(); srv != nil {
+				_ = srv.Shutdown(context.Background())
 			}
 			apiGRPC.GracefulStop()
 			meshGRPC.GracefulStop()
@@ -456,10 +457,11 @@ func main() {
 	// Start HTTP API server for web console
 	if cfg.HTTP.Port > 0 {
 		addr := fmt.Sprintf(":%d", cfg.HTTP.Port)
-		httpServer = httpapi.NewServer(addr, apiServer, cfg.HTTP.Token, logCollector.Buffer())
+		srv := httpapi.NewServer(addr, apiServer, cfg.HTTP.Token, logCollector.Buffer())
+		httpServer.Store(srv)
 		go func() {
 			slog.Info("http api server listening", "addr", addr)
-			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				slog.Error("http api server failed", "error", err)
 			}
 		}()

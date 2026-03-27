@@ -11,14 +11,22 @@ import (
 
 const defaultBufferCapacity = 10000
 
+// cancelEntry pairs a cancel func with a generation counter so deferred cleanup
+// in a goroutine only removes its own entry, not a newer one started by poll().
+type cancelEntry struct {
+	cancel context.CancelFunc
+	gen    uint64
+}
+
 // Collector watches managed containers and streams their logs into a ring buffer.
 type Collector struct {
 	provider container.Provider
 	buffer   *RingBuffer
 	nodeName string
 
-	mu     sync.Mutex
-	active map[string]context.CancelFunc // containerID -> cancel
+	mu      sync.Mutex
+	active  map[string]cancelEntry // containerID -> cancel + generation
+	nextGen uint64
 }
 
 // NewCollector creates a log collector that tails all managed containers.
@@ -27,7 +35,7 @@ func NewCollector(provider container.Provider, nodeName string) *Collector {
 		provider: provider,
 		buffer:   NewRingBuffer(defaultBufferCapacity),
 		nodeName: nodeName,
-		active:   make(map[string]context.CancelFunc),
+		active:   make(map[string]cancelEntry),
 	}
 }
 
@@ -79,9 +87,9 @@ func (c *Collector) poll(ctx context.Context) {
 
 	// Cancel goroutines for containers that are gone
 	c.mu.Lock()
-	for id, cancel := range c.active {
+	for id, entry := range c.active {
 		if !alive[id] {
-			cancel()
+			entry.cancel()
 			delete(c.active, id)
 		}
 	}
@@ -97,7 +105,9 @@ func (c *Collector) startTail(ctx context.Context, ctr container.ContainerInfo) 
 		cancel()
 		return
 	}
-	c.active[ctr.ID] = cancel
+	c.nextGen++
+	gen := c.nextGen
+	c.active[ctr.ID] = cancelEntry{cancel: cancel, gen: gen}
 	c.mu.Unlock()
 
 	svcName := ctr.Labels["hive.service"]
@@ -105,7 +115,11 @@ func (c *Collector) startTail(ctx context.Context, ctr container.ContainerInfo) 
 	go func() {
 		defer func() {
 			c.mu.Lock()
-			delete(c.active, ctr.ID)
+			// Only delete our own entry — if poll() already replaced it with a
+			// newer generation, deleting would orphan the new goroutine.
+			if entry, ok := c.active[ctr.ID]; ok && entry.gen == gen {
+				delete(c.active, ctr.ID)
+			}
 			c.mu.Unlock()
 		}()
 
@@ -141,8 +155,8 @@ func (c *Collector) startTail(ctx context.Context, ctr container.ContainerInfo) 
 
 func (c *Collector) cancelAll() {
 	c.mu.Lock()
-	for id, cancel := range c.active {
-		cancel()
+	for id, entry := range c.active {
+		entry.cancel()
 		delete(c.active, id)
 	}
 	c.mu.Unlock()

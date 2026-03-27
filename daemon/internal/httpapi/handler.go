@@ -3,6 +3,7 @@
 package httpapi
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -36,15 +37,10 @@ func New(api hivev1.HiveAPIServer, token string, logBuffer *logs.RingBuffer) *Ha
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// CORS headers for browser console — reflect the request origin instead of wildcard
-	origin := r.Header.Get("Origin")
-	// Note: CORS reflects the request origin. When bearer token auth is enabled,
-	// cross-origin requests still require the token. For tighter control, configure
-	// a reverse proxy with a restrictive CORS policy in front of the HTTP API.
-	if origin != "" {
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
-	}
+	// CORS headers for browser console — use wildcard since auth is token-based.
+	// Do NOT combine Access-Control-Allow-Credentials with a reflected origin,
+	// as that allows any website to make authenticated cross-origin requests.
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 	w.Header().Set("Vary", "Origin")
@@ -58,7 +54,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// /metrics is unauthenticated — Prometheus scrapers should not need a token
 	if h.token != "" && !strings.HasPrefix(r.URL.Path, "/metrics") {
 		auth := r.Header.Get("Authorization")
-		if auth != "Bearer "+h.token {
+		expected := "Bearer " + h.token
+		if subtle.ConstantTimeCompare([]byte(auth), []byte(expected)) != 1 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte(`{"error":"unauthorized — provide Authorization: Bearer <token>"}`))
@@ -352,7 +349,9 @@ func writeError(w http.ResponseWriter, err error) {
 	case codes.AlreadyExists:
 		httpCode = http.StatusConflict
 	case codes.Canceled:
-		httpCode = http.StatusRequestTimeout
+		httpCode = http.StatusInternalServerError // 408 is "server timed out waiting for request", not appropriate for cancelled operations
+	case codes.DeadlineExceeded:
+		httpCode = http.StatusGatewayTimeout
 	}
 
 	w.Header().Set("Content-Type", "application/json")

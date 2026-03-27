@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	cryptorand "crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -198,16 +199,20 @@ func (s *Server) JoinCluster(_ context.Context, req *hivev1.JoinClusterRequest) 
 		return nil, status.Errorf(codes.Internal, "join cluster: %v", err)
 	}
 
-	// Bootstrap node certificate via CSR signing if not already provisioned
+	// Bootstrap node certificate via CSR signing if not already provisioned.
+	// Lock is scoped to just the bootstrap block to avoid holding it during
+	// the remaining work (building node list, querying peers, etc.).
 	if !pki.HasNodeCert(s.dataDir) {
-		s.certBootstrapMu.Lock()
-		defer s.certBootstrapMu.Unlock()
-		// Re-check under lock to avoid TOCTOU
-		if !pki.HasNodeCert(s.dataDir) {
-			if err := s.bootstrapNodeCert(req.JoinToken); err != nil {
-				slog.Warn("node certificate bootstrap failed — mTLS will not be active until resolved", "error", err)
+		func() {
+			s.certBootstrapMu.Lock()
+			defer s.certBootstrapMu.Unlock()
+			// Re-check under lock to avoid TOCTOU
+			if !pki.HasNodeCert(s.dataDir) {
+				if err := s.bootstrapNodeCert(req.JoinToken); err != nil {
+					slog.Warn("node certificate bootstrap failed — mTLS will not be active until resolved", "error", err)
+				}
 			}
-		}
+		}()
 	}
 
 	// Build node list from mesh
@@ -231,10 +236,10 @@ func (s *Server) GetClusterStatus(ctx context.Context, _ *emptypb.Empty) (*hivev
 		return nil, status.Errorf(codes.Internal, "list containers: %v", err)
 	}
 
-	running := 0
+	localRunning := 0
 	for _, c := range containers {
 		if c.Status == "running" {
-			running++
+			localRunning++
 		}
 	}
 
@@ -251,6 +256,9 @@ func (s *Server) GetClusterStatus(ctx context.Context, _ *emptypb.Empty) (*hivev
 	if localNode.Status == hivev1.NodeStatus_NODE_STATUS_READY {
 		healthyNodes = 1
 	}
+	// Peer container counts come from gossip metadata, which is updated by each
+	// node's health loop counting only running containers. Safe to sum directly.
+	totalRunning := localRunning
 	if s.mesh != nil {
 		for _, peer := range s.mesh.Peers() {
 			nodes = append(nodes, peerToNode(peer.Info))
@@ -258,8 +266,7 @@ func (s *Server) GetClusterStatus(ctx context.Context, _ *emptypb.Empty) (*hivev
 			if peer.Info.Status == int(mesh.NodeStatusReady) {
 				healthyNodes++
 			}
-			// Aggregate container count from peer's gossip metadata
-			running += peer.Info.Containers
+			totalRunning += peer.Info.Containers
 		}
 	}
 
@@ -270,7 +277,7 @@ func (s *Server) GetClusterStatus(ctx context.Context, _ *emptypb.Empty) (*hivev
 		TotalNodes:        totalNodes,
 		HealthyNodes:      healthyNodes,
 		TotalServices:     uint32(len(serviceNames)),
-		RunningContainers: uint32(running),
+		RunningContainers: uint32(totalRunning),
 		Nodes:             nodes,
 	}, nil
 }
@@ -426,8 +433,11 @@ func (s *Server) DrainNode(ctx context.Context, req *hivev1.DrainNodeRequest) (*
 		return nil, status.Errorf(codes.Internal, "drain failed: all %d container migrations failed", failed)
 	}
 
-	// Drain complete — mark node as Down (fully drained)
-	if s.mesh != nil && failed == 0 {
+	// Drain complete — mark node as Down.
+	// Even with partial failures, the node should be marked Down so it does not
+	// remain stuck in Draining indefinitely. Containers that failed to migrate
+	// remain running locally; the operator is informed via the log above.
+	if s.mesh != nil {
 		s.mesh.SetStatus(int(mesh.NodeStatusDown))
 	}
 
@@ -489,12 +499,13 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 	// All services in the same Hivefile share a network; separate Hivefiles are isolated.
 	networkName := "hive-" + deployOrder[0]
 	if len(deployOrder) > 1 {
-		// Use a hash of all service names for multi-service deployments
-		h := fmt.Sprintf("%x", len(deployOrder))
+		// SHA-256 hash of sorted service names for a short, deterministic, collision-resistant name
+		h := sha256.New()
 		for _, n := range deployOrder {
-			h += "-" + n
+			h.Write([]byte(n))
+			h.Write([]byte{0}) // null separator to avoid "ab"+"c" == "a"+"bc"
 		}
-		networkName = "hive-" + h
+		networkName = "hive-" + hex.EncodeToString(h.Sum(nil))[:12]
 	}
 	if _, netErr := s.container.CreateNetwork(ctx, networkName); netErr != nil {
 		slog.Warn("failed to create deployment network", "network", networkName, "error", netErr)
@@ -511,7 +522,7 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 	for _, name := range deployOrder {
 		svcDef := hf.Service[name]
 
-		// Resolve env with secrets — fail if any secret references are unresolved
+		// Resolve env with secrets — fail if any secret references are unresolved.
 		env, err := hivefile.ResolveEnv(svcDef.Env, secrets)
 		if err != nil {
 			return nil, status.Errorf(codes.FailedPrecondition, "service %q: %v — set missing secrets with 'hive secret set'", name, err)
@@ -616,10 +627,11 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 				slog.Info("rolling update replica", "service", name, "replica", i, "target", targetNode)
 
 				var id string
+				replicaEnv := cloneEnv(env)
 				if targetNode == s.nodeName {
-					id, err = s.deployLocalReplica(ctx, name, i, svcDef, env, memBytes, networkName)
+					id, err = s.deployLocalReplica(ctx, name, i, svcDef, replicaEnv, memBytes, networkName)
 				} else {
-					id, err = s.deployRemoteReplica(ctx, name, i, svcDef, env, targetNode)
+					id, err = s.deployRemoteReplica(ctx, name, i, svcDef, replicaEnv, targetNode)
 				}
 				if err != nil {
 					slog.Error("rolling update: replica failed", "service", name, "replica", i, "error", err)
@@ -711,10 +723,11 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 				slog.Info("deploying replica", "service", name, "replica", i, "target", targetNode)
 
 				var id string
+				replicaEnv := cloneEnv(env)
 				if targetNode == s.nodeName {
-					id, err = s.deployLocalReplica(ctx, name, i, svcDef, env, memBytes, networkName)
+					id, err = s.deployLocalReplica(ctx, name, i, svcDef, replicaEnv, memBytes, networkName)
 				} else {
-					id, err = s.deployRemoteReplica(ctx, name, i, svcDef, env, targetNode)
+					id, err = s.deployRemoteReplica(ctx, name, i, svcDef, replicaEnv, targetNode)
 				}
 				if err != nil {
 					slog.Error("failed to deploy replica", "service", name, "replica", i, "error", err)
@@ -1204,14 +1217,24 @@ func (s *Server) ScaleService(ctx context.Context, req *hivev1.ScaleServiceReque
 		secrets := make(map[string]string, len(secretKeys))
 		for _, key := range secretKeys {
 			val, getErr := s.store.Get("secrets", key)
-			if getErr == nil && val != nil && s.vault != nil {
-				if decrypted, decErr := s.vault.Decrypt(val); decErr == nil {
-					secrets[key] = string(decrypted)
+			if getErr == nil && val != nil {
+				if s.vault != nil {
+					if decrypted, decErr := s.vault.Decrypt(val); decErr == nil {
+						secrets[key] = string(decrypted)
+					}
+				} else {
+					secrets[key] = string(val)
 				}
 			}
 		}
-		env, _ := hivefile.ResolveEnv(svcDef.Env, secrets)
-		memBytes, _ := hivefile.ParseMemory(svcDef.Resources.Memory)
+		env, err := hivefile.ResolveEnv(svcDef.Env, secrets)
+		if err != nil {
+			return nil, status.Errorf(codes.FailedPrecondition, "service %q: %v — set missing secrets with 'hive secret set'", req.Name, err)
+		}
+		memBytes, err := hivefile.ParseMemory(svcDef.Resources.Memory)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "service %q: invalid memory %q: %v", req.Name, svcDef.Resources.Memory, err)
+		}
 
 		if pullErr := s.container.PullImage(ctx, svcDef.Image); pullErr != nil {
 			slog.Warn("image pull failed (may be local)", "image", svcDef.Image, "error", pullErr)
@@ -1225,11 +1248,11 @@ func (s *Server) ScaleService(ctx context.Context, req *hivev1.ScaleServiceReque
 				}
 			}
 			if targetNode == s.nodeName {
-				if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, svcDef, env, memBytes); deployErr != nil {
+				if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, svcDef, cloneEnv(env), memBytes); deployErr != nil {
 					slog.Error("failed to scale up replica", "service", req.Name, "replica", i, "error", deployErr)
 				}
 			} else {
-				if _, deployErr := s.deployRemoteReplica(ctx, req.Name, i, svcDef, env, targetNode); deployErr != nil {
+				if _, deployErr := s.deployRemoteReplica(ctx, req.Name, i, svcDef, cloneEnv(env), targetNode); deployErr != nil {
 					slog.Error("failed to scale up remote replica", "service", req.Name, "replica", i, "error", deployErr)
 				}
 			}
@@ -1330,14 +1353,24 @@ func (s *Server) RollbackService(ctx context.Context, req *hivev1.RollbackServic
 	secrets := make(map[string]string, len(secretKeys))
 	for _, key := range secretKeys {
 		val, getErr := s.store.Get("secrets", key)
-		if getErr == nil && val != nil && s.vault != nil {
-			if decrypted, decErr := s.vault.Decrypt(val); decErr == nil {
-				secrets[key] = string(decrypted)
+		if getErr == nil && val != nil {
+			if s.vault != nil {
+				if decrypted, decErr := s.vault.Decrypt(val); decErr == nil {
+					secrets[key] = string(decrypted)
+				}
+			} else {
+				secrets[key] = string(val)
 			}
 		}
 	}
-	env, _ := hivefile.ResolveEnv(prevDef.Env, secrets)
-	memBytes, _ := hivefile.ParseMemory(prevDef.Resources.Memory)
+	env, err := hivefile.ResolveEnv(prevDef.Env, secrets)
+	if err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "service %q: %v — set missing secrets with 'hive secret set'", req.Name, err)
+	}
+	memBytes, err := hivefile.ParseMemory(prevDef.Resources.Memory)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "service %q: invalid memory %q: %v", req.Name, prevDef.Resources.Memory, err)
+	}
 
 	if pullErr := s.container.PullImage(ctx, prevDef.Image); pullErr != nil {
 		slog.Warn("image pull failed (may be local)", "image", prevDef.Image, "error", pullErr)
@@ -1363,13 +1396,13 @@ func (s *Server) RollbackService(ctx context.Context, req *hivev1.RollbackServic
 			}
 		}
 		if targetNode == s.nodeName {
-			if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, prevDef, env, memBytes); deployErr != nil {
+			if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, prevDef, cloneEnv(env), memBytes); deployErr != nil {
 				slog.Error("failed to deploy rollback replica", "service", req.Name, "replica", i, "target", targetNode, "error", deployErr)
 			} else {
 				replicasStarted++
 			}
 		} else {
-			if _, deployErr := s.deployRemoteReplica(ctx, req.Name, i, prevDef, env, targetNode); deployErr != nil {
+			if _, deployErr := s.deployRemoteReplica(ctx, req.Name, i, prevDef, cloneEnv(env), targetNode); deployErr != nil {
 				slog.Error("failed to deploy rollback replica", "service", req.Name, "replica", i, "target", targetNode, "error", deployErr)
 			} else {
 				replicasStarted++
@@ -1414,14 +1447,24 @@ func (s *Server) RestartService(ctx context.Context, req *hivev1.RestartServiceR
 	secrets := make(map[string]string, len(secretKeys))
 	for _, key := range secretKeys {
 		val, getErr := s.store.Get("secrets", key)
-		if getErr == nil && val != nil && s.vault != nil {
-			if decrypted, decErr := s.vault.Decrypt(val); decErr == nil {
-				secrets[key] = string(decrypted)
+		if getErr == nil && val != nil {
+			if s.vault != nil {
+				if decrypted, decErr := s.vault.Decrypt(val); decErr == nil {
+					secrets[key] = string(decrypted)
+				}
+			} else {
+				secrets[key] = string(val)
 			}
 		}
 	}
-	env, _ := hivefile.ResolveEnv(svcDef.Env, secrets)
-	memBytes, _ := hivefile.ParseMemory(svcDef.Resources.Memory)
+	env, err := hivefile.ResolveEnv(svcDef.Env, secrets)
+	if err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "service %q: %v — set missing secrets with 'hive secret set'", req.Name, err)
+	}
+	memBytes, err := hivefile.ParseMemory(svcDef.Resources.Memory)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "service %q: invalid memory %q: %v", req.Name, svcDef.Resources.Memory, err)
+	}
 
 	if pullErr := s.container.PullImage(ctx, svcDef.Image); pullErr != nil {
 		slog.Warn("image pull failed (may be local)", "image", svcDef.Image, "error", pullErr)
@@ -1444,13 +1487,13 @@ func (s *Server) RestartService(ctx context.Context, req *hivev1.RestartServiceR
 			}
 		}
 		if targetNode == s.nodeName {
-			if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, svcDef, env, memBytes); deployErr != nil {
+			if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, svcDef, cloneEnv(env), memBytes); deployErr != nil {
 				slog.Error("failed to restart replica", "service", req.Name, "replica", i, "target", targetNode, "error", deployErr)
 			} else {
 				restarted++
 			}
 		} else {
-			if _, deployErr := s.deployRemoteReplica(ctx, req.Name, i, svcDef, env, targetNode); deployErr != nil {
+			if _, deployErr := s.deployRemoteReplica(ctx, req.Name, i, svcDef, cloneEnv(env), targetNode); deployErr != nil {
 				slog.Error("failed to restart replica", "service", req.Name, "replica", i, "target", targetNode, "error", deployErr)
 			} else {
 				restarted++
@@ -1623,8 +1666,8 @@ func (s *Server) ExecContainer(ctx context.Context, req *hivev1.ExecContainerReq
 		return nil, status.Error(codes.InvalidArgument, "container_id or service_name is required")
 	}
 
-	// Verify the target container is Hive-managed when specified by ID
-	if containerID != "" {
+	// Verify the target container is Hive-managed
+	{
 		info, err := s.container.Inspect(ctx, containerID)
 		if err != nil {
 			return nil, status.Errorf(codes.NotFound, "container %q not found: %v", containerID, err)
@@ -1804,6 +1847,15 @@ func (s *Server) bootstrapNodeCert(joinToken string) error {
 		return nil
 	}
 	return fmt.Errorf("no peer could sign the CSR — the init node may be unreachable")
+}
+
+// cloneEnv returns a shallow copy of the env map to prevent cross-replica mutation.
+func cloneEnv(m map[string]string) map[string]string {
+	c := make(map[string]string, len(m))
+	for k, v := range m {
+		c[k] = v
+	}
+	return c
 }
 
 // splitVolume splits "source:target" volume strings.

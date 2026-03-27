@@ -174,4 +174,18 @@ func (l *Loop) runChecks(ctx context.Context) {
 			l.failures[svcName] = 0
 		}
 	}
+
+	// Clean up stale failure counts for services that no longer have running containers.
+	// Prevents a redeployed service from inheriting a prior deployment's failure count.
+	activeSvcs := make(map[string]bool)
+	for _, c := range containers {
+		if svc := c.Labels["hive.service"]; svc != "" {
+			activeSvcs[svc] = true
+		}
+	}
+	for svc := range l.failures {
+		if !activeSvcs[svc] {
+			delete(l.failures, svc)
+		}
+	}
 }

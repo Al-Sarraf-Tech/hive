@@ -73,7 +73,35 @@ func MeshClientTLSConfig(dataDir string) (*tls.Config, error) {
 			}
 			return &cert, nil
 		},
-		RootCAs:    loadCACertPool(dataDir),
+		// Load RootCAs at creation time for initial handshakes, but also install
+		// a VerifyPeerCertificate callback that dynamically reloads the CA pool
+		// so rotated CA certificates take effect without a process restart.
+		RootCAs:            loadCACertPool(dataDir),
+		InsecureSkipVerify: true, // we verify manually in VerifyPeerCertificate
+		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+			if len(rawCerts) == 0 {
+				return fmt.Errorf("no server certificate presented")
+			}
+			pool := loadCACertPool(dataDir)
+			if pool == nil {
+				return fmt.Errorf("failed to load CA cert pool")
+			}
+			cert, err := x509.ParseCertificate(rawCerts[0])
+			if err != nil {
+				return fmt.Errorf("parse server cert: %w", err)
+			}
+			intermediates := x509.NewCertPool()
+			for _, raw := range rawCerts[1:] {
+				if c, parseErr := x509.ParseCertificate(raw); parseErr == nil {
+					intermediates.AddCert(c)
+				}
+			}
+			_, err = cert.Verify(x509.VerifyOptions{
+				Roots:         pool,
+				Intermediates: intermediates,
+			})
+			return err
+		},
 		MinVersion: tls.VersionTLS13,
 	}, nil
 }
@@ -91,15 +119,22 @@ func loadCACertPool(dataDir string) *x509.CertPool {
 
 // APIServerTLSConfig returns a TLS config for the gRPC HiveAPI server.
 // Server-only TLS — does not require client certificates.
+// Uses dynamic cert loading so renewed certificates take effect without restart.
 func APIServerTLSConfig(dataDir string) (*tls.Config, error) {
-	nodeCert, err := LoadNodeCert(dataDir)
-	if err != nil {
+	// Verify cert exists at creation time
+	if _, err := LoadNodeCert(dataDir); err != nil {
 		return nil, fmt.Errorf("load node cert: %w", err)
 	}
 
 	return &tls.Config{
-		Certificates: []tls.Certificate{nodeCert},
-		MinVersion:   tls.VersionTLS13,
+		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+			cert, err := LoadNodeCert(dataDir)
+			if err != nil {
+				return nil, err
+			}
+			return &cert, nil
+		},
+		MinVersion: tls.VersionTLS13,
 	}, nil
 }
 

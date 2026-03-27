@@ -11,7 +11,8 @@ pub async fn run(name: &str, addr: &str, ca_cert: Option<&str>) -> Result<()> {
         .init_cluster(InitClusterRequest {
             cluster_name: name.to_string(),
         })
-        .await?
+        .await
+        .map_err(grpc_client::map_grpc_error)?
         .into_inner();
 
     println!("{} Cluster initialized", "✓".green());

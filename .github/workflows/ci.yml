@@ -64,7 +64,7 @@ jobs:
         run: cd cli && cargo fmt --check
 
       - name: Clippy
-        run: cd cli && cargo clippy -- -D warnings
+        run: cd cli && cargo clippy --all-targets -- -D warnings
 
       - name: Test
         run: cd cli && cargo test
@@ -95,7 +95,7 @@ jobs:
         run: cd tui && cargo fmt --check
 
       - name: Clippy
-        run: cd tui && cargo clippy -- -D warnings
+        run: cd tui && cargo clippy --all-targets -- -D warnings
 
       - name: Test
         run: cd tui && cargo test
@@ -134,6 +134,7 @@ jobs:
 
       - name: Regenerate and diff
         run: |
+          export PATH="$GOPATH/bin:$PATH"
           make proto
           git diff --exit-code daemon/internal/api/gen/ || {
             echo "ERROR: Generated proto code is out of sync. Run 'make proto' and commit."

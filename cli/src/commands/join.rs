@@ -17,7 +17,8 @@ pub async fn run(
             seed_addrs: addresses.to_vec(),
             join_token: token.to_string(),
         })
-        .await?
+        .await
+        .map_err(grpc_client::map_grpc_error)?
         .into_inner();
 
     println!(

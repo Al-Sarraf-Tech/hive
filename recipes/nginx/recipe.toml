@@ -7,12 +7,10 @@ tags = ["proxy", "web-server", "load-balancer"]
 min_memory = "64M"
 platforms = ["linux/amd64", "linux/arm64"]
 
-[recipe.config]
-  [recipe.config.port]
-  label = "Exposed Port"
-  type = "string"
-  default = "8080"
-  required = true
+# Note: config placeholder syntax ({{ config:key }}) is not yet implemented.
+# Port mapping is hardcoded below. When config placeholders land, add:
+#   [recipe.config.port]
+#   label = "Exposed Port"  type = "string"  default = "8080"  required = true
 
 [service.nginx]
 image = "nginx:alpine"
