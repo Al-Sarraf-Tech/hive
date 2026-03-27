@@ -494,6 +494,10 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 		networkName = "" // fall back to default bridge
 	} else {
 		slog.Info("deployment network created", "network", networkName)
+		// Persist network name for each service so StopService can clean it up
+		for _, svcName := range deployOrder {
+			_ = s.store.Put("meta", "network:"+svcName, []byte(networkName))
+		}
 	}
 
 	var deployed []*hivev1.Service
@@ -1067,6 +1071,31 @@ func (s *Server) StopService(ctx context.Context, req *hivev1.StopServiceRequest
 	if allRemoved {
 		_ = s.store.Delete("services", req.Name)
 		_ = s.store.DeletePlacement(req.Name)
+
+		// Clean up Docker network if no other services use it
+		if netName, _ := s.store.Get("meta", "network:"+req.Name); netName != nil {
+			_ = s.store.Delete("meta", "network:"+req.Name)
+			// Only remove the network if no other service references it
+			networkInUse := false
+			if keys, err := s.store.List("meta"); err == nil {
+				for _, k := range keys {
+					if strings.HasPrefix(k, "network:") && k != "network:"+req.Name {
+						if val, _ := s.store.Get("meta", k); val != nil && string(val) == string(netName) {
+							networkInUse = true
+							break
+						}
+					}
+				}
+			}
+			if !networkInUse {
+				if err := s.container.RemoveNetwork(ctx, string(netName)); err != nil {
+					slog.Warn("failed to remove network", "network", string(netName), "error", err)
+				} else {
+					slog.Info("removed deployment network", "network", string(netName))
+				}
+			}
+		}
+
 		slog.Info("service stopped", "name", req.Name)
 	} else {
 		return nil, status.Errorf(codes.Internal, "some containers for %q could not be removed", req.Name)
