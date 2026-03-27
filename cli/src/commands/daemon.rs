@@ -1,25 +1,40 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
+use colored::Colorize;
 
 pub fn install() -> Result<()> {
-    bail!(
-        "'hive daemon install' is not yet implemented.\n\nFor now, run hived directly:\n  hived --data-dir /var/lib/hive"
-    )
+    eprintln!(
+        "{} 'hive daemon install' is not yet implemented.\n",
+        "note:".cyan()
+    );
+    eprintln!("For now, run hived directly:");
+    eprintln!("  hived --data-dir /var/lib/hive");
+    Ok(())
 }
 
 pub fn start() -> Result<()> {
-    bail!(
-        "'hive daemon start' is not yet implemented.\n\nFor now, run hived directly:\n  hived --data-dir /var/lib/hive"
-    )
+    eprintln!(
+        "{} 'hive daemon start' is not yet implemented.\n",
+        "note:".cyan()
+    );
+    eprintln!("For now, run hived directly:");
+    eprintln!("  hived --data-dir /var/lib/hive");
+    Ok(())
 }
 
 pub fn stop() -> Result<()> {
-    bail!(
-        "'hive daemon stop' is not yet implemented.\n\nStop hived with Ctrl+C or: kill $(pgrep hived)"
-    )
+    eprintln!(
+        "{} 'hive daemon stop' is not yet implemented.\n",
+        "note:".cyan()
+    );
+    eprintln!("Stop hived with Ctrl+C or: kill $(pgrep hived)");
+    Ok(())
 }
 
 pub fn status() -> Result<()> {
-    bail!(
-        "'hive daemon status' is not yet implemented.\n\nUse 'hive status' to check if hived is reachable."
-    )
+    eprintln!(
+        "{} 'hive daemon status' is not yet implemented.\n",
+        "note:".cyan()
+    );
+    eprintln!("Use 'hive status' to check if hived is reachable.");
+    Ok(())
 }

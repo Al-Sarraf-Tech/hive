@@ -36,7 +36,12 @@ echo "  Installing to: $INSTALL_DIR"
 echo ""
 
 # Get latest release
-LATEST=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+RELEASE_JSON=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest")
+if command -v jq >/dev/null 2>&1; then
+    LATEST=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+else
+    LATEST=$(echo "$RELEASE_JSON" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+fi
 if [ -z "$LATEST" ]; then
     echo "Error: could not determine latest release"
     exit 1
@@ -46,28 +51,39 @@ echo "Latest release: $LATEST"
 BASE_URL="https://github.com/$REPO/releases/download/$LATEST"
 
 # Use a secure temp directory to avoid symlink attacks on multi-user systems
-TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"' EXIT
+WORK_DIR=$(mktemp -d)
+trap 'rm -rf "$WORK_DIR"' EXIT
 
 # Download binaries
 echo "Downloading hived..."
-curl -fsSL "$BASE_URL/hived-$OS-$ARCH" -o "$TMPDIR/hived"
-chmod +x "$TMPDIR/hived"
+curl -fsSL "$BASE_URL/hived-$OS-$ARCH" -o "$WORK_DIR/hived"
+chmod +x "$WORK_DIR/hived"
 
 echo "Downloading hive..."
-curl -fsSL "$BASE_URL/hive-$OS-$ARCH" -o "$TMPDIR/hive"
-chmod +x "$TMPDIR/hive"
+curl -fsSL "$BASE_URL/hive-$OS-$ARCH" -o "$WORK_DIR/hive"
+chmod +x "$WORK_DIR/hive"
 
 echo "Downloading hivetop..."
-curl -fsSL "$BASE_URL/hivetop-$OS-$ARCH" -o "$TMPDIR/hivetop"
-chmod +x "$TMPDIR/hivetop"
+curl -fsSL "$BASE_URL/hivetop-$OS-$ARCH" -o "$WORK_DIR/hivetop"
+chmod +x "$WORK_DIR/hivetop"
+
+# Download and verify checksums if available
+if curl -fsSL "$BASE_URL/checksums.sha256" -o "$WORK_DIR/checksums.sha256" 2>/dev/null; then
+    echo "Verifying checksums..."
+    (cd "$WORK_DIR" && sha256sum -c checksums.sha256 --ignore-missing) || {
+        echo "Error: checksum verification failed"
+        exit 1
+    }
+else
+    echo "Warning: checksums.sha256 not available — skipping integrity verification"
+fi
 
 # Install
 if [ -w "$INSTALL_DIR" ]; then
-    mv "$TMPDIR/hived" "$TMPDIR/hive" "$TMPDIR/hivetop" "$INSTALL_DIR/"
+    mv "$WORK_DIR/hived" "$WORK_DIR/hive" "$WORK_DIR/hivetop" "$INSTALL_DIR/"
 else
     echo "Installing to $INSTALL_DIR requires sudo..."
-    sudo mv "$TMPDIR/hived" "$TMPDIR/hive" "$TMPDIR/hivetop" "$INSTALL_DIR/"
+    sudo mv "$WORK_DIR/hived" "$WORK_DIR/hive" "$WORK_DIR/hivetop" "$INSTALL_DIR/"
 fi
 
 echo ""

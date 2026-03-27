@@ -130,7 +130,7 @@ impl App {
         let status = Paragraph::new(Line::from(vec![
             Span::styled(" 1-4", Style::default().fg(Color::Yellow)),
             Span::raw(":tabs  "),
-            Span::styled("q", Style::default().fg(Color::Yellow)),
+            Span::styled("q/Esc/^C", Style::default().fg(Color::Yellow)),
             Span::raw(":quit  "),
             Span::styled(
                 concat!("hive v", env!("CARGO_PKG_VERSION")),

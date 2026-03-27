@@ -97,6 +97,7 @@ func main() {
 		slog.Error("failed to connect to container runtime", "error", err)
 		os.Exit(1)
 	}
+	defer containerProvider.Close()
 	slog.Info("container runtime connected",
 		"runtime", containerProvider.RuntimeName(),
 		"capabilities", containerProvider.DetectCapabilities(),
@@ -108,9 +109,13 @@ func main() {
 	// Initialize mesh (gossip layer)
 	// Parse gossip encryption key if provided
 	var gossipKey []byte
-	if *flagGossipKey != "" {
+	gossipKeyHex := *flagGossipKey
+	if gossipKeyHex == "" {
+		gossipKeyHex = os.Getenv("HIVE_GOSSIP_KEY")
+	}
+	if gossipKeyHex != "" {
 		var err error
-		gossipKey, err = hex.DecodeString(*flagGossipKey)
+		gossipKey, err = hex.DecodeString(gossipKeyHex)
 		if err != nil {
 			slog.Error("invalid gossip key (must be hex-encoded)", "error", err)
 			os.Exit(1)

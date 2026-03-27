@@ -37,8 +37,11 @@ func (s *Scheduler) Pick(svc hivefile.ServiceDef) (Candidate, error) {
 	}
 
 	// Sort by score descending
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].Score > candidates[j].Score
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].Score != candidates[j].Score {
+			return candidates[i].Score > candidates[j].Score
+		}
+		return candidates[i].NodeName < candidates[j].NodeName
 	})
 
 	return candidates[0], nil

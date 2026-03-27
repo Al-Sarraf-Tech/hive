@@ -6,7 +6,11 @@ use crate::grpc_client;
 pub async fn run(addr: &str) -> Result<()> {
     let mut client = grpc_client::connect(addr).await?;
 
-    let resp = client.get_cluster_status(()).await?.into_inner();
+    let resp = client
+        .get_cluster_status(())
+        .await
+        .map_err(crate::grpc_client::map_grpc_error)?
+        .into_inner();
 
     println!("{}", "Hive Cluster Status".bold());
     println!(

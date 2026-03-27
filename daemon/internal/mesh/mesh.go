@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 
@@ -162,6 +163,7 @@ func (m *Mesh) Leave(timeout time.Duration) error {
 // Shutdown stops the mesh and closes all peer connections.
 func (m *Mesh) Shutdown() error {
 	m.closePeerConns()
+	close(m.eventCh)
 	return m.mlist.Shutdown()
 }
 
@@ -284,13 +286,27 @@ func (m *Mesh) closePeerConns() {
 
 // detectAdvertiseAddr finds the first non-loopback IPv4 address.
 func detectAdvertiseAddr() (string, error) {
-	addrs, err := net.InterfaceAddrs()
+	ifaces, err := net.Interfaces()
 	if err != nil {
 		return "", err
 	}
-	for _, addr := range addrs {
-		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
-			return ipnet.IP.String(), nil
+	// Sort interfaces by name for deterministic selection
+	sort.Slice(ifaces, func(i, j int) bool {
+		return ifaces[i].Name < ifaces[j].Name
+	})
+	for _, iface := range ifaces {
+		// Skip loopback, down interfaces, and common virtual prefixes
+		if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.To4() != nil && !ipnet.IP.IsLoopback() {
+				return ipnet.IP.String(), nil
+			}
 		}
 	}
 	return "", fmt.Errorf("no suitable non-loopback IPv4 address found")

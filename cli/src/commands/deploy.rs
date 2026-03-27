@@ -21,16 +21,23 @@ pub async fn run(file: &str, addr: &str) -> Result<()> {
         .deploy_service(DeployServiceRequest {
             hivefile_toml: content,
         })
-        .await?
+        .await
+        .map_err(crate::grpc_client::map_grpc_error)?
         .into_inner();
 
+    if resp.services.is_empty() {
+        println!(
+            "{} Hivefile was valid but contained no deployable services.",
+            "!".yellow()
+        );
+    }
     for svc in &resp.services {
         println!(
             "{} {} deployed (image: {}, id: {})",
             "✓".green(),
             svc.name.bold(),
             svc.image.cyan(),
-            &svc.id[..svc.id.len().min(12)]
+            crate::grpc_client::short_id(&svc.id)
         );
     }
 

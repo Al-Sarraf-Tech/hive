@@ -23,7 +23,8 @@ pub async fn run(addresses: &[String], addr: &str) -> Result<()> {
         let status = match node.status {
             1 => "●".green(),
             2 => "◐".yellow(),
-            _ => "○".dimmed(),
+            3 => "○".red(),
+            _ => "?".dimmed(),
         };
         println!("  {} {}", status, node.name.bold());
     }

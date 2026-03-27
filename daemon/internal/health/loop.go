@@ -65,6 +65,9 @@ func (l *Loop) Stop() {
 }
 
 func (l *Loop) runChecks(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
 	// List all managed containers
 	containers, err := l.container.ListContainers(ctx, map[string]string{
 		"hive.managed": "true",

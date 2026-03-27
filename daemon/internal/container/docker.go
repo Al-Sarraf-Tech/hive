@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
@@ -31,7 +32,8 @@ func NewDockerProvider() (Provider, error) {
 		return nil, fmt.Errorf("failed to create docker client: %w", err)
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	ping, err := cli.Ping(ctx, client.PingOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to container runtime: %w", err)
@@ -174,6 +176,8 @@ func (d *dockerProvider) CreateAndStart(ctx context.Context, spec ContainerSpec)
 	}
 
 	if _, err := d.cli.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{}); err != nil {
+		// Clean up the created-but-not-started container to avoid orphans
+		_, _ = d.cli.ContainerRemove(ctx, resp.ID, client.ContainerRemoveOptions{Force: true})
 		return "", fmt.Errorf("start container %q: %w", spec.Name, err)
 	}
 
@@ -240,6 +244,10 @@ func (d *dockerProvider) DetectCapabilities() []string {
 		caps = append(caps, "linux/"+runtime.GOARCH)
 	}
 	return caps
+}
+
+func (d *dockerProvider) Close() error {
+	return d.cli.Close()
 }
 
 func matchLabels(containerLabels, filters map[string]string) bool {

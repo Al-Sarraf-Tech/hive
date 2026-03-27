@@ -43,6 +43,9 @@ type Provider interface {
 
 	// DetectCapabilities returns what platforms this runtime can run.
 	DetectCapabilities() []string
+
+	// Close releases any resources held by the provider (e.g., HTTP client connections).
+	Close() error
 }
 
 // ContainerSpec defines what to create.

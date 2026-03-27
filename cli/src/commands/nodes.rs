@@ -22,7 +22,11 @@ struct NodeRow {
 pub async fn run(addr: &str) -> Result<()> {
     let mut client = grpc_client::connect(addr).await?;
 
-    let resp = client.list_nodes(()).await?.into_inner();
+    let resp = client
+        .list_nodes(())
+        .await
+        .map_err(crate::grpc_client::map_grpc_error)?
+        .into_inner();
 
     if resp.nodes.is_empty() {
         println!("No nodes in cluster.");

@@ -48,8 +48,12 @@ type Checker struct {
 func NewChecker() *Checker {
 	return &Checker{
 		httpClient: &http.Client{
-			// No client-level timeout — each check uses its own context timeout
-			// from the health check configuration.
+			Transport: &http.Transport{
+				DisableKeepAlives: true,
+			},
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse // don't follow redirects
+			},
 		},
 	}
 }
@@ -86,7 +90,11 @@ func (c *Checker) Check(ctx context.Context, cfg Config) Result {
 }
 
 func (c *Checker) checkHTTP(ctx context.Context, cfg Config) Result {
-	url := fmt.Sprintf("http://%s:%d%s", cfg.Host, cfg.Port, cfg.Path)
+	path := cfg.Path
+	if path == "" || path[0] != '/' {
+		path = "/" + path
+	}
+	url := fmt.Sprintf("http://%s:%d%s", cfg.Host, cfg.Port, path)
 
 	timeout := cfg.Timeout
 	if timeout == 0 {

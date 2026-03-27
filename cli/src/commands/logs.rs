@@ -21,7 +21,7 @@ pub async fn run(service: &str, follow: bool, tail: u32, addr: &str) -> Result<(
     }
 
     let container_id = &containers.containers[0].id;
-    let short_id = &container_id[..container_id.len().min(12)];
+    let short_id = crate::grpc_client::short_id(container_id);
 
     if containers.containers.len() > 1 {
         println!(
@@ -47,7 +47,11 @@ pub async fn run(service: &str, follow: bool, tail: u32, addr: &str) -> Result<(
         .await?
         .into_inner();
 
-    while let Some(entry) = stream.message().await? {
+    while let Some(entry) = stream
+        .message()
+        .await
+        .map_err(crate::grpc_client::map_grpc_error)?
+    {
         let line = entry.line.trim_end();
         let prefix = if entry.stream == "stderr" {
             format!("{} {}", entry.node_name, "ERR".red())

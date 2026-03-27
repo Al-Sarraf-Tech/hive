@@ -43,9 +43,12 @@ func RegisterMesh(s *grpc.Server, srv *MeshServer) {
 
 // Ping returns lightweight status info for this node.
 func (s *MeshServer) Ping(ctx context.Context, _ *emptypb.Empty) (*hivev1.PingResponse, error) {
-	containers, _ := s.container.ListContainers(ctx, map[string]string{
+	containers, err := s.container.ListContainers(ctx, map[string]string{
 		"hive.managed": "true",
 	})
+	if err != nil {
+		slog.Warn("container runtime degraded during ping", "error", err)
+	}
 	running := uint32(0)
 	for _, c := range containers {
 		if c.Status == "running" {

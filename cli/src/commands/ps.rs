@@ -20,7 +20,11 @@ struct ServiceRow {
 pub async fn run(addr: &str) -> Result<()> {
     let mut client = grpc_client::connect(addr).await?;
 
-    let resp = client.list_services(()).await?.into_inner();
+    let resp = client
+        .list_services(())
+        .await
+        .map_err(crate::grpc_client::map_grpc_error)?
+        .into_inner();
 
     if resp.services.is_empty() {
         println!("No services running.");

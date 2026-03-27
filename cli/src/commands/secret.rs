@@ -7,7 +7,14 @@ use crate::grpc_client::hive_proto::{DeleteSecretRequest, SetSecretRequest};
 
 pub async fn set(key: &str, value: Option<&str>, addr: &str) -> Result<()> {
     let secret_value = match value {
-        Some(v) => v.to_string(),
+        Some(v) => {
+            eprintln!(
+                "{} Passing secrets as CLI arguments is insecure (visible in process table).",
+                "warning:".yellow()
+            );
+            eprintln!("         Prefer: echo SECRET | hive secret set {key}");
+            v.to_string()
+        }
         None => {
             // Read from stdin to avoid exposing secrets in ps/shell history
             if io::stdin().is_terminal() {

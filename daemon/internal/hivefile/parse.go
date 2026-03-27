@@ -165,6 +165,7 @@ func ParseMemory(s string) (int64, error) {
 	if s == "" {
 		return 0, nil
 	}
+	original := s
 	s = strings.TrimSpace(strings.ToUpper(s))
 	multiplier := int64(1)
 	// Check longer suffixes first to avoid "G" matching "GB"
@@ -193,13 +194,13 @@ func ParseMemory(s string) (int64, error) {
 	// Validate the remaining string is a pure positive integer
 	for _, c := range s {
 		if c < '0' || c > '9' {
-			return 0, fmt.Errorf("invalid memory value: %q (expected positive integer with optional suffix)", s)
+			return 0, fmt.Errorf("invalid memory value: %q (expected positive integer with optional suffix)", original)
 		}
 	}
 	var val int64
 	_, err := fmt.Sscanf(s, "%d", &val)
 	if err != nil {
-		return 0, fmt.Errorf("invalid memory value: %q", s)
+		return 0, fmt.Errorf("invalid memory value: %q", original)
 	}
 	if val < 0 {
 		return 0, fmt.Errorf("invalid memory value: negative numbers not allowed")
@@ -209,7 +210,7 @@ func ParseMemory(s string) (int64, error) {
 	}
 	// Guard against integer overflow
 	if multiplier > 1 && val > (1<<63-1)/multiplier {
-		return 0, fmt.Errorf("invalid memory value: %q overflows int64", s)
+		return 0, fmt.Errorf("invalid memory value: %q overflows int64", original)
 	}
 	return val * multiplier, nil
 }

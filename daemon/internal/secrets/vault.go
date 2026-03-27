@@ -22,6 +22,17 @@ type Vault struct {
 func NewVault(dataDir string) (*Vault, error) {
 	keyPath := filepath.Join(dataDir, "hive-key.txt")
 
+	// Check for symlink attack — key file must be a regular file, not a symlink
+	if fi, err := os.Lstat(keyPath); err == nil {
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("security: %s is a symlink — refusing to read (possible symlink attack)", keyPath)
+		}
+		// Verify restrictive permissions (owner-only read/write)
+		if fi.Mode().Perm()&0o077 != 0 {
+			return nil, fmt.Errorf("security: %s has overly permissive permissions %04o — expected 0600", keyPath, fi.Mode().Perm())
+		}
+	}
+
 	data, err := os.ReadFile(keyPath)
 	if err == nil {
 		// Parse existing identity
@@ -33,6 +44,13 @@ func NewVault(dataDir string) (*Vault, error) {
 			identity:  identity,
 			recipient: identity.Recipient(),
 		}, nil
+	}
+
+	// Only generate a new key if the file does not exist.
+	// For other errors (permission denied, I/O), return immediately to avoid
+	// creating a new key that can't decrypt existing secrets.
+	if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("read age identity from %s: %w", keyPath, err)
 	}
 
 	// Generate new identity

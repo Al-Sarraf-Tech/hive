@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	hivev1 "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1"
@@ -26,6 +28,9 @@ import (
 )
 
 // Server implements the HiveAPI gRPC service.
+// validServiceName restricts service names to safe characters for labels, store keys, and container names.
+var validServiceName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$`)
+
 type Server struct {
 	hivev1.UnimplementedHiveAPIServer
 	store     *store.Store
@@ -36,6 +41,7 @@ type Server struct {
 	vault     *secrets.Vault       // nil if encryption disabled
 	nodeName  string
 	startedAt time.Time
+	deployMu  sync.Mutex // serializes DeployService to prevent concurrent races
 }
 
 // NewServer creates a new API server.
@@ -96,7 +102,7 @@ func (s *Server) InitCluster(_ context.Context, req *hivev1.InitClusterRequest) 
 	}
 	// Store cluster info
 	if err := s.store.Put("meta", "cluster_name", []byte(clusterName)); err != nil {
-		slog.Error("failed to store cluster name", "error", err)
+		return nil, status.Errorf(codes.Internal, "persist cluster name: %v", err)
 	}
 
 	local := s.mesh.LocalNode()
@@ -255,6 +261,9 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 		return nil, status.Error(codes.InvalidArgument, "hivefile_toml is required")
 	}
 
+	s.deployMu.Lock()
+	defer s.deployMu.Unlock()
+
 	hf, err := hivefile.ParseString(req.HivefileToml)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "parse hivefile: %v", err)
@@ -286,6 +295,13 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 		if len(svcDef.DependsOn.Services) > 0 {
 			slog.Warn("depends_on is not yet enforced — services may start in any order",
 				"service", name, "depends_on", svcDef.DependsOn.Services)
+		}
+	}
+
+	// Validate all service names before deploying any
+	for name := range hf.Service {
+		if !validServiceName.MatchString(name) {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid service name %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]{0,62}", name)
 		}
 	}
 
@@ -558,7 +574,12 @@ func (s *Server) ListServices(ctx context.Context, _ *emptypb.Empty) (*hivev1.Li
 		}
 
 		for range peers {
-			pr := <-resultCh
+			var pr peerResult
+			select {
+			case pr = <-resultCh:
+			case <-ctx.Done():
+				return nil, status.Errorf(codes.Canceled, "client disconnected during service list fan-out")
+			}
 			for _, c := range pr.containers {
 				if seenContainers[c.Id] {
 					continue
@@ -645,6 +666,7 @@ func (s *Server) StopService(ctx context.Context, req *hivev1.StopServiceRequest
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "sync state from %q: %v", placement, err)
 		}
+		var stopErrors []string
 		for _, c := range state.Containers {
 			if c.ServiceName == req.Name {
 				_, err := peer.MeshClient().StopContainer(ctx, &hivev1.StopContainerRequest{
@@ -652,11 +674,14 @@ func (s *Server) StopService(ctx context.Context, req *hivev1.StopServiceRequest
 					TimeoutSeconds: 10,
 				})
 				if err != nil {
-					return nil, status.Errorf(codes.Internal, "stop container on %q: %v", placement, err)
+					stopErrors = append(stopErrors, fmt.Sprintf("container %s: %v", c.Id, err))
 				}
 			}
 		}
 
+		if len(stopErrors) > 0 {
+			return nil, status.Errorf(codes.Internal, "failed to stop all containers on %q: %s", placement, strings.Join(stopErrors, "; "))
+		}
 		_ = s.store.Delete("services", req.Name)
 		_ = s.store.DeletePlacement(req.Name)
 		slog.Info("service stopped on remote node", "name", req.Name, "node", placement)
@@ -771,7 +796,7 @@ func (s *Server) ContainerLogs(req *hivev1.ContainerLogsRequest, stream hivev1.H
 		})
 		if err == nil {
 			defer reader.Close()
-			return container.StreamDockerLogs(reader, func(line string, streamType string) error {
+			return container.StreamDockerLogs(reader, func(line, streamType string) error {
 				return stream.Send(&hivev1.LogEntry{
 					ContainerId:   containerID,
 					NodeName:      s.nodeName,
@@ -781,6 +806,11 @@ func (s *Server) ContainerLogs(req *hivev1.ContainerLogsRequest, stream hivev1.H
 					TimestampUnix: time.Now().Unix(),
 				})
 			})
+		}
+		// Only fall through to remote if the container wasn't found locally.
+		// For other errors (permission denied, runtime failure), return immediately.
+		if !strings.Contains(err.Error(), "No such container") && !strings.Contains(err.Error(), "not found") {
+			return status.Errorf(codes.Internal, "get logs for %s: %v", containerID, err)
 		}
 		slog.Debug("container not found locally, trying remote peers", "container", containerID, "error", err)
 	}
@@ -891,6 +921,7 @@ func (s *Server) DeleteSecret(_ context.Context, req *hivev1.DeleteSecretRequest
 // StreamEvents streams cluster events.
 func (s *Server) StreamEvents(_ *emptypb.Empty, stream hivev1.HiveAPI_StreamEventsServer) error {
 	err := stream.Send(&hivev1.Event{
+		Id:        fmt.Sprintf("evt-%d", time.Now().UnixNano()),
 		Type:      hivev1.EventType_EVENT_TYPE_NODE_JOINED,
 		Source:    s.nodeName,
 		Message:   fmt.Sprintf("Connected to %s", s.nodeName),
@@ -921,6 +952,7 @@ func (s *Server) StreamEvents(_ *emptypb.Empty, stream hivev1.HiveAPI_StreamEven
 					evType = hivev1.EventType_EVENT_TYPE_NODE_FAILED
 				}
 				if err := stream.Send(&hivev1.Event{
+					Id:        fmt.Sprintf("evt-%d", time.Now().UnixNano()),
 					Type:      evType,
 					Source:    ev.Node,
 					Message:   fmt.Sprintf("Node %s: %v", ev.Node, ev.Type),
@@ -938,7 +970,7 @@ func (s *Server) StreamEvents(_ *emptypb.Empty, stream hivev1.HiveAPI_StreamEven
 
 // splitVolume splits "source:target" volume strings.
 func splitVolume(s string) []string {
-	if len(s) >= 3 && s[1] == ':' && (s[0] >= 'A' && s[0] <= 'Z' || s[0] >= 'a' && s[0] <= 'z') {
+	if len(s) >= 3 && s[1] == ':' && ((s[0] >= 'A' && s[0] <= 'Z') || (s[0] >= 'a' && s[0] <= 'z')) {
 		rest := s[2:]
 		idx := findColonSplit(rest)
 		if idx >= 0 {

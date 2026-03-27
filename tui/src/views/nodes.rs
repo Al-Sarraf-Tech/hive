@@ -2,7 +2,8 @@ use ratatui::{
     Frame,
     layout::{Constraint, Rect},
     style::{Color, Style},
-    widgets::{Block, Borders, Cell, Row, Table},
+    text::{Line, Span},
+    widgets::{Block, Borders, Cell, Paragraph, Row, Table},
 };
 
 use crate::app::ClusterData;
@@ -17,6 +18,28 @@ pub fn draw(frame: &mut Frame, area: Rect, data: &Option<ClusterData>) {
         Cell::from("PLATFORMS"),
     ])
     .style(Style::default().fg(Color::Yellow));
+
+    let is_connected = data.as_ref().is_some_and(|d| d.connected);
+    let has_nodes = data
+        .as_ref()
+        .and_then(|d| d.nodes.as_ref())
+        .is_some_and(|n| !n.nodes.is_empty());
+
+    if !has_nodes {
+        let msg = if !is_connected {
+            "  Not connected to hived"
+        } else {
+            "  No nodes in cluster"
+        };
+        let block = Block::default().borders(Borders::ALL).title(" Nodes ");
+        let text = Paragraph::new(Line::from(Span::styled(
+            msg,
+            Style::default().fg(Color::DarkGray),
+        )))
+        .block(block);
+        frame.render_widget(text, area);
+        return;
+    }
 
     let rows: Vec<Row> = data
         .as_ref()

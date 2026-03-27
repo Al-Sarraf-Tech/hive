@@ -27,8 +27,8 @@ func StreamDockerLogs(reader io.Reader, sendFn func(line string, stream string) 
 			streamType = "stderr"
 		}
 
-		payloadSize := int(header[4])<<24 | int(header[5])<<16 | int(header[6])<<8 | int(header[7])
-		if payloadSize <= 0 {
+		payloadSize := uint32(header[4])<<24 | uint32(header[5])<<16 | uint32(header[6])<<8 | uint32(header[7])
+		if payloadSize == 0 {
 			continue
 		}
 		if payloadSize > maxLogPayload {

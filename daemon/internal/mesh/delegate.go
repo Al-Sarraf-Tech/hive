@@ -46,7 +46,11 @@ func (d *meshDelegate) LocalState(join bool) []byte {
 	localCopy := d.mesh.local
 	d.mesh.peersMu.RUnlock()
 
-	data, _ := json.Marshal(localCopy)
+	data, err := json.Marshal(localCopy)
+	if err != nil {
+		slog.Error("failed to marshal local state for push-pull", "error", err)
+		return nil
+	}
 	return data
 }
 

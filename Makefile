@@ -1,9 +1,9 @@
-.PHONY: all build build-daemon build-daemon-all build-cli build-tui test lint clean proto
+.PHONY: all build build-daemon build-daemon-all build-cli build-tui test test-daemon test-cli test-tui lint lint-daemon lint-rust clean proto fmt
 
 # Platforms — no macOS, ever
 DAEMON_PLATFORMS = linux/amd64 windows/amd64 linux/arm64
 
-all: proto build
+all: build
 
 # ─── Protobuf ───────────────────────────────────────────────────
 proto:
@@ -43,16 +43,24 @@ build-cli:
 	@mkdir -p dist
 	@echo "==> Building hive CLI..."
 	cd cli && cargo build --release
-	@cp cli/target/release/hive dist/hive 2>/dev/null || true
-	@cp cli/target/release/hive dist/hive-$$(uname -s | tr '[:upper:]' '[:lower:]')-$$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') 2>/dev/null || true
+	@if [ -f cli/target/release/hive ]; then \
+		cp cli/target/release/hive dist/hive; \
+		cp cli/target/release/hive dist/hive-$$(uname -s | tr '[:upper:]' '[:lower:]')-$$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/'); \
+	else \
+		echo "WARNING: hive binary not found at cli/target/release/hive"; \
+	fi
 	@echo "==> hive CLI built"
 
 build-tui:
 	@mkdir -p dist
 	@echo "==> Building hivetop..."
 	cd tui && cargo build --release
-	@cp tui/target/release/hivetop dist/hivetop 2>/dev/null || true
-	@cp tui/target/release/hivetop dist/hivetop-$$(uname -s | tr '[:upper:]' '[:lower:]')-$$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') 2>/dev/null || true
+	@if [ -f tui/target/release/hivetop ]; then \
+		cp tui/target/release/hivetop dist/hivetop; \
+		cp tui/target/release/hivetop dist/hivetop-$$(uname -s | tr '[:upper:]' '[:lower:]')-$$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/'); \
+	else \
+		echo "WARNING: hivetop binary not found at tui/target/release/hivetop"; \
+	fi
 	@echo "==> hivetop built"
 
 # ─── Test ───────────────────────────────────────────────────────
@@ -79,6 +87,12 @@ lint-rust:
 	cd cli && cargo clippy -- -D warnings
 	cd tui && cargo fmt --check
 	cd tui && cargo clippy -- -D warnings
+
+# ─── Format ────────────────────────────────────────────────────
+fmt:
+	cd daemon && gofmt -w .
+	cd cli && cargo fmt
+	cd tui && cargo fmt
 
 # ─── Clean ──────────────────────────────────────────────────────
 clean:

@@ -12,9 +12,13 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    /// hived gRPC address
-    #[arg(long, default_value = "127.0.0.1:7947", global = true)]
+    /// hived gRPC address (or set HIVE_ADDR env var)
+    #[arg(long, default_value_t = default_addr(), global = true)]
     addr: String,
+}
+
+fn default_addr() -> String {
+    std::env::var("HIVE_ADDR").unwrap_or_else(|_| "127.0.0.1:7947".into())
 }
 
 #[derive(Subcommand)]

@@ -19,18 +19,24 @@ mod views;
 #[command(about = "TUI dashboard for the Hive container orchestrator")]
 #[command(version)]
 struct Cli {
-    /// hived gRPC address
-    #[arg(long, default_value = "127.0.0.1:7947")]
+    /// hived gRPC address (or set HIVE_ADDR env var)
+    #[arg(long, default_value_t = default_addr())]
     addr: String,
 
-    /// Refresh interval in seconds
+    /// Refresh interval in seconds (minimum 1)
     #[arg(long, default_value = "2")]
     refresh: u64,
+}
+
+fn default_addr() -> String {
+    std::env::var("HIVE_ADDR").unwrap_or_else(|_| "127.0.0.1:7947".into())
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    let refresh = cli.refresh.max(1); // enforce minimum 1 second to prevent busy loop
 
     // Restore terminal on panic so the user's shell isn't left corrupted
     let original_hook = std::panic::take_hook();
@@ -44,7 +50,7 @@ async fn main() -> Result<()> {
     stdout().execute(EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
-    let result = run(&mut terminal, &cli.addr, cli.refresh).await;
+    let result = run(&mut terminal, &cli.addr, refresh).await;
 
     disable_raw_mode()?;
     stdout().execute(LeaveAlternateScreen)?;
@@ -62,14 +68,15 @@ async fn run(
     // Channel for async data updates
     let (tx, mut rx) = mpsc::channel(16);
 
-    // Spawn background data fetcher — tokio interval fires immediately on first tick
+    // Spawn background data fetcher — reuses a single gRPC connection
     let fetch_addr = addr.to_string();
     let fetch_tx = tx;
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(refresh_secs));
+        let mut client: Option<grpc_client::HiveApiClient<tonic::transport::Channel>> = None;
         loop {
             interval.tick().await;
-            let data = fetch_cluster_data(&fetch_addr).await;
+            let data = fetch_cluster_data(&fetch_addr, &mut client).await;
             if fetch_tx.send(data).await.is_err() {
                 break;
             }
@@ -84,20 +91,28 @@ async fn run(
 
         terminal.draw(|frame| app.draw(frame))?;
 
-        // Poll for keyboard input with 100ms timeout (keeps UI responsive)
-        if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind != KeyEventKind::Press {
-                    continue;
+        // Use spawn_blocking to avoid blocking the tokio executor with crossterm's sync polling
+        let key_event = tokio::task::spawn_blocking(|| {
+            if event::poll(Duration::from_millis(100)).unwrap_or(false) {
+                if let Ok(Event::Key(key)) = event::read() {
+                    if key.kind == KeyEventKind::Press {
+                        return Some(key.code);
+                    }
                 }
-                match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => break,
-                    KeyCode::Char('1') => app.tab = app::Tab::Overview,
-                    KeyCode::Char('2') => app.tab = app::Tab::Nodes,
-                    KeyCode::Char('3') => app.tab = app::Tab::Services,
-                    KeyCode::Char('4') => app.tab = app::Tab::Logs,
-                    _ => {}
-                }
+            }
+            None
+        })
+        .await
+        .unwrap_or(None);
+
+        if let Some(code) = key_event {
+            match code {
+                KeyCode::Char('q') | KeyCode::Esc | KeyCode::Char('c') => break,
+                KeyCode::Char('1') => app.tab = app::Tab::Overview,
+                KeyCode::Char('2') => app.tab = app::Tab::Nodes,
+                KeyCode::Char('3') => app.tab = app::Tab::Services,
+                KeyCode::Char('4') => app.tab = app::Tab::Logs,
+                _ => {}
             }
         }
     }
@@ -105,27 +120,60 @@ async fn run(
     Ok(())
 }
 
-async fn fetch_cluster_data(addr: &str) -> app::ClusterData {
-    let client = grpc_client::connect(addr).await;
-    match client {
-        Ok(mut c) => {
-            let status = c.get_cluster_status(()).await.ok().map(|r| r.into_inner());
-            let services = c.list_services(()).await.ok().map(|r| r.into_inner());
-            let nodes = c.list_nodes(()).await.ok().map(|r| r.into_inner());
-            app::ClusterData {
-                connected: true,
-                status,
-                services,
-                nodes,
-                error: None,
+async fn fetch_cluster_data(
+    addr: &str,
+    client: &mut Option<grpc_client::HiveApiClient<tonic::transport::Channel>>,
+) -> app::ClusterData {
+    // Reuse existing connection, reconnect on failure
+    if client.is_none() {
+        match grpc_client::connect(addr).await {
+            Ok(c) => *client = Some(c),
+            Err(e) => {
+                return app::ClusterData {
+                    connected: false,
+                    status: None,
+                    services: None,
+                    nodes: None,
+                    error: Some(e.to_string()),
+                };
             }
         }
-        Err(e) => app::ClusterData {
+    }
+
+    let c = client.as_ref().unwrap();
+
+    // Fetch all three concurrently — clone the client (cheap: wraps a Channel)
+    let mut c1 = c.clone();
+    let mut c2 = c.clone();
+    let mut c3 = c.clone();
+    let (status_res, services_res, nodes_res) = tokio::join!(
+        c1.get_cluster_status(()),
+        c2.list_services(()),
+        c3.list_nodes(()),
+    );
+
+    // If all three failed, connection is probably dead — reset for next cycle
+    if status_res.is_err() && services_res.is_err() && nodes_res.is_err() {
+        let err_msg = status_res
+            .as_ref()
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        *client = None;
+        return app::ClusterData {
             connected: false,
             status: None,
             services: None,
             nodes: None,
-            error: Some(e.to_string()),
-        },
+            error: Some(err_msg),
+        };
+    }
+
+    app::ClusterData {
+        connected: true,
+        status: status_res.ok().map(|r| r.into_inner()),
+        services: services_res.ok().map(|r| r.into_inner()),
+        nodes: nodes_res.ok().map(|r| r.into_inner()),
+        error: None,
     }
 }

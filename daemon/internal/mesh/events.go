@@ -73,7 +73,7 @@ func (d *meshEventDelegate) NotifyUpdate(node *memberlist.Node) {
 		return
 	}
 
-	// Close stale gRPC connection if address or gRPC port changed (write lock for safe mutation)
+	// Close stale gRPC connection and update peer atomically to avoid TOCTOU race
 	d.mesh.peersMu.Lock()
 	existing, ok := d.mesh.peers[node.Name]
 	if ok && (existing.Info.AdvertiseAddr != info.AdvertiseAddr || existing.Info.GRPCPort != info.GRPCPort) {
@@ -88,9 +88,14 @@ func (d *meshEventDelegate) NotifyUpdate(node *memberlist.Node) {
 		existing.grpcConn = nil
 		existing.client = nil
 	}
+	// Update peer info within the same critical section to prevent TOCTOU race
+	if existing != nil {
+		existing.Info = info
+		existing.LastSeen = time.Now()
+	} else {
+		d.mesh.peers[node.Name] = &Peer{Info: info, LastSeen: time.Now()}
+	}
 	d.mesh.peersMu.Unlock()
-
-	d.mesh.updatePeer(info)
 
 	select {
 	case d.mesh.eventCh <- MeshEvent{Type: EventNodeUpdated, Node: node.Name, Info: info}:
