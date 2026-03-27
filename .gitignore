@@ -29,6 +29,7 @@ Thumbs.db
 # Node (console)
 console/node_modules/
 console/dist/
+console/build/
 console/.svelte-kit/
 
 # Protobuf generated Go code is committed and tracked.
