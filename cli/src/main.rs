@@ -122,6 +122,9 @@ enum Commands {
         action: DaemonAction,
     },
 
+    /// List cron jobs
+    Cron,
+
     /// Launch the TUI dashboard
     Top,
 }
@@ -203,6 +206,7 @@ async fn main() -> Result<()> {
             }
         },
         Commands::Status => commands::status::run(&cli.addr, cli.ca_cert.as_deref()).await,
+        Commands::Cron => commands::cron::list(&cli.addr, cli.ca_cert.as_deref()).await,
         Commands::Daemon { action } => match action {
             DaemonAction::Install => commands::daemon::install(),
             DaemonAction::Start => commands::daemon::start(),

@@ -18,6 +18,7 @@ import (
 	hivev1 "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1"
 	"github.com/jalsarraf0/hive/daemon/internal/config"
 	"github.com/jalsarraf0/hive/daemon/internal/container"
+	"github.com/jalsarraf0/hive/daemon/internal/cron"
 	"github.com/jalsarraf0/hive/daemon/internal/health"
 	"github.com/jalsarraf0/hive/daemon/internal/httpapi"
 	"github.com/jalsarraf0/hive/daemon/internal/logs"
@@ -249,6 +250,16 @@ func main() {
 	api.Register(apiGRPC, apiServer)
 	reflection.Register(apiGRPC)
 
+	// Initialize cron scheduler (started later after ctx is available)
+	cronSched := cron.NewScheduler(func(cronCtx context.Context, service string, command []string) error {
+		_, err := apiServer.ExecContainer(cronCtx, &hivev1.ExecContainerRequest{
+			ServiceName: service,
+			Command:     command,
+		})
+		return err
+	})
+	apiServer.SetCronScheduler(cronSched)
+
 	// ─── Mesh server (daemon-to-daemon, mTLS when available) ─
 	var meshOpts []grpc.ServerOption
 	if tlsEnabled {
@@ -277,6 +288,9 @@ func main() {
 	// Start health check loop
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Start cron scheduler
+	go cronSched.Start(ctx)
 
 	// Start log aggregation collector
 	logCollector := logs.NewCollector(containerProvider, nodeName)

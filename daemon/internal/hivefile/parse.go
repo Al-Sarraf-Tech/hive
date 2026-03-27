@@ -32,6 +32,7 @@ type ServiceDef struct {
 	Resources     ResourceDef       `toml:"resources"`
 	Deploy        DeployDef         `toml:"deploy"`
 	DependsOn     DependsDef        `toml:"depends_on"`
+	Cron          []CronDef         `toml:"cron"`
 	RestartPolicy string            `toml:"restart_policy"`
 }
 
@@ -69,6 +70,12 @@ type DeployDef struct {
 // DependsDef defines service dependencies.
 type DependsDef struct {
 	Services []string `toml:"services"`
+}
+
+// CronDef defines a cron job for a service.
+type CronDef struct {
+	Schedule string   `toml:"schedule"` // 5-field cron expression
+	Command  []string `toml:"command"`  // command to exec in the service container
 }
 
 // Parse reads a Hivefile from TOML content.

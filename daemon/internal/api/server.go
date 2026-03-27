@@ -17,6 +17,7 @@ import (
 
 	hivev1 "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1"
 	"github.com/jalsarraf0/hive/daemon/internal/container"
+	"github.com/jalsarraf0/hive/daemon/internal/cron"
 	"github.com/jalsarraf0/hive/daemon/internal/health"
 	"github.com/jalsarraf0/hive/daemon/internal/hivefile"
 	"github.com/jalsarraf0/hive/daemon/internal/mesh"
@@ -48,8 +49,9 @@ type Server struct {
 	nodeName  string
 	dataDir   string
 	startedAt time.Time
-	deployMu        sync.Mutex // serializes DeployService to prevent concurrent races
-	certBootstrapMu sync.Mutex // serializes bootstrapNodeCert to prevent concurrent CSR signing
+	cronSched       *cron.Scheduler // nil if no cron jobs
+	deployMu        sync.Mutex      // serializes DeployService to prevent concurrent races
+	certBootstrapMu sync.Mutex      // serializes bootstrapNodeCert to prevent concurrent CSR signing
 }
 
 // NewServer creates a new API server.
@@ -66,6 +68,11 @@ func NewServer(s *store.Store, c container.Provider, h *health.Checker, nodeName
 		dataDir:   dataDir,
 		startedAt: time.Now(),
 	}
+}
+
+// SetCronScheduler sets the cron scheduler for ListCronJobs.
+func (s *Server) SetCronScheduler(cs *cron.Scheduler) {
+	s.cronSched = cs
 }
 
 // Register registers the gRPC services on the given server.
@@ -748,6 +755,16 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 			slog.Error("failed to marshal service definition", "service", name, "error", err)
 		} else if err := s.store.Put("services", name, svcJSON); err != nil {
 			slog.Error("failed to persist service definition", "service", name, "error", err)
+		}
+
+		// Register cron jobs from the service definition
+		if s.cronSched != nil {
+			for i, cj := range svcDef.Cron {
+				jobName := fmt.Sprintf("%s-cron-%d", name, i)
+				if err := s.cronSched.Add(jobName, cj.Schedule, name, cj.Command); err != nil {
+					slog.Warn("failed to register cron job", "service", name, "schedule", cj.Schedule, "error", err)
+				}
+			}
 		}
 
 		slog.Info("service deployed", "name", name, "replicas", fmt.Sprintf("%d/%d", replicasRunning, replicas))
@@ -1703,6 +1720,28 @@ func (s *Server) StreamEvents(_ *emptypb.Empty, stream hivev1.HiveAPI_StreamEven
 
 	<-stream.Context().Done()
 	return nil
+}
+
+// ListCronJobs returns all registered cron jobs.
+func (s *Server) ListCronJobs(_ context.Context, _ *emptypb.Empty) (*hivev1.ListCronJobsResponse, error) {
+	if s.cronSched == nil {
+		return &hivev1.ListCronJobsResponse{}, nil
+	}
+	jobs := s.cronSched.List()
+	var protos []*hivev1.CronJob
+	for _, j := range jobs {
+		cj := &hivev1.CronJob{
+			Name:    j.Name,
+			Service: j.Service,
+			Command: j.Command,
+			NextRun: j.NextRun.Format(time.RFC3339),
+		}
+		if !j.LastRun.IsZero() {
+			cj.LastRun = j.LastRun.Format(time.RFC3339)
+		}
+		protos = append(protos, cj)
+	}
+	return &hivev1.ListCronJobsResponse{Jobs: protos}, nil
 }
 
 // bootstrapNodeCert generates a CSR and gets it signed by a peer that holds the CA key.

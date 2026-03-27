@@ -43,6 +43,9 @@ service HiveAPI {
 
   // ─── Events ────────────────────────────────────────────────
   rpc StreamEvents(google.protobuf.Empty) returns (stream Event);
+
+  // ─── Cron ────────────────────────────────────────────────
+  rpc ListCronJobs(google.protobuf.Empty) returns (ListCronJobsResponse);
 }
 
 // ─── Cluster Management ───────────────────────────────────────
@@ -189,4 +192,19 @@ message SecretMeta {
 
 message DeleteSecretRequest {
   string key = 1;
+}
+
+// ─── Cron ───────────────────────────────────────────────
+
+message CronJob {
+  string name = 1;
+  string schedule = 2;     // cron expression
+  string service = 3;
+  repeated string command = 4;
+  string next_run = 5;     // RFC3339
+  string last_run = 6;     // RFC3339 or empty
+}
+
+message ListCronJobsResponse {
+  repeated CronJob jobs = 1;
 }

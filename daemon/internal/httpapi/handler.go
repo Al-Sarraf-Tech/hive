@@ -84,6 +84,7 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("POST /api/v1/nodes/{name}/drain", h.drainNode)
 	h.mux.HandleFunc("POST /api/v1/secrets/{key}", h.setSecret)
 	h.mux.HandleFunc("DELETE /api/v1/secrets/{key}", h.deleteSecret)
+	h.mux.HandleFunc("GET /api/v1/cron", h.listCronJobs)
 }
 
 func (h *Handler) getLogs(w http.ResponseWriter, r *http.Request) {
@@ -295,6 +296,15 @@ func (h *Handler) deleteSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]string{"status": "deleted", "key": key})
+}
+
+func (h *Handler) listCronJobs(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.api.ListCronJobs(r.Context(), &emptypb.Empty{})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
 }
 
 // writeProto serializes a protobuf message as JSON using protojson.

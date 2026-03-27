@@ -40,6 +40,7 @@ const (
 	HiveAPI_ListSecrets_FullMethodName      = "/hive.v1.HiveAPI/ListSecrets"
 	HiveAPI_DeleteSecret_FullMethodName     = "/hive.v1.HiveAPI/DeleteSecret"
 	HiveAPI_StreamEvents_FullMethodName     = "/hive.v1.HiveAPI/StreamEvents"
+	HiveAPI_ListCronJobs_FullMethodName     = "/hive.v1.HiveAPI/ListCronJobs"
 )
 
 // HiveAPIClient is the client API for HiveAPI service.
@@ -75,6 +76,8 @@ type HiveAPIClient interface {
 	DeleteSecret(ctx context.Context, in *DeleteSecretRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// ─── Events ────────────────────────────────────────────────
 	StreamEvents(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Event], error)
+	// ─── Cron ────────────────────────────────────────────────
+	ListCronJobs(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListCronJobsResponse, error)
 }
 
 type hiveAPIClient struct {
@@ -303,6 +306,16 @@ func (c *hiveAPIClient) StreamEvents(ctx context.Context, in *emptypb.Empty, opt
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type HiveAPI_StreamEventsClient = grpc.ServerStreamingClient[Event]
 
+func (c *hiveAPIClient) ListCronJobs(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListCronJobsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListCronJobsResponse)
+	err := c.cc.Invoke(ctx, HiveAPI_ListCronJobs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // HiveAPIServer is the server API for HiveAPI service.
 // All implementations must embed UnimplementedHiveAPIServer
 // for forward compatibility.
@@ -336,6 +349,8 @@ type HiveAPIServer interface {
 	DeleteSecret(context.Context, *DeleteSecretRequest) (*emptypb.Empty, error)
 	// ─── Events ────────────────────────────────────────────────
 	StreamEvents(*emptypb.Empty, grpc.ServerStreamingServer[Event]) error
+	// ─── Cron ────────────────────────────────────────────────
+	ListCronJobs(context.Context, *emptypb.Empty) (*ListCronJobsResponse, error)
 	mustEmbedUnimplementedHiveAPIServer()
 }
 
@@ -405,6 +420,9 @@ func (UnimplementedHiveAPIServer) DeleteSecret(context.Context, *DeleteSecretReq
 }
 func (UnimplementedHiveAPIServer) StreamEvents(*emptypb.Empty, grpc.ServerStreamingServer[Event]) error {
 	return status.Error(codes.Unimplemented, "method StreamEvents not implemented")
+}
+func (UnimplementedHiveAPIServer) ListCronJobs(context.Context, *emptypb.Empty) (*ListCronJobsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListCronJobs not implemented")
 }
 func (UnimplementedHiveAPIServer) mustEmbedUnimplementedHiveAPIServer() {}
 func (UnimplementedHiveAPIServer) testEmbeddedByValue()                 {}
@@ -773,6 +791,24 @@ func _HiveAPI_StreamEvents_Handler(srv interface{}, stream grpc.ServerStream) er
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type HiveAPI_StreamEventsServer = grpc.ServerStreamingServer[Event]
 
+func _HiveAPI_ListCronJobs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).ListCronJobs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_ListCronJobs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).ListCronJobs(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // HiveAPI_ServiceDesc is the grpc.ServiceDesc for HiveAPI service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -851,6 +887,10 @@ var HiveAPI_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteSecret",
 			Handler:    _HiveAPI_DeleteSecret_Handler,
+		},
+		{
+			MethodName: "ListCronJobs",
+			Handler:    _HiveAPI_ListCronJobs_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
