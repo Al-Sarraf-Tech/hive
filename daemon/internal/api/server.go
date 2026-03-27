@@ -306,22 +306,94 @@ func peerToNode(info mesh.NodeInfo) *hivev1.Node {
 	}
 }
 
-// DrainNode drains a node (stops scheduling new containers).
-func (s *Server) DrainNode(_ context.Context, req *hivev1.DrainNodeRequest) (*emptypb.Empty, error) {
+// DrainNode drains a node: marks it as draining (stops new scheduling),
+// then migrates all running containers to other available nodes.
+func (s *Server) DrainNode(ctx context.Context, req *hivev1.DrainNodeRequest) (*emptypb.Empty, error) {
 	if req.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "node name is required")
 	}
-
-	if req.Name == s.nodeName {
-		if s.mesh != nil {
-			s.mesh.SetStatus(int(mesh.NodeStatusDraining))
-		}
-		slog.Info("local node draining", "node", req.Name)
-	} else {
-		slog.Info("drain requested for remote node (not yet forwarded)", "node", req.Name)
-		return nil, status.Error(codes.Unimplemented, "remote node drain not yet implemented")
+	if req.Name != s.nodeName {
+		return nil, status.Error(codes.Unimplemented, "remote drain not supported — run from the node being drained")
 	}
 
+	s.deployMu.Lock()
+	defer s.deployMu.Unlock()
+
+	// Mark node as draining — scheduler will skip this node
+	if s.mesh != nil {
+		s.mesh.SetStatus(int(mesh.NodeStatusDraining))
+	}
+	slog.Info("node drain started", "node", req.Name)
+
+	// List all local managed containers
+	containers, err := s.container.ListContainers(ctx, map[string]string{"hive.managed": "true"})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "list containers: %v", err)
+	}
+	if len(containers) == 0 {
+		slog.Info("drain complete — no containers to migrate")
+		return &emptypb.Empty{}, nil
+	}
+
+	migrated, failed := 0, 0
+	for _, c := range containers {
+		svcName := c.Labels["hive.service"]
+		replicaLabel := c.Labels["hive.replica"]
+		if svcName == "" {
+			continue
+		}
+
+		var svcDef hivefile.ServiceDef
+		if data, _ := s.store.Get("services", svcName); data != nil {
+			_ = json.Unmarshal(data, &svcDef)
+		}
+
+		if s.scheduler == nil || s.mesh == nil {
+			slog.Warn("cannot migrate — no scheduler/mesh", "service", svcName)
+			failed++
+			continue
+		}
+
+		candidate, pickErr := s.scheduler.Pick(svcDef)
+		if pickErr != nil || candidate.Local {
+			slog.Warn("no remote node for migration", "service", svcName, "error", pickErr)
+			failed++
+			continue
+		}
+
+		// Resolve env
+		secretKeys, _ := s.store.List("secrets")
+		secrets := make(map[string]string, len(secretKeys))
+		for _, key := range secretKeys {
+			val, _ := s.store.Get("secrets", key)
+			if val != nil && s.vault != nil {
+				if dec, decErr := s.vault.Decrypt(val); decErr == nil {
+					secrets[key] = string(dec)
+				}
+			}
+		}
+		env, _ := hivefile.ResolveEnv(svcDef.Env, secrets)
+
+		replicaIdx := 0
+		if replicaLabel != "" {
+			fmt.Sscanf(replicaLabel, "%d", &replicaIdx)
+		}
+
+		slog.Info("migrating", "service", svcName, "replica", replicaIdx, "to", candidate.NodeName)
+
+		if _, deployErr := s.deployRemoteReplica(ctx, svcName, replicaIdx, svcDef, env, candidate.NodeName); deployErr != nil {
+			slog.Error("migration failed", "service", svcName, "error", deployErr)
+			failed++
+			continue
+		}
+
+		_ = s.container.Stop(ctx, c.ID, 10)
+		_ = s.container.Remove(ctx, c.ID)
+		_ = s.store.SetPlacement(svcName, candidate.NodeName)
+		migrated++
+	}
+
+	slog.Info("drain complete", "migrated", migrated, "failed", failed)
 	return &emptypb.Empty{}, nil
 }
 
