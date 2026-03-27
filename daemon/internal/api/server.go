@@ -393,35 +393,100 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 			replicas = 1
 		}
 
+		// Check if this is an update to an existing service (for rolling strategy)
+		existingContainers, _ := s.container.ListContainers(ctx, map[string]string{
+			"hive.managed": "true",
+			"hive.service": name,
+		})
+		isUpdate := len(existingContainers) > 0
+		strategy := svcDef.Deploy.Strategy
+		if strategy == "" {
+			strategy = "rolling"
+		}
+
 		var containerIDs []string
 		replicasRunning := uint32(0)
 
-		for i := 0; i < replicas; i++ {
-			// Pick a target node for each replica independently (spread)
-			targetNode := s.nodeName
-			if s.scheduler != nil {
-				candidate, err := s.scheduler.Pick(svcDef)
-				if err != nil {
-					return nil, status.Errorf(codes.FailedPrecondition, "no node available for %q replica %d: %v", name, i, err)
+		if isUpdate && strategy == "rolling" {
+			// Rolling update: replace replicas one at a time
+			slog.Info("rolling update", "service", name, "existing", len(existingContainers), "desired", replicas)
+
+			healthPause := 5 * time.Second
+			if svcDef.Health.Type != "" && svcDef.Health.Port > 0 {
+				if d, parseErr := time.ParseDuration(svcDef.Health.Interval); parseErr == nil && d > 0 {
+					healthPause = d
 				}
-				targetNode = candidate.NodeName
 			}
 
-			slog.Info("deploying replica", "service", name, "replica", i, "target", targetNode)
+			for i := 0; i < replicas; i++ {
+				targetNode := s.nodeName
+				if s.scheduler != nil {
+					if candidate, pickErr := s.scheduler.Pick(svcDef); pickErr == nil {
+						targetNode = candidate.NodeName
+					}
+				}
 
-			var id string
-			if targetNode == s.nodeName {
-				id, err = s.deployLocalReplica(ctx, name, i, svcDef, env, memBytes)
-			} else {
-				id, err = s.deployRemoteReplica(ctx, name, i, svcDef, env, targetNode)
-			}
-			if err != nil {
-				slog.Error("failed to deploy replica", "service", name, "replica", i, "error", err)
-				continue // deploy remaining replicas even if one fails
+				slog.Info("rolling update replica", "service", name, "replica", i, "target", targetNode)
+
+				var id string
+				if targetNode == s.nodeName {
+					id, err = s.deployLocalReplica(ctx, name, i, svcDef, env, memBytes)
+				} else {
+					id, err = s.deployRemoteReplica(ctx, name, i, svcDef, env, targetNode)
+				}
+				if err != nil {
+					slog.Error("rolling update: replica failed", "service", name, "replica", i, "error", err)
+					continue
+				}
+
+				containerIDs = append(containerIDs, id)
+				replicasRunning++
+
+				// Wait between replicas to allow health checks to settle
+				if i < replicas-1 {
+					slog.Debug("rolling update: waiting for health stabilization", "pause", healthPause)
+					select {
+					case <-ctx.Done():
+						return nil, status.Errorf(codes.Canceled, "deploy cancelled during rolling update")
+					case <-time.After(healthPause):
+					}
+				}
 			}
 
-			containerIDs = append(containerIDs, id)
-			replicasRunning++
+			// Clean up excess old containers if scaling down during update
+			if len(existingContainers) > replicas {
+				for i := replicas; i < len(existingContainers); i++ {
+					c := existingContainers[i]
+					_ = s.container.Stop(ctx, c.ID, 10)
+					_ = s.container.Remove(ctx, c.ID)
+				}
+			}
+		} else {
+			// Recreate strategy (or fresh deploy): deploy all replicas at once
+			for i := 0; i < replicas; i++ {
+				targetNode := s.nodeName
+				if s.scheduler != nil {
+					if candidate, pickErr := s.scheduler.Pick(svcDef); pickErr == nil {
+						targetNode = candidate.NodeName
+					}
+				}
+
+				slog.Info("deploying replica", "service", name, "replica", i, "target", targetNode)
+
+				var id string
+				if targetNode == s.nodeName {
+					id, err = s.deployLocalReplica(ctx, name, i, svcDef, env, memBytes)
+				} else {
+					id, err = s.deployRemoteReplica(ctx, name, i, svcDef, env, targetNode)
+				}
+				if err != nil {
+					slog.Error("failed to deploy replica", "service", name, "replica", i, "error", err)
+					continue
+				}
+
+				containerIDs = append(containerIDs, id)
+				replicasRunning++
+			}
 		}
 
 		if replicasRunning == 0 {
