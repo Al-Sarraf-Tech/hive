@@ -25,29 +25,29 @@ export const api = {
     }),
 
   stopService: (name) =>
-    request(`/services/${name}/stop`, { method: 'POST' }),
+    request(`/services/${encodeURIComponent(name)}/stop`, { method: 'POST' }),
 
   scaleService: (name, replicas) =>
-    request(`/services/${name}/scale`, {
+    request(`/services/${encodeURIComponent(name)}/scale`, {
       method: 'POST',
       body: JSON.stringify({ replicas })
     }),
 
   rollbackService: (name) =>
-    request(`/services/${name}/rollback`, { method: 'POST' }),
+    request(`/services/${encodeURIComponent(name)}/rollback`, { method: 'POST' }),
 
   execCommand: (service, command) =>
-    request(`/services/${service}/exec`, {
+    request(`/services/${encodeURIComponent(service)}/exec`, {
       method: 'POST',
       body: JSON.stringify({ command })
     }),
 
   setSecret: (key, value) =>
-    request(`/secrets/${key}`, {
+    request(`/secrets/${encodeURIComponent(key)}`, {
       method: 'POST',
       body: JSON.stringify({ value })
     }),
 
   deleteSecret: (key) =>
-    request(`/secrets/${key}`, { method: 'DELETE' })
+    request(`/secrets/${encodeURIComponent(key)}`, { method: 'DELETE' })
 };

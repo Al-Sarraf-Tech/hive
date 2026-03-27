@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -236,6 +237,10 @@ func main() {
 		go renewChecker.Start(ctx)
 	}
 
+	// httpServer is declared here so the shutdown goroutine can reference it.
+	// It is initialized later, after the "hived listening" log line.
+	var httpServer *http.Server
+
 	// Graceful shutdown with timeout and second-signal force-quit
 	sigCh := make(chan os.Signal, 2)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -258,6 +263,9 @@ func main() {
 		// Give in-flight RPCs 10 seconds to finish
 		done := make(chan struct{})
 		go func() {
+			if httpServer != nil {
+				_ = httpServer.Shutdown(context.Background())
+			}
 			apiGRPC.GracefulStop()
 			meshGRPC.GracefulStop()
 			close(done)
@@ -272,11 +280,16 @@ func main() {
 		_ = hiveMesh.Shutdown()
 	}()
 
+	httpAddr := "disabled"
+	if *flagHTTPPort > 0 {
+		httpAddr = fmt.Sprintf(":%d", *flagHTTPPort)
+	}
+
 	slog.Info("hived listening",
 		"node", nodeName,
 		"api", fmt.Sprintf(":%d", grpcPort),
 		"mesh", fmt.Sprintf(":%d", *flagMeshPort),
-		"http", fmt.Sprintf(":%d", *flagHTTPPort),
+		"http", httpAddr,
 		"gossip", fmt.Sprintf(":%d", gossipPort),
 		"tls", tlsEnabled,
 		"members", hiveMesh.Members(),
@@ -294,9 +307,11 @@ func main() {
 
 	// Start HTTP API server for web console
 	if *flagHTTPPort > 0 {
+		addr := fmt.Sprintf(":%d", *flagHTTPPort)
+		httpServer = httpapi.NewServer(addr, apiServer, "")
 		go func() {
-			addr := fmt.Sprintf(":%d", *flagHTTPPort)
-			if err := httpapi.ListenAndServe(addr, apiServer); err != nil && ctx.Err() == nil {
+			slog.Info("http api server listening", "addr", addr)
+			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				slog.Error("http api server failed", "error", err)
 			}
 		}()

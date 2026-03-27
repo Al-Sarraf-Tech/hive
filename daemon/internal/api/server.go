@@ -345,7 +345,11 @@ func (s *Server) DrainNode(ctx context.Context, req *hivev1.DrainNodeRequest) (*
 
 		var svcDef hivefile.ServiceDef
 		if data, _ := s.store.Get("services", svcName); data != nil {
-			_ = json.Unmarshal(data, &svcDef)
+			if err := json.Unmarshal(data, &svcDef); err != nil {
+				slog.Warn("corrupt service definition, skipping migration", "service", svcName, "error", err)
+				failed++
+				continue
+			}
 		}
 
 		if s.scheduler == nil || s.mesh == nil {
@@ -387,13 +391,31 @@ func (s *Server) DrainNode(ctx context.Context, req *hivev1.DrainNodeRequest) (*
 			continue
 		}
 
-		_ = s.container.Stop(ctx, c.ID, 10)
-		_ = s.container.Remove(ctx, c.ID)
+		if stopErr := s.container.Stop(ctx, c.ID, 10); stopErr != nil {
+			slog.Warn("failed to stop old container during drain", "id", container.ShortID(c.ID), "error", stopErr)
+		}
+		if rmErr := s.container.Remove(ctx, c.ID); rmErr != nil {
+			slog.Warn("failed to remove old container during drain", "id", container.ShortID(c.ID), "error", rmErr)
+		}
 		_ = s.store.SetPlacement(svcName, candidate.NodeName)
 		migrated++
 	}
 
 	slog.Info("drain complete", "migrated", migrated, "failed", failed)
+
+	if migrated == 0 && failed > 0 {
+		// All migrations failed — restore node to Ready so it remains functional
+		if s.mesh != nil {
+			s.mesh.SetStatus(int(mesh.NodeStatusReady))
+		}
+		return nil, status.Errorf(codes.Internal, "drain failed: all %d container migrations failed", failed)
+	}
+
+	// Drain complete — mark node as Down (fully drained)
+	if s.mesh != nil && failed == 0 {
+		s.mesh.SetStatus(int(mesh.NodeStatusDown))
+	}
+
 	return &emptypb.Empty{}, nil
 }
 
@@ -1243,13 +1265,20 @@ func (s *Server) RestartService(ctx context.Context, req *hivev1.RestartServiceR
 	slog.Info("restarting service", "name", req.Name, "replicas", replicas)
 
 	// Rolling restart: replace each replica one at a time
+	restarted := 0
 	for i := 0; i < replicas; i++ {
 		if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, svcDef, env, memBytes); deployErr != nil {
 			slog.Error("failed to restart replica", "service", req.Name, "replica", i, "error", deployErr)
+		} else {
+			restarted++
 		}
 	}
 
-	slog.Info("service restarted", "name", req.Name)
+	if restarted == 0 {
+		return nil, status.Errorf(codes.Internal, "restart failed: no replicas could be started for %q", req.Name)
+	}
+
+	slog.Info("service restarted", "name", req.Name, "restarted", restarted, "total", replicas)
 	return &emptypb.Empty{}, nil
 }
 

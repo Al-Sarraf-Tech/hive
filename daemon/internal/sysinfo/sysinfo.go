@@ -62,7 +62,7 @@ func CPUCount() uint32 {
 	count := uint32(0)
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		if strings.HasPrefix(scanner.Text(), "processor") {
+		if strings.HasPrefix(scanner.Text(), "processor\t") {
 			count++
 		}
 	}

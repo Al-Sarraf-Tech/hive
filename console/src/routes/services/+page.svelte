@@ -26,7 +26,9 @@
   async function scale(name) {
     const count = prompt(`Scale "${name}" to how many replicas?`);
     if (!count) return;
-    try { await api.scaleService(name, parseInt(count)); await refresh(); } catch (e) { alert(e.message); }
+    const n = parseInt(count, 10);
+    if (isNaN(n) || n < 1) { alert('Invalid replica count — must be a positive integer.'); return; }
+    try { await api.scaleService(name, n); await refresh(); } catch (e) { alert(e.message); }
   }
 
   function statusBadge(s) {

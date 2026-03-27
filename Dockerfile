@@ -20,7 +20,7 @@ FROM gcr.io/distroless/static-debian12:nonroot
 
 COPY --from=builder /hived /usr/local/bin/hived
 
-EXPOSE 7947 7948 7946/udp
+EXPOSE 7947 7948 7949 7946/udp
 
 VOLUME ["/var/lib/hive"]
 
