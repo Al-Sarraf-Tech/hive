@@ -797,13 +797,98 @@ func (s *Server) StopService(ctx context.Context, req *hivev1.StopServiceRequest
 	return &emptypb.Empty{}, nil
 }
 
-// ScaleService changes the replica count.
-func (s *Server) ScaleService(_ context.Context, req *hivev1.ScaleServiceRequest) (*emptypb.Empty, error) {
+// ScaleService changes the replica count for a running service.
+// Scale up: creates additional replicas. Scale down: stops excess replicas.
+func (s *Server) ScaleService(ctx context.Context, req *hivev1.ScaleServiceRequest) (*emptypb.Empty, error) {
 	if req.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "service name is required")
 	}
-	slog.Info("scale requested", "service", req.Name, "replicas", req.Replicas)
-	return nil, status.Error(codes.Unimplemented, "scaling is not yet implemented")
+	if req.Replicas == 0 {
+		return nil, status.Error(codes.InvalidArgument, "replica count must be at least 1 — use StopService to remove a service")
+	}
+
+	s.deployMu.Lock()
+	defer s.deployMu.Unlock()
+
+	// Load service definition from store
+	svcData, err := s.store.Get("services", req.Name)
+	if err != nil || svcData == nil {
+		return nil, status.Errorf(codes.NotFound, "service %q not found", req.Name)
+	}
+	var svcDef hivefile.ServiceDef
+	if err := json.Unmarshal(svcData, &svcDef); err != nil {
+		return nil, status.Errorf(codes.Internal, "corrupt service definition for %q: %v", req.Name, err)
+	}
+
+	// Count current local replicas
+	containers, err := s.container.ListContainers(ctx, map[string]string{
+		"hive.managed": "true",
+		"hive.service": req.Name,
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "list containers: %v", err)
+	}
+	currentCount := len(containers)
+	desired := int(req.Replicas)
+
+	slog.Info("scaling service", "name", req.Name, "current", currentCount, "desired", desired)
+
+	if desired > currentCount {
+		// Scale up — load secrets and create additional replicas
+		secretKeys, _ := s.store.List("secrets")
+		secrets := make(map[string]string, len(secretKeys))
+		for _, key := range secretKeys {
+			val, getErr := s.store.Get("secrets", key)
+			if getErr == nil && val != nil && s.vault != nil {
+				if decrypted, decErr := s.vault.Decrypt(val); decErr == nil {
+					secrets[key] = string(decrypted)
+				}
+			}
+		}
+		env, _ := hivefile.ResolveEnv(svcDef.Env, secrets)
+		memBytes, _ := hivefile.ParseMemory(svcDef.Resources.Memory)
+
+		if pullErr := s.container.PullImage(ctx, svcDef.Image); pullErr != nil {
+			slog.Warn("image pull failed (may be local)", "image", svcDef.Image, "error", pullErr)
+		}
+
+		for i := currentCount; i < desired; i++ {
+			targetNode := s.nodeName
+			if s.scheduler != nil {
+				if candidate, pickErr := s.scheduler.Pick(svcDef); pickErr == nil {
+					targetNode = candidate.NodeName
+				}
+			}
+			if targetNode == s.nodeName {
+				if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, svcDef, env, memBytes); deployErr != nil {
+					slog.Error("failed to scale up replica", "service", req.Name, "replica", i, "error", deployErr)
+				}
+			} else {
+				if _, deployErr := s.deployRemoteReplica(ctx, req.Name, i, svcDef, env, targetNode); deployErr != nil {
+					slog.Error("failed to scale up remote replica", "service", req.Name, "replica", i, "error", deployErr)
+				}
+			}
+		}
+	} else if desired < currentCount {
+		// Scale down — stop excess replicas (highest indices first)
+		for i := currentCount - 1; i >= desired; i-- {
+			c := containers[i]
+			slog.Info("scaling down, stopping replica", "service", req.Name, "container", container.ShortID(c.ID))
+			_ = s.container.Stop(ctx, c.ID, 10)
+			if removeErr := s.container.Remove(ctx, c.ID); removeErr != nil {
+				slog.Error("failed to remove container during scale-down", "id", c.ID, "error", removeErr)
+			}
+		}
+	}
+
+	// Update stored service definition with new replica count
+	svcDef.Replicas = desired
+	if svcJSON, marshalErr := json.Marshal(svcDef); marshalErr == nil {
+		_ = s.store.Put("services", req.Name, svcJSON)
+	}
+
+	slog.Info("service scaled", "name", req.Name, "replicas", desired)
+	return &emptypb.Empty{}, nil
 }
 
 // RollbackService rolls back to the previous version.
