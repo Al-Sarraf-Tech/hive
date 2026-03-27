@@ -1,5 +1,6 @@
 pub mod daemon;
 pub mod deploy;
+pub mod exec;
 pub mod init;
 pub mod join;
 pub mod logs;

@@ -34,6 +34,7 @@ const (
 	HiveAPI_RollbackService_FullMethodName  = "/hive.v1.HiveAPI/RollbackService"
 	HiveAPI_ListContainers_FullMethodName   = "/hive.v1.HiveAPI/ListContainers"
 	HiveAPI_ContainerLogs_FullMethodName    = "/hive.v1.HiveAPI/ContainerLogs"
+	HiveAPI_ExecContainer_FullMethodName    = "/hive.v1.HiveAPI/ExecContainer"
 	HiveAPI_SetSecret_FullMethodName        = "/hive.v1.HiveAPI/SetSecret"
 	HiveAPI_ListSecrets_FullMethodName      = "/hive.v1.HiveAPI/ListSecrets"
 	HiveAPI_DeleteSecret_FullMethodName     = "/hive.v1.HiveAPI/DeleteSecret"
@@ -65,6 +66,7 @@ type HiveAPIClient interface {
 	// ─── Containers ────────────────────────────────────────────
 	ListContainers(ctx context.Context, in *ListContainersRequest, opts ...grpc.CallOption) (*ListContainersResponse, error)
 	ContainerLogs(ctx context.Context, in *ContainerLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LogEntry], error)
+	ExecContainer(ctx context.Context, in *ExecContainerRequest, opts ...grpc.CallOption) (*ExecContainerResponse, error)
 	// ─── Secrets ───────────────────────────────────────────────
 	SetSecret(ctx context.Context, in *SetSecretRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ListSecrets(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListSecretsResponse, error)
@@ -230,6 +232,16 @@ func (c *hiveAPIClient) ContainerLogs(ctx context.Context, in *ContainerLogsRequ
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type HiveAPI_ContainerLogsClient = grpc.ServerStreamingClient[LogEntry]
 
+func (c *hiveAPIClient) ExecContainer(ctx context.Context, in *ExecContainerRequest, opts ...grpc.CallOption) (*ExecContainerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExecContainerResponse)
+	err := c.cc.Invoke(ctx, HiveAPI_ExecContainer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *hiveAPIClient) SetSecret(ctx context.Context, in *SetSecretRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
@@ -304,6 +316,7 @@ type HiveAPIServer interface {
 	// ─── Containers ────────────────────────────────────────────
 	ListContainers(context.Context, *ListContainersRequest) (*ListContainersResponse, error)
 	ContainerLogs(*ContainerLogsRequest, grpc.ServerStreamingServer[LogEntry]) error
+	ExecContainer(context.Context, *ExecContainerRequest) (*ExecContainerResponse, error)
 	// ─── Secrets ───────────────────────────────────────────────
 	SetSecret(context.Context, *SetSecretRequest) (*emptypb.Empty, error)
 	ListSecrets(context.Context, *emptypb.Empty) (*ListSecretsResponse, error)
@@ -361,6 +374,9 @@ func (UnimplementedHiveAPIServer) ListContainers(context.Context, *ListContainer
 }
 func (UnimplementedHiveAPIServer) ContainerLogs(*ContainerLogsRequest, grpc.ServerStreamingServer[LogEntry]) error {
 	return status.Error(codes.Unimplemented, "method ContainerLogs not implemented")
+}
+func (UnimplementedHiveAPIServer) ExecContainer(context.Context, *ExecContainerRequest) (*ExecContainerResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExecContainer not implemented")
 }
 func (UnimplementedHiveAPIServer) SetSecret(context.Context, *SetSecretRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetSecret not implemented")
@@ -640,6 +656,24 @@ func _HiveAPI_ContainerLogs_Handler(srv interface{}, stream grpc.ServerStream) e
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type HiveAPI_ContainerLogsServer = grpc.ServerStreamingServer[LogEntry]
 
+func _HiveAPI_ExecContainer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExecContainerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).ExecContainer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_ExecContainer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).ExecContainer(ctx, req.(*ExecContainerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _HiveAPI_SetSecret_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SetSecretRequest)
 	if err := dec(in); err != nil {
@@ -763,6 +797,10 @@ var HiveAPI_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListContainers",
 			Handler:    _HiveAPI_ListContainers_Handler,
+		},
+		{
+			MethodName: "ExecContainer",
+			Handler:    _HiveAPI_ExecContainer_Handler,
 		},
 		{
 			MethodName: "SetSecret",

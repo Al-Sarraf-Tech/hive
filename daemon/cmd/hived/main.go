@@ -227,6 +227,12 @@ func main() {
 	healthLoop := health.NewLoop(healthChecker, containerProvider, stateStore, 30*time.Second, hiveMesh.UpdateContainerCount)
 	go healthLoop.Start(ctx)
 
+	// Start certificate renewal checker
+	if pki.HasNodeCert(dataDir) {
+		renewChecker := pki.NewRenewalChecker(dataDir, nil) // nil = log-only, no auto-renewal yet
+		go renewChecker.Start(ctx)
+	}
+
 	// Graceful shutdown with timeout and second-signal force-quit
 	sigCh := make(chan os.Signal, 2)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)

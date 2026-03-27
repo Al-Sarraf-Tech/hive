@@ -92,6 +92,15 @@ enum Commands {
         service: String,
     },
 
+    /// Execute a command in a service container
+    Exec {
+        /// Service name
+        service: String,
+        /// Command to execute
+        #[arg(trailing_var_arg = true, required = true)]
+        command: Vec<String>,
+    },
+
     /// Manage secrets
     Secret {
         #[command(subcommand)]
@@ -170,6 +179,9 @@ async fn main() -> Result<()> {
         }
         Commands::Rollback { service } => {
             commands::rollback::run(&service, &cli.addr, cli.ca_cert.as_deref()).await
+        }
+        Commands::Exec { service, command } => {
+            commands::exec::run(&service, &command, &cli.addr, cli.ca_cert.as_deref()).await
         }
         Commands::Secret { action } => match action {
             SecretAction::Set { key, value } => {

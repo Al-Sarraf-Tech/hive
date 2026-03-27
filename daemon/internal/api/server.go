@@ -1111,6 +1111,38 @@ func (s *Server) ContainerLogs(req *hivev1.ContainerLogsRequest, stream hivev1.H
 	return status.Errorf(codes.NotFound, "container not found on any node")
 }
 
+// ExecContainer runs a command in a running container.
+func (s *Server) ExecContainer(ctx context.Context, req *hivev1.ExecContainerRequest) (*hivev1.ExecContainerResponse, error) {
+	if len(req.Command) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "command is required")
+	}
+
+	// Resolve container ID from service name if needed
+	containerID := req.ContainerId
+	if containerID == "" && req.ServiceName != "" {
+		containers, err := s.container.ListContainers(ctx, map[string]string{
+			"hive.service": req.ServiceName,
+		})
+		if err == nil && len(containers) > 0 {
+			containerID = containers[0].ID
+		}
+	}
+	if containerID == "" {
+		return nil, status.Error(codes.InvalidArgument, "container_id or service_name is required")
+	}
+
+	result, err := s.container.Exec(ctx, containerID, req.Command)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "exec: %v", err)
+	}
+
+	return &hivev1.ExecContainerResponse{
+		ExitCode: int32(result.ExitCode),
+		Stdout:   result.Stdout,
+		Stderr:   result.Stderr,
+	}, nil
+}
+
 // SetSecret stores a secret.
 func (s *Server) SetSecret(_ context.Context, req *hivev1.SetSecretRequest) (*emptypb.Empty, error) {
 	if req.Key == "" {

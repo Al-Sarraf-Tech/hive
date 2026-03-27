@@ -261,6 +261,33 @@ func TestCACertFingerprint(t *testing.T) {
 	}
 }
 
+func TestCertExpiryInfo(t *testing.T) {
+	dir := t.TempDir()
+	caKey, caCert, caCertPEM, caKeyPEM, err := GenerateCA()
+	if err != nil {
+		t.Fatalf("GenerateCA: %v", err)
+	}
+	_ = SaveCA(dir, caCertPEM, caKeyPEM)
+
+	certPEM, keyPEM, err := GenerateNodeCert(caKey, caCert, "test", "127.0.0.1")
+	if err != nil {
+		t.Fatalf("GenerateNodeCert: %v", err)
+	}
+	_ = SaveNodeCert(dir, certPEM, keyPEM)
+
+	notAfter, daysLeft, err := CertExpiryInfo(dir)
+	if err != nil {
+		t.Fatalf("CertExpiryInfo: %v", err)
+	}
+	if notAfter.IsZero() {
+		t.Error("notAfter is zero")
+	}
+	// Freshly generated cert should have ~365 days left
+	if daysLeft < 360 || daysLeft > 366 {
+		t.Errorf("expected ~365 days left, got %d", daysLeft)
+	}
+}
+
 func TestHasNodeCert(t *testing.T) {
 	dir := t.TempDir()
 	if HasNodeCert(dir) {

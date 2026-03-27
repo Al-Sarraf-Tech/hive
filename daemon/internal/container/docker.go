@@ -3,6 +3,7 @@ package container
 import (
 	"context"
 	"fmt"
+	"encoding/binary"
 	"io"
 	"log/slog"
 	"runtime"
@@ -210,7 +211,73 @@ func (d *dockerProvider) Logs(ctx context.Context, id string, opts LogOpts) (io.
 }
 
 func (d *dockerProvider) Exec(ctx context.Context, id string, cmd []string) (ExecResult, error) {
-	return ExecResult{}, fmt.Errorf("exec not yet implemented")
+	exec, err := d.cli.ExecCreate(ctx, id, client.ExecCreateOptions{
+		Cmd:          cmd,
+		AttachStdout: true,
+		AttachStderr: true,
+	})
+	if err != nil {
+		return ExecResult{}, fmt.Errorf("create exec: %w", err)
+	}
+
+	resp, err := d.cli.ExecAttach(ctx, exec.ID, client.ExecAttachOptions{})
+	if err != nil {
+		return ExecResult{}, fmt.Errorf("attach exec: %w", err)
+	}
+	defer resp.Close()
+
+	// Docker exec attach returns a multiplexed stream — demux stdout/stderr
+	var stdout, stderr strings.Builder
+	if err := demuxDockerStream(resp.Reader, &stdout, &stderr); err != nil {
+		return ExecResult{}, fmt.Errorf("read exec output: %w", err)
+	}
+
+	// Get exit code
+	inspect, err := d.cli.ExecInspect(ctx, exec.ID, client.ExecInspectOptions{})
+	if err != nil {
+		return ExecResult{ExitCode: -1, Stdout: stdout.String(), Stderr: stderr.String()}, nil
+	}
+
+	return ExecResult{
+		ExitCode: inspect.ExitCode,
+		Stdout:   stdout.String(),
+		Stderr:   stderr.String(),
+	}, nil
+}
+
+// demuxDockerStream reads a Docker multiplexed stream and writes stdout/stderr
+// to the respective writers. The Docker stream protocol uses an 8-byte header
+// per frame: [stream_type(1), padding(3), size(4 big-endian)].
+// Stream types: 0=stdin, 1=stdout, 2=stderr.
+func demuxDockerStream(r io.Reader, stdout, stderr io.Writer) error {
+	header := make([]byte, 8)
+	for {
+		if _, err := io.ReadFull(r, header); err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+		streamType := header[0]
+		frameSize := binary.BigEndian.Uint32(header[4:8])
+		if frameSize == 0 {
+			continue
+		}
+
+		var dst io.Writer
+		switch streamType {
+		case 1:
+			dst = stdout
+		case 2:
+			dst = stderr
+		default:
+			dst = stdout // treat stdin/unknown as stdout
+		}
+
+		if _, err := io.CopyN(dst, r, int64(frameSize)); err != nil {
+			return err
+		}
+	}
 }
 
 func (d *dockerProvider) PullImage(ctx context.Context, ref string) error {

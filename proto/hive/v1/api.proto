@@ -33,6 +33,7 @@ service HiveAPI {
   // ─── Containers ────────────────────────────────────────────
   rpc ListContainers(ListContainersRequest) returns (ListContainersResponse);
   rpc ContainerLogs(ContainerLogsRequest) returns (stream LogEntry);
+  rpc ExecContainer(ExecContainerRequest) returns (ExecContainerResponse);
 
   // ─── Secrets ───────────────────────────────────────────────
   rpc SetSecret(SetSecretRequest) returns (google.protobuf.Empty);
@@ -149,6 +150,18 @@ message LogEntry {
   string line = 4;
   string stream = 5;  // "stdout" | "stderr"
   int64 timestamp_unix = 6;
+}
+
+message ExecContainerRequest {
+  string container_id = 1;
+  string service_name = 2;   // alternative to container_id
+  repeated string command = 3;
+}
+
+message ExecContainerResponse {
+  int32 exit_code = 1;
+  string stdout = 2;
+  string stderr = 3;
 }
 
 // ─── Secrets ─────────────────────────────────────────────────
