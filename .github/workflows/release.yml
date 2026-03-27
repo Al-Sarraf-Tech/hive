@@ -111,10 +111,8 @@ jobs:
           sha256sum * > checksums.sha256
 
       - name: Create release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "Hive ${{ github.ref_name }}" \
-            --generate-notes \
-            dist/*
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Hive ${{ github.ref_name }}
+          generate_release_notes: true
+          files: dist/*
