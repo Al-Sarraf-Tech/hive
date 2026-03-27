@@ -60,6 +60,7 @@ jobs:
     needs: [guard]
     runs-on: [self-hosted, Linux, X64, unified-all]
     strategy:
+      fail-fast: false
       matrix:
         include:
           - crate: cli
@@ -101,6 +102,9 @@ jobs:
         uses: arduino/setup-protoc@v3
         with:
           version: ${{ env.PROTOC_VERSION }}
+
+      - name: Add cargo bin to PATH
+        run: echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
 
       - name: Install cross
         if: matrix.use_cross
