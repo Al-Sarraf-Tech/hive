@@ -149,3 +149,18 @@ func (c Config) Merge(o FlagOverrides) Config {
 	}
 	return c
 }
+
+// Validate checks the configuration for invalid values.
+func (c *Config) Validate() error {
+	for name, port := range map[string]int{
+		"grpc_port":   c.Ports.GRPC,
+		"mesh_port":   c.Ports.Mesh,
+		"gossip_port": c.Ports.Gossip,
+		"http_port":   c.HTTP.Port,
+	} {
+		if port < 0 || port > 65535 {
+			return fmt.Errorf("invalid %s: %d (must be 0-65535)", name, port)
+		}
+	}
+	return nil
+}

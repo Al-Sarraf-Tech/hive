@@ -5,6 +5,7 @@ package sysinfo
 import (
 	"bufio"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -55,7 +56,7 @@ func DiskInfo(path string) (total, available uint64) {
 func CPUCount() uint32 {
 	f, err := os.Open("/proc/cpuinfo")
 	if err != nil {
-		return 0
+		return uint32(runtime.NumCPU())
 	}
 	defer f.Close()
 
@@ -65,6 +66,9 @@ func CPUCount() uint32 {
 		if strings.HasPrefix(scanner.Text(), "processor\t") {
 			count++
 		}
+	}
+	if count == 0 {
+		return uint32(runtime.NumCPU())
 	}
 	return count
 }

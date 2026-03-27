@@ -74,14 +74,7 @@ func (c *Collector) poll(ctx context.Context) {
 			continue
 		}
 		alive[ctr.ID] = true
-
-		c.mu.Lock()
-		_, exists := c.active[ctr.ID]
-		c.mu.Unlock()
-
-		if !exists {
-			c.startTail(ctx, ctr)
-		}
+		c.startTail(ctx, ctr)
 	}
 
 	// Cancel goroutines for containers that are gone
@@ -99,6 +92,11 @@ func (c *Collector) startTail(ctx context.Context, ctr container.ContainerInfo) 
 	tailCtx, cancel := context.WithCancel(ctx)
 
 	c.mu.Lock()
+	if _, exists := c.active[ctr.ID]; exists {
+		c.mu.Unlock()
+		cancel()
+		return
+	}
 	c.active[ctr.ID] = cancel
 	c.mu.Unlock()
 

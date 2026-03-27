@@ -666,10 +666,24 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 
 			// Clean up excess old containers if scaling down during update
 			if len(existingContainers) > replicas {
-				for i := replicas; i < len(existingContainers); i++ {
-					c := existingContainers[i]
-					_ = s.container.Stop(ctx, c.ID, 10)
-					_ = s.container.Remove(ctx, c.ID)
+				// Re-query to get current containers (some may already have been replaced by the rolling update)
+				currentContainers, _ := s.container.ListContainers(ctx, map[string]string{
+					"hive.managed": "true",
+					"hive.service": name,
+				})
+				if len(currentContainers) > replicas {
+					// Sort by replica index and remove highest
+					sort.Slice(currentContainers, func(a, b int) bool {
+						ra, rb := currentContainers[a].Labels["hive.replica"], currentContainers[b].Labels["hive.replica"]
+						var ia, ib int
+						fmt.Sscanf(ra, "%d", &ia)
+						fmt.Sscanf(rb, "%d", &ib)
+						return ia < ib
+					})
+					for i := replicas; i < len(currentContainers); i++ {
+						_ = s.container.Stop(ctx, currentContainers[i].ID, 10)
+						_ = s.container.Remove(ctx, currentContainers[i].ID)
+					}
 				}
 			}
 		} else {
@@ -1010,6 +1024,9 @@ func (s *Server) StopService(ctx context.Context, req *hivev1.StopServiceRequest
 		return nil, status.Error(codes.InvalidArgument, "service name is required")
 	}
 
+	s.deployMu.Lock()
+	defer s.deployMu.Unlock()
+
 	// Check placement to find which node owns this service
 	placement := s.store.GetPlacement(req.Name)
 
@@ -1054,6 +1071,7 @@ func (s *Server) StopService(ctx context.Context, req *hivev1.StopServiceRequest
 
 	// Local stop
 	containers, err := s.container.ListContainers(ctx, map[string]string{
+		"hive.managed": "true",
 		"hive.service": req.Name,
 	})
 	if err != nil {
