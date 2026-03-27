@@ -227,7 +227,8 @@ func main() {
 	healthLoop := health.NewLoop(healthChecker, containerProvider, stateStore, 30*time.Second, hiveMesh.UpdateContainerCount)
 	go healthLoop.Start(ctx)
 
-	// Start certificate renewal checker
+	// Start certificate renewal checker (log-only mode — warns about expiring certs).
+	// TODO: Wire renewFn to perform automatic CSR-based renewal via mesh peers.
 	if pki.HasNodeCert(dataDir) {
 		renewChecker := pki.NewRenewalChecker(dataDir, nil) // nil = log-only, no auto-renewal yet
 		go renewChecker.Start(ctx)

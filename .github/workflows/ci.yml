@@ -28,6 +28,12 @@ jobs:
       - name: Test
         run: cd daemon && go test -race -count=1 ./...
 
+      - name: Vulnerability check
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          cd daemon && govulncheck ./...
+        continue-on-error: true
+
       - name: Build
         run: cd daemon && CGO_ENABLED=0 go build -o ../dist/hived ./cmd/hived
 
@@ -45,6 +51,12 @@ jobs:
 
       - name: Test
         run: cd cli && cargo test
+
+      - name: Security audit
+        run: |
+          cargo install cargo-audit 2>/dev/null || true
+          cd cli && cargo audit
+        continue-on-error: true
 
       - name: Build
         run: cd cli && cargo build --release
@@ -64,6 +76,12 @@ jobs:
       - name: Test
         run: cd tui && cargo test
 
+      - name: Security audit
+        run: |
+          cargo install cargo-audit 2>/dev/null || true
+          cd tui && cargo audit
+        continue-on-error: true
+
       - name: Build
         run: cd tui && cargo build --release
 
@@ -77,6 +95,11 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: daemon/go.mod
+
+      - name: Install protoc
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq protobuf-compiler
 
       - name: Install protoc plugins
         run: |

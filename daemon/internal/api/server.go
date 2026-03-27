@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -393,6 +394,11 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 			replicas = 1
 		}
 
+		// Archive previous version for rollback BEFORE deploying (ensures rollback is possible if deploy crashes)
+		if prev, _ := s.store.Get("services", name); prev != nil {
+			_ = s.store.Put("service_history", name, prev)
+		}
+
 		// Check if this is an update to an existing service (for rolling strategy)
 		existingContainers, _ := s.container.ListContainers(ctx, map[string]string{
 			"hive.managed": "true",
@@ -442,9 +448,40 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 				containerIDs = append(containerIDs, id)
 				replicasRunning++
 
-				// Wait between replicas to allow health checks to settle
-				if i < replicas-1 {
-					slog.Debug("rolling update: waiting for health stabilization", "pause", healthPause)
+				// Verify the new replica is healthy before proceeding
+				if svcDef.Health.Type != "" && svcDef.Health.Port > 0 {
+					healthy := false
+					checkTimeout := 5 * time.Second
+					if d, parseErr := time.ParseDuration(svcDef.Health.Timeout); parseErr == nil && d > 0 {
+						checkTimeout = d
+					}
+					maxChecks := 10
+					for check := 0; check < maxChecks; check++ {
+						select {
+						case <-ctx.Done():
+							return nil, status.Errorf(codes.Canceled, "deploy cancelled during rolling update health check")
+						case <-time.After(checkTimeout):
+						}
+						result := s.health.Check(ctx, health.Config{
+							Type:    health.CheckType(svcDef.Health.Type),
+							Host:    "127.0.0.1",
+							Port:    svcDef.Health.Port,
+							Path:    svcDef.Health.Path,
+							Timeout: checkTimeout,
+						})
+						if result.Healthy {
+							healthy = true
+							slog.Info("rolling update: replica healthy", "service", name, "replica", i, "check", check+1)
+							break
+						}
+						slog.Debug("rolling update: health check pending", "service", name, "replica", i, "check", check+1, "message", result.Message)
+					}
+					if !healthy {
+						slog.Error("rolling update: replica failed health check after all retries", "service", name, "replica", i)
+						// Continue deploying remaining replicas despite health failure
+					}
+				} else if i < replicas-1 {
+					// No health check configured — just wait a fixed pause
 					select {
 					case <-ctx.Done():
 						return nil, status.Errorf(codes.Canceled, "deploy cancelled during rolling update")
@@ -514,11 +551,6 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 		// Record placement (primary node)
 		if err := s.store.SetPlacement(name, s.nodeName); err != nil {
 			slog.Error("failed to record service placement", "service", name, "error", err)
-		}
-
-		// Archive previous version for rollback before persisting new definition
-		if prev, _ := s.store.Get("services", name); prev != nil {
-			_ = s.store.Put("service_history", name, prev)
 		}
 
 		// Persist service definition
@@ -940,6 +972,17 @@ func (s *Server) ScaleService(ctx context.Context, req *hivev1.ScaleServiceReque
 			}
 		}
 	} else if desired < currentCount {
+		// Sort containers by replica index so we remove highest indices first
+		sort.Slice(containers, func(a, b int) bool {
+			ra := containers[a].Labels["hive.replica"]
+			rb := containers[b].Labels["hive.replica"]
+			// Parse as integers for proper numeric sorting
+			var ia, ib int
+			fmt.Sscanf(ra, "%d", &ia)
+			fmt.Sscanf(rb, "%d", &ib)
+			return ia < ib
+		})
+
 		// Scale down — stop excess replicas (highest indices first)
 		for i := currentCount - 1; i >= desired; i-- {
 			c := containers[i]
@@ -983,7 +1026,28 @@ func (s *Server) RollbackService(ctx context.Context, req *hivev1.RollbackServic
 
 	slog.Info("rolling back service", "name", req.Name, "image", prevDef.Image)
 
-	// Stop all current containers for this service
+	// Stop remote containers for this service
+	if s.mesh != nil {
+		for _, peer := range s.mesh.Peers() {
+			peerConn, err := s.mesh.PeerByName(peer.Info.Name)
+			if err != nil {
+				continue
+			}
+			state, err := peerConn.MeshClient().SyncState(ctx, &emptypb.Empty{})
+			if err != nil {
+				continue
+			}
+			for _, c := range state.Containers {
+				if c.ServiceName == req.Name {
+					_, _ = peerConn.MeshClient().StopContainer(ctx, &hivev1.StopContainerRequest{
+						ContainerId: c.Id, TimeoutSeconds: 10,
+					})
+				}
+			}
+		}
+	}
+
+	// Stop all current local containers for this service
 	containers, err := s.container.ListContainers(ctx, map[string]string{
 		"hive.managed": "true",
 		"hive.service": req.Name,
@@ -1025,10 +1089,18 @@ func (s *Server) RollbackService(ctx context.Context, req *hivev1.RollbackServic
 		_ = s.store.Put("service_history", req.Name, current)
 	}
 
+	replicasStarted := 0
 	for i := 0; i < replicas; i++ {
+		// TODO: Use scheduler to distribute across nodes (currently local-only)
 		if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, prevDef, env, memBytes); deployErr != nil {
 			slog.Error("failed to deploy rollback replica", "service", req.Name, "replica", i, "error", deployErr)
+		} else {
+			replicasStarted++
 		}
+	}
+
+	if replicasStarted == 0 {
+		return nil, status.Errorf(codes.Internal, "rollback failed: no replicas started for %q", req.Name)
 	}
 
 	// Persist the rolled-back definition as current
@@ -1186,6 +1258,7 @@ func (s *Server) ExecContainer(ctx context.Context, req *hivev1.ExecContainerReq
 	containerID := req.ContainerId
 	if containerID == "" && req.ServiceName != "" {
 		containers, err := s.container.ListContainers(ctx, map[string]string{
+			"hive.managed": "true",
 			"hive.service": req.ServiceName,
 		})
 		if err == nil && len(containers) > 0 {
@@ -1194,6 +1267,17 @@ func (s *Server) ExecContainer(ctx context.Context, req *hivev1.ExecContainerReq
 	}
 	if containerID == "" {
 		return nil, status.Error(codes.InvalidArgument, "container_id or service_name is required")
+	}
+
+	// Verify the target container is Hive-managed when specified by ID
+	if containerID != "" {
+		info, err := s.container.Inspect(ctx, containerID)
+		if err != nil {
+			return nil, status.Errorf(codes.NotFound, "container %q not found: %v", containerID, err)
+		}
+		if info.Labels["hive.managed"] != "true" {
+			return nil, status.Errorf(codes.PermissionDenied, "container %q is not managed by Hive", containerID)
+		}
 	}
 
 	result, err := s.container.Exec(ctx, containerID, req.Command)

@@ -15,6 +15,8 @@ import (
 	"github.com/moby/moby/client"
 )
 
+const maxExecOutput = 10 * 1024 * 1024 // 10 MB max exec output per stream
+
 // dockerProvider implements Provider using the Docker Engine API.
 // Works with Docker Desktop (Windows/Linux), Podman (via compat API), and
 // native Docker Engine. Transport is auto-detected:
@@ -211,7 +213,11 @@ func (d *dockerProvider) Logs(ctx context.Context, id string, opts LogOpts) (io.
 }
 
 func (d *dockerProvider) Exec(ctx context.Context, id string, cmd []string) (ExecResult, error) {
-	exec, err := d.cli.ExecCreate(ctx, id, client.ExecCreateOptions{
+	// Enforce a 5-minute timeout on exec operations (HIGH 1.2)
+	execCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	exec, err := d.cli.ExecCreate(execCtx, id, client.ExecCreateOptions{
 		Cmd:          cmd,
 		AttachStdout: true,
 		AttachStderr: true,
@@ -220,7 +226,7 @@ func (d *dockerProvider) Exec(ctx context.Context, id string, cmd []string) (Exe
 		return ExecResult{}, fmt.Errorf("create exec: %w", err)
 	}
 
-	resp, err := d.cli.ExecAttach(ctx, exec.ID, client.ExecAttachOptions{})
+	resp, err := d.cli.ExecAttach(execCtx, exec.ID, client.ExecAttachOptions{})
 	if err != nil {
 		return ExecResult{}, fmt.Errorf("attach exec: %w", err)
 	}
@@ -233,7 +239,7 @@ func (d *dockerProvider) Exec(ctx context.Context, id string, cmd []string) (Exe
 	}
 
 	// Get exit code
-	inspect, err := d.cli.ExecInspect(ctx, exec.ID, client.ExecInspectOptions{})
+	inspect, err := d.cli.ExecInspect(execCtx, exec.ID, client.ExecInspectOptions{})
 	if err != nil {
 		return ExecResult{ExitCode: -1, Stdout: stdout.String(), Stderr: stderr.String()}, nil
 	}
@@ -249,8 +255,10 @@ func (d *dockerProvider) Exec(ctx context.Context, id string, cmd []string) (Exe
 // to the respective writers. The Docker stream protocol uses an 8-byte header
 // per frame: [stream_type(1), padding(3), size(4 big-endian)].
 // Stream types: 0=stdin, 1=stdout, 2=stderr.
+// Output is capped at maxExecOutput bytes total to prevent OOM (HIGH 1.1).
 func demuxDockerStream(r io.Reader, stdout, stderr io.Writer) error {
 	header := make([]byte, 8)
+	var totalBytes int64
 	for {
 		if _, err := io.ReadFull(r, header); err != nil {
 			if err == io.EOF {
@@ -264,6 +272,13 @@ func demuxDockerStream(r io.Reader, stdout, stderr io.Writer) error {
 			continue
 		}
 
+		// Check if this frame would exceed the output size limit
+		if totalBytes+int64(frameSize) > maxExecOutput {
+			// Drain remaining data without storing it
+			_, _ = io.CopyN(io.Discard, r, int64(frameSize))
+			return fmt.Errorf("exec output truncated: exceeded %d byte limit", maxExecOutput)
+		}
+
 		var dst io.Writer
 		switch streamType {
 		case 1:
@@ -274,7 +289,9 @@ func demuxDockerStream(r io.Reader, stdout, stderr io.Writer) error {
 			dst = stdout // treat stdin/unknown as stdout
 		}
 
-		if _, err := io.CopyN(dst, r, int64(frameSize)); err != nil {
+		n, err := io.CopyN(dst, r, int64(frameSize))
+		totalBytes += n
+		if err != nil {
 			return err
 		}
 	}

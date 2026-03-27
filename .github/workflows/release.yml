@@ -4,6 +4,9 @@ on:
   push:
     tags: ["v*"]
 
+# NOTE: Tag pushes should only happen after CI passes on main.
+# Configure branch protection to enforce this.
+
 permissions:
   contents: write
 
