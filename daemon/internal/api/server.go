@@ -1006,6 +1006,8 @@ func (s *Server) ScaleService(ctx context.Context, req *hivev1.ScaleServiceReque
 
 // RollbackService rolls back a service to its previous version by redeploying
 // the archived service definition from service_history.
+// Note: only one previous version is retained per service. Rolling back twice
+// ping-pongs between the two most recent versions (current <-> previous).
 func (s *Server) RollbackService(ctx context.Context, req *hivev1.RollbackServiceRequest) (*emptypb.Empty, error) {
 	if req.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "service name is required")

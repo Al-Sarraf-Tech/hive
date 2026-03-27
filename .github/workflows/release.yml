@@ -46,16 +46,18 @@ jobs:
           path: dist/hived-${{ matrix.target }}*
 
   build-rust:
-    name: Build Rust (${{ matrix.crate }})
+    name: Build Rust (${{ matrix.crate }}-${{ matrix.target }})
     runs-on: [self-hosted, Linux, X64, unified-all]
     strategy:
       matrix:
-        crate: [cli, tui]
         include:
           - crate: cli
             binary: hive
+            target: linux-amd64
           - crate: tui
             binary: hivetop
+            target: linux-amd64
+        # TODO: Add linux-arm64 targets with cross-compilation toolchain
     steps:
       - uses: actions/checkout@v4
 
@@ -65,12 +67,12 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp ${{ matrix.crate }}/target/release/${{ matrix.binary }} dist/${{ matrix.binary }}-linux-amd64
+          cp ${{ matrix.crate }}/target/release/${{ matrix.binary }} dist/${{ matrix.binary }}-${{ matrix.target }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.binary }}-linux-amd64
-          path: dist/${{ matrix.binary }}-linux-amd64
+          name: ${{ matrix.binary }}-${{ matrix.target }}
+          path: dist/${{ matrix.binary }}-${{ matrix.target }}
 
   release:
     name: Create GitHub Release

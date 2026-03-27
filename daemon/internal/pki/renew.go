@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"log/slog"
+	"math"
 	"time"
 )
 
@@ -21,7 +22,12 @@ func CertExpiryInfo(dataDir string) (notAfter time.Time, daysLeft int, err error
 		return time.Time{}, 0, err
 	}
 	notAfter = x509Cert.NotAfter
-	daysLeft = int(time.Until(notAfter).Hours() / 24)
+	remaining := time.Until(notAfter)
+	if remaining <= 0 {
+		daysLeft = 0
+	} else {
+		daysLeft = int(math.Ceil(remaining.Hours() / 24))
+	}
 	return notAfter, daysLeft, nil
 }
 
@@ -48,18 +54,26 @@ func NewRenewalChecker(dataDir string, renewFn func() error) *RenewalChecker {
 
 // Start runs the renewal checker until ctx is cancelled.
 func (rc *RenewalChecker) Start(ctx context.Context) {
-	// Initial check on startup
-	rc.check()
-
-	ticker := time.NewTicker(rc.checkInterval)
-	defer ticker.Stop()
-
 	for {
+		rc.check()
+
+		// Adaptive interval: check more frequently when cert is close to expiry
+		interval := rc.checkInterval
+		if _, daysLeft, err := CertExpiryInfo(rc.dataDir); err == nil {
+			switch {
+			case daysLeft <= 1:
+				interval = 5 * time.Minute
+			case daysLeft <= 7:
+				interval = 1 * time.Hour
+			case daysLeft <= 30:
+				interval = 3 * time.Hour
+			}
+		}
+
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			rc.check()
+		case <-time.After(interval):
 		}
 	}
 }
@@ -75,24 +89,29 @@ func (rc *RenewalChecker) check() {
 		return
 	}
 
+	renewDays := int(rc.renewThreshold.Hours() / 24)
+	warnDays := renewDays * 2 // warn at 2x the renewal threshold
+
 	switch {
 	case daysLeft <= 0:
 		slog.Error("node certificate has EXPIRED",
 			"expired_at", notAfter.Format(time.RFC3339),
 		)
+		rc.tryRenew()
 	case daysLeft <= 7:
 		slog.Error("node certificate expires in less than 7 days",
 			"expires_at", notAfter.Format(time.RFC3339),
 			"days_left", daysLeft,
 		)
 		rc.tryRenew()
-	case daysLeft <= 30:
-		slog.Warn("node certificate expires soon",
+	case daysLeft <= renewDays:
+		slog.Warn("node certificate expires soon — renewal threshold reached",
 			"expires_at", notAfter.Format(time.RFC3339),
 			"days_left", daysLeft,
+			"renew_threshold_days", renewDays,
 		)
 		rc.tryRenew()
-	case daysLeft <= 60:
+	case daysLeft <= warnDays:
 		slog.Info("node certificate status",
 			"expires_at", notAfter.Format(time.RFC3339),
 			"days_left", daysLeft,

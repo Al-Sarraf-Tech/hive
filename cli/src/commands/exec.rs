@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use anyhow::Result;
 use colored::Colorize;
 
@@ -35,6 +37,8 @@ pub async fn run(
             "!".yellow(),
             resp.exit_code
         );
+        // Flush stderr before exit (process::exit skips destructors)
+        let _ = std::io::stderr().flush();
         std::process::exit(resp.exit_code);
     }
 
