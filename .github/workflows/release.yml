@@ -12,6 +12,7 @@ permissions:
 
 env:
   CARGO_HOME: /tmp/hive-ci-cargo
+  RUSTUP_HOME: /tmp/hive-ci-rustup
   GOPATH: /tmp/hive-ci-go
   PROTOC_VERSION: "29.3"
 
@@ -103,6 +104,13 @@ jobs:
         with:
           version: ${{ env.PROTOC_VERSION }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bootstrap writable rustup
+        run: |
+          if [ ! -f "$RUSTUP_HOME/settings.toml" ]; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --default-toolchain stable
+          fi
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
 
       - name: Add cargo bin to PATH
         run: echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
