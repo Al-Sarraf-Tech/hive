@@ -20,4 +20,5 @@ const (
 	NodeStatusReady    NodeStatus = 1
 	NodeStatusDraining NodeStatus = 2
 	NodeStatusDown     NodeStatus = 3
+	NodeStatusPending  NodeStatus = 4 // joined gossip but PKI not yet bootstrapped
 )

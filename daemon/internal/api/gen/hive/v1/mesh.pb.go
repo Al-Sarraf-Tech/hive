@@ -428,8 +428,9 @@ func (x *ReplicateSecretRequest) GetUpdatedAtUnix() int64 {
 
 type SignCSRRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	CsrPem        []byte                 `protobuf:"bytes,1,opt,name=csr_pem,json=csrPem,proto3" json:"csr_pem,omitempty"`       // PEM-encoded PKCS#10 CSR
-	NodeName      string                 `protobuf:"bytes,2,opt,name=node_name,json=nodeName,proto3" json:"node_name,omitempty"` // requesting node's name (for audit logging)
+	CsrPem        []byte                 `protobuf:"bytes,1,opt,name=csr_pem,json=csrPem,proto3" json:"csr_pem,omitempty"`          // PEM-encoded PKCS#10 CSR
+	NodeName      string                 `protobuf:"bytes,2,opt,name=node_name,json=nodeName,proto3" json:"node_name,omitempty"`    // requesting node's name (for audit logging)
+	JoinToken     string                 `protobuf:"bytes,3,opt,name=join_token,json=joinToken,proto3" json:"join_token,omitempty"` // cluster join token (generated at init, required for CSR signing)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -474,6 +475,13 @@ func (x *SignCSRRequest) GetCsrPem() []byte {
 func (x *SignCSRRequest) GetNodeName() string {
 	if x != nil {
 		return x.NodeName
+	}
+	return ""
+}
+
+func (x *SignCSRRequest) GetJoinToken() string {
+	if x != nil {
+		return x.JoinToken
 	}
 	return ""
 }
@@ -566,10 +574,12 @@ const file_hive_v1_mesh_proto_rawDesc = "" +
 	"\x16ReplicateSecretRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12'\n" +
 	"\x0fencrypted_value\x18\x02 \x01(\fR\x0eencryptedValue\x12&\n" +
-	"\x0fupdated_at_unix\x18\x03 \x01(\x03R\rupdatedAtUnix\"F\n" +
+	"\x0fupdated_at_unix\x18\x03 \x01(\x03R\rupdatedAtUnix\"e\n" +
 	"\x0eSignCSRRequest\x12\x17\n" +
 	"\acsr_pem\x18\x01 \x01(\fR\x06csrPem\x12\x1b\n" +
-	"\tnode_name\x18\x02 \x01(\tR\bnodeName\"U\n" +
+	"\tnode_name\x18\x02 \x01(\tR\bnodeName\x12\x1d\n" +
+	"\n" +
+	"join_token\x18\x03 \x01(\tR\tjoinToken\"U\n" +
 	"\x0fSignCSRResponse\x12\"\n" +
 	"\rnode_cert_pem\x18\x01 \x01(\fR\vnodeCertPem\x12\x1e\n" +
 	"\vca_cert_pem\x18\x02 \x01(\fR\tcaCertPem2\xe1\x03\n" +

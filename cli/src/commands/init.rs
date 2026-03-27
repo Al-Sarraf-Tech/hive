@@ -18,10 +18,13 @@ pub async fn run(name: &str, addr: &str, ca_cert: Option<&str>) -> Result<()> {
     println!("  Cluster ID: {}", resp.cluster_id.cyan());
     println!("  Node:       {}", resp.node_name.bold());
     println!("  Gossip:     {}", resp.gossip_addr.cyan());
+    if !resp.join_token.is_empty() {
+        println!("  Join Token: {}", resp.join_token.yellow());
+    }
     println!();
     println!(
         "Join other nodes with: {}",
-        format!("hive join {}", resp.gossip_addr).yellow()
+        format!("hive join --token {} {}", resp.join_token, resp.gossip_addr).yellow()
     );
     if !resp.ca_fingerprint.is_empty() {
         println!("  CA:         {}", resp.ca_fingerprint.dimmed());

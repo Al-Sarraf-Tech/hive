@@ -92,6 +92,7 @@ message ReplicateSecretRequest {
 message SignCSRRequest {
   bytes csr_pem = 1;           // PEM-encoded PKCS#10 CSR
   string node_name = 2;        // requesting node's name (for audit logging)
+  string join_token = 3;       // cluster join token (generated at init, required for CSR signing)
 }
 
 message SignCSRResponse {

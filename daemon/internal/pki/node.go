@@ -130,6 +130,11 @@ func SignCSR(caKey *ecdsa.PrivateKey, caCert *x509.Certificate, csrPEM []byte) (
 		return nil, fmt.Errorf("invalid CSR signature: %w", err)
 	}
 
+	// Validate the CSR's CommonName is not empty
+	if csr.Subject.CommonName == "" {
+		return nil, fmt.Errorf("CSR has empty CommonName")
+	}
+
 	serial, err := randomSerial()
 	if err != nil {
 		return nil, err
@@ -146,8 +151,9 @@ func SignCSR(caKey *ecdsa.PrivateKey, caCert *x509.Certificate, csrPEM []byte) (
 			x509.ExtKeyUsageServerAuth,
 			x509.ExtKeyUsageClientAuth,
 		},
-		DNSNames:    csr.DNSNames,
-		IPAddresses: csr.IPAddresses,
+		// Restrict SANs to the CSR's CommonName + localhost (defense against arbitrary SAN injection)
+		DNSNames:    []string{csr.Subject.CommonName, "localhost"},
+		IPAddresses: filterLocalIPs(csr.IPAddresses),
 	}
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, caCert, csr.PublicKey, caKey)
@@ -156,6 +162,23 @@ func SignCSR(caKey *ecdsa.PrivateKey, caCert *x509.Certificate, csrPEM []byte) (
 	}
 
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER}), nil
+}
+
+// filterLocalIPs restricts IP SANs to loopback addresses and the first non-loopback IP from the CSR.
+// Prevents a malicious CSR from including arbitrary IP addresses.
+func filterLocalIPs(requested []net.IP) []net.IP {
+	ips := []net.IP{
+		net.ParseIP("127.0.0.1"),
+		net.ParseIP("::1"),
+	}
+	// Allow at most one non-loopback IP (the node's advertise address)
+	for _, ip := range requested {
+		if !ip.IsLoopback() {
+			ips = append(ips, ip)
+			break
+		}
+	}
+	return ips
 }
 
 // LoadNodeCert loads the node certificate and private key as a tls.Certificate.

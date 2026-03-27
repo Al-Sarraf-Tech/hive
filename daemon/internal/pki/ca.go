@@ -48,7 +48,8 @@ func GenerateCA() (*ecdsa.PrivateKey, *x509.Certificate, []byte, []byte, error) 
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
-		MaxPathLen:            1,
+		MaxPathLen:            0,
+		MaxPathLenZero:        true,
 	}
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
@@ -115,6 +116,8 @@ func LoadCACertPEM(dataDir string) ([]byte, error) {
 }
 
 // SaveCA writes the CA certificate and private key to the data directory.
+// WARNING: The CA private key is stored as plaintext PEM with mode 0600.
+// TODO: Encrypt the CA key at rest using the age vault for defense-in-depth.
 func SaveCA(dataDir string, certPEM, keyPEM []byte) error {
 	dir := filepath.Join(dataDir, pkiDir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {

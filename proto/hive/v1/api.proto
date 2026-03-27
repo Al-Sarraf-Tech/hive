@@ -54,10 +54,12 @@ message InitClusterResponse {
   string node_name = 2;
   string gossip_addr = 3;
   string ca_fingerprint = 4;  // SHA-256 fingerprint of the generated cluster CA
+  string join_token = 5;       // token required for new nodes to get certificates signed
 }
 
 message JoinClusterRequest {
   repeated string seed_addrs = 1;  // gossip addresses to join
+  string join_token = 2;           // cluster join token (for PKI enrollment)
 }
 
 message JoinClusterResponse {

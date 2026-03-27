@@ -202,8 +202,9 @@ func TestTLSConfigs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MeshClientTLSConfig: %v", err)
 	}
-	if len(clientCfg.Certificates) == 0 {
-		t.Error("mesh client config should have certificates")
+	// Dynamic cert loading: GetClientCertificate callback is used instead of static Certificates
+	if clientCfg.GetClientCertificate == nil {
+		t.Error("mesh client config should have GetClientCertificate callback")
 	}
 
 	// Test API server config

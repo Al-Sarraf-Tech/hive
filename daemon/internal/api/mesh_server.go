@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"log/slog"
 	"time"
@@ -283,6 +285,28 @@ func (s *MeshServer) ReplicateSecret(_ context.Context, req *hivev1.ReplicateSec
 func (s *MeshServer) SignNodeCSR(_ context.Context, req *hivev1.SignCSRRequest) (*hivev1.SignCSRResponse, error) {
 	if len(req.CsrPem) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "csr_pem is required")
+	}
+
+	// Validate join token — required for CSR signing authentication
+	storedToken, err := s.store.Get("meta", "join_token")
+	if err != nil || storedToken == nil {
+		return nil, status.Error(codes.FailedPrecondition, "no join token configured — run 'hive init' first")
+	}
+	if req.JoinToken == "" || req.JoinToken != string(storedToken) {
+		return nil, status.Error(codes.PermissionDenied, "invalid join token")
+	}
+
+	// Validate CSR common name matches the declared node name
+	block, _ := pem.Decode(req.CsrPem)
+	if block == nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid CSR PEM")
+	}
+	csr, csrErr := x509.ParseCertificateRequest(block.Bytes)
+	if csrErr != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "parse CSR: %v", csrErr)
+	}
+	if csr.Subject.CommonName != req.NodeName {
+		return nil, status.Errorf(codes.InvalidArgument, "CSR CommonName %q does not match declared node_name %q", csr.Subject.CommonName, req.NodeName)
 	}
 
 	caKey, caCert, err := pki.LoadCA(s.dataDir)

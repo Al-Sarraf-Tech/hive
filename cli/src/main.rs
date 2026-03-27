@@ -39,6 +39,10 @@ enum Commands {
         /// Addresses of existing nodes (gossip host:port)
         #[arg(required = true)]
         addresses: Vec<String>,
+
+        /// Cluster join token (from 'hive init' output)
+        #[arg(long)]
+        token: String,
     },
 
     /// List cluster nodes
@@ -145,8 +149,8 @@ async fn main() -> Result<()> {
         Commands::Init { name } => {
             commands::init::run(&name, &cli.addr, cli.ca_cert.as_deref()).await
         }
-        Commands::Join { addresses } => {
-            commands::join::run(&addresses, &cli.addr, cli.ca_cert.as_deref()).await
+        Commands::Join { addresses, token } => {
+            commands::join::run(&addresses, &token, &cli.addr, cli.ca_cert.as_deref()).await
         }
         Commands::Nodes => commands::nodes::run(&cli.addr, cli.ca_cert.as_deref()).await,
         Commands::Deploy { file } => {

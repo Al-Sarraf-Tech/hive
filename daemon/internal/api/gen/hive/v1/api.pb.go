@@ -72,6 +72,7 @@ type InitClusterResponse struct {
 	NodeName      string                 `protobuf:"bytes,2,opt,name=node_name,json=nodeName,proto3" json:"node_name,omitempty"`
 	GossipAddr    string                 `protobuf:"bytes,3,opt,name=gossip_addr,json=gossipAddr,proto3" json:"gossip_addr,omitempty"`
 	CaFingerprint string                 `protobuf:"bytes,4,opt,name=ca_fingerprint,json=caFingerprint,proto3" json:"ca_fingerprint,omitempty"` // SHA-256 fingerprint of the generated cluster CA
+	JoinToken     string                 `protobuf:"bytes,5,opt,name=join_token,json=joinToken,proto3" json:"join_token,omitempty"`             // token required for new nodes to get certificates signed
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -134,9 +135,17 @@ func (x *InitClusterResponse) GetCaFingerprint() string {
 	return ""
 }
 
+func (x *InitClusterResponse) GetJoinToken() string {
+	if x != nil {
+		return x.JoinToken
+	}
+	return ""
+}
+
 type JoinClusterRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SeedAddrs     []string               `protobuf:"bytes,1,rep,name=seed_addrs,json=seedAddrs,proto3" json:"seed_addrs,omitempty"` // gossip addresses to join
+	JoinToken     string                 `protobuf:"bytes,2,opt,name=join_token,json=joinToken,proto3" json:"join_token,omitempty"` // cluster join token (for PKI enrollment)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -176,6 +185,13 @@ func (x *JoinClusterRequest) GetSeedAddrs() []string {
 		return x.SeedAddrs
 	}
 	return nil
+}
+
+func (x *JoinClusterRequest) GetJoinToken() string {
+	if x != nil {
+		return x.JoinToken
+	}
+	return ""
 }
 
 type JoinClusterResponse struct {
@@ -1225,17 +1241,21 @@ const file_hive_v1_api_proto_rawDesc = "" +
 	"\n" +
 	"\x11hive/v1/api.proto\x12\ahive.v1\x1a\x13hive/v1/types.proto\x1a\x1bgoogle/protobuf/empty.proto\"7\n" +
 	"\x12InitClusterRequest\x12!\n" +
-	"\fcluster_name\x18\x01 \x01(\tR\vclusterName\"\x99\x01\n" +
+	"\fcluster_name\x18\x01 \x01(\tR\vclusterName\"\xb8\x01\n" +
 	"\x13InitClusterResponse\x12\x1d\n" +
 	"\n" +
 	"cluster_id\x18\x01 \x01(\tR\tclusterId\x12\x1b\n" +
 	"\tnode_name\x18\x02 \x01(\tR\bnodeName\x12\x1f\n" +
 	"\vgossip_addr\x18\x03 \x01(\tR\n" +
 	"gossipAddr\x12%\n" +
-	"\x0eca_fingerprint\x18\x04 \x01(\tR\rcaFingerprint\"3\n" +
+	"\x0eca_fingerprint\x18\x04 \x01(\tR\rcaFingerprint\x12\x1d\n" +
+	"\n" +
+	"join_token\x18\x05 \x01(\tR\tjoinToken\"R\n" +
 	"\x12JoinClusterRequest\x12\x1d\n" +
 	"\n" +
-	"seed_addrs\x18\x01 \x03(\tR\tseedAddrs\"]\n" +
+	"seed_addrs\x18\x01 \x03(\tR\tseedAddrs\x12\x1d\n" +
+	"\n" +
+	"join_token\x18\x02 \x01(\tR\tjoinToken\"]\n" +
 	"\x13JoinClusterResponse\x12!\n" +
 	"\fnodes_joined\x18\x01 \x01(\rR\vnodesJoined\x12#\n" +
 	"\x05nodes\x18\x02 \x03(\v2\r.hive.v1.NodeR\x05nodes\"\x8d\x02\n" +

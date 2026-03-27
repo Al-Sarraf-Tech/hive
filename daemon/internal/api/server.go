@@ -3,6 +3,8 @@ package api
 
 import (
 	"context"
+	cryptorand "crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -43,7 +45,8 @@ type Server struct {
 	nodeName  string
 	dataDir   string
 	startedAt time.Time
-	deployMu  sync.Mutex // serializes DeployService to prevent concurrent races
+	deployMu        sync.Mutex // serializes DeployService to prevent concurrent races
+	certBootstrapMu sync.Mutex // serializes bootstrapNodeCert to prevent concurrent CSR signing
 }
 
 // NewServer creates a new API server.
@@ -99,6 +102,12 @@ func (s *Server) InitCluster(_ context.Context, req *hivev1.InitClusterRequest) 
 	if s.mesh == nil {
 		return nil, status.Error(codes.FailedPrecondition, "mesh not initialized")
 	}
+
+	// Prevent accidental CA regeneration — InitCluster must be called only once
+	if pki.HasCACert(s.dataDir) {
+		return nil, status.Error(codes.AlreadyExists, "cluster already initialized — CA material exists. Use a fresh data directory to re-initialize.")
+	}
+
 	clusterName := req.ClusterName
 	if clusterName == "" {
 		clusterName = "hive"
@@ -131,11 +140,22 @@ func (s *Server) InitCluster(_ context.Context, req *hivev1.InitClusterRequest) 
 		"node_cert_cn", local.Name,
 	)
 
+	// Generate a cryptographically random join token for CSR authentication
+	tokenBytes := make([]byte, 32)
+	if _, err := cryptorand.Read(tokenBytes); err != nil {
+		return nil, status.Errorf(codes.Internal, "generate join token: %v", err)
+	}
+	joinToken := hex.EncodeToString(tokenBytes)
+	if err := s.store.Put("meta", "join_token", []byte(joinToken)); err != nil {
+		return nil, status.Errorf(codes.Internal, "persist join token: %v", err)
+	}
+
 	return &hivev1.InitClusterResponse{
 		ClusterId:     clusterName,
 		NodeName:      local.Name,
 		GossipAddr:    fmt.Sprintf("%s:%d", local.AdvertiseAddr, s.mesh.GossipPort()),
 		CaFingerprint: pki.CACertFingerprint(caCert),
+		JoinToken:     joinToken,
 	}, nil
 }
 
@@ -155,8 +175,13 @@ func (s *Server) JoinCluster(_ context.Context, req *hivev1.JoinClusterRequest) 
 
 	// Bootstrap node certificate via CSR signing if not already provisioned
 	if !pki.HasNodeCert(s.dataDir) {
-		if err := s.bootstrapNodeCert(); err != nil {
-			slog.Warn("node certificate bootstrap failed — mTLS will not be active until resolved", "error", err)
+		s.certBootstrapMu.Lock()
+		defer s.certBootstrapMu.Unlock()
+		// Re-check under lock to avoid TOCTOU
+		if !pki.HasNodeCert(s.dataDir) {
+			if err := s.bootstrapNodeCert(req.JoinToken); err != nil {
+				slog.Warn("node certificate bootstrap failed — mTLS will not be active until resolved", "error", err)
+			}
 		}
 	}
 
@@ -500,6 +525,12 @@ func (s *Server) deployRemote(ctx context.Context, name string, svcDef hivefile.
 	// The resolved env is already in svcProto.Env; secrets duplicates were causing
 	// every plain env var to be sent twice (once in Env, once in Secrets).
 	secretRefs := hivefile.ExtractSecretRefs(svcDef)
+
+	// Refuse to transit secrets over unencrypted mesh connections
+	if !pki.HasNodeCert(s.dataDir) && len(secretRefs) > 0 {
+		return nil, status.Errorf(codes.FailedPrecondition, "cannot send secrets to remote node: mTLS not active — run 'hive init' and restart")
+	}
+
 	secretBytes := make(map[string][]byte, len(secretRefs))
 	for _, ref := range secretRefs {
 		// Find env keys whose original values contained this secret ref
@@ -1002,7 +1033,7 @@ func (s *Server) StreamEvents(_ *emptypb.Empty, stream hivev1.HiveAPI_StreamEven
 }
 
 // bootstrapNodeCert generates a CSR and gets it signed by a peer that holds the CA key.
-func (s *Server) bootstrapNodeCert() error {
+func (s *Server) bootstrapNodeCert(joinToken string) error {
 	if s.mesh == nil {
 		return fmt.Errorf("mesh not initialized")
 	}
@@ -1019,8 +1050,9 @@ func (s *Server) bootstrapNodeCert() error {
 			continue
 		}
 		resp, err := peerConn.MeshClient().SignNodeCSR(context.Background(), &hivev1.SignCSRRequest{
-			CsrPem:   csrPEM,
-			NodeName: local.Name,
+			CsrPem:    csrPEM,
+			NodeName:  local.Name,
+			JoinToken: joinToken,
 		})
 		if err != nil {
 			slog.Debug("peer cannot sign CSR", "peer", peer.Info.Name, "error", err)
