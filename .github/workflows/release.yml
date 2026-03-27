@@ -10,6 +10,10 @@ on:
 permissions:
   contents: write
 
+env:
+  CARGO_HOME: ${{ github.workspace }}/.cargo
+  GOPATH: ${{ github.workspace }}/.go
+
 jobs:
   guard:
     name: Repo Guard
