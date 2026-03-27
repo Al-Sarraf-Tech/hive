@@ -694,7 +694,12 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 				}
 			}
 		} else {
-			// Recreate strategy (or fresh deploy): deploy all replicas at once
+			// Recreate strategy (or fresh deploy): stop all existing containers first, then deploy
+			for _, c := range existingContainers {
+				_ = s.container.Stop(ctx, c.ID, 10)
+				_ = s.container.Remove(ctx, c.ID)
+			}
+
 			for i := 0; i < replicas; i++ {
 				targetNode := s.nodeName
 				if s.scheduler != nil {
@@ -1082,6 +1087,16 @@ func (s *Server) StopService(ctx context.Context, req *hivev1.StopServiceRequest
 		}
 		_ = s.store.Delete("services", req.Name)
 		_ = s.store.DeletePlacement(req.Name)
+
+		// Clean up cron jobs for this service
+		if s.cronSched != nil {
+			for _, j := range s.cronSched.List() {
+				if strings.HasPrefix(j.Name, req.Name+"-cron-") {
+					s.cronSched.Remove(j.Name)
+				}
+			}
+		}
+
 		slog.Info("service stopped on remote node", "name", req.Name, "node", placement)
 		return &emptypb.Empty{}, nil
 	}
@@ -1127,6 +1142,15 @@ func (s *Server) StopService(ctx context.Context, req *hivev1.StopServiceRequest
 					slog.Warn("failed to remove network", "network", string(netName), "error", err)
 				} else {
 					slog.Info("removed deployment network", "network", string(netName))
+				}
+			}
+		}
+
+		// Clean up cron jobs for this service
+		if s.cronSched != nil {
+			for _, j := range s.cronSched.List() {
+				if strings.HasPrefix(j.Name, req.Name+"-cron-") {
+					s.cronSched.Remove(j.Name)
 				}
 			}
 		}

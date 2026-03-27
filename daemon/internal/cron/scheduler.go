@@ -100,24 +100,35 @@ func (s *Scheduler) Start(ctx context.Context) {
 
 func (s *Scheduler) tick(ctx context.Context) {
 	now := time.Now()
-	s.mu.Lock()
-	var toRun []*Job
+
+	// Snapshot jobs to fire — copy fields to avoid holding lock during exec
+	type jobRun struct {
+		name    string
+		service string
+		command []string
+	}
+	var toRun []jobRun
+
+	s.mu.RLock()
 	for _, j := range s.jobs {
 		if !j.NextRun.IsZero() && !now.Before(j.NextRun) {
-			toRun = append(toRun, j)
+			toRun = append(toRun, jobRun{name: j.Name, service: j.Service, command: j.Command})
 		}
 	}
-	s.mu.Unlock()
+	s.mu.RUnlock()
 
-	for _, j := range toRun {
-		slog.Info("cron job firing", "name", j.Name, "service", j.Service, "command", j.Command)
-		if err := s.execFn(ctx, j.Service, j.Command); err != nil {
-			slog.Error("cron job failed", "name", j.Name, "error", err)
+	for _, jr := range toRun {
+		slog.Info("cron job firing", "name", jr.name, "service", jr.service, "command", jr.command)
+		if err := s.execFn(ctx, jr.service, jr.command); err != nil {
+			slog.Error("cron job failed", "name", jr.name, "error", err)
 		}
+
+		// Update under write lock — safe from concurrent List() readers
 		s.mu.Lock()
-		j.LastRun = now
-		j.NextRun = j.Schedule.Next(now)
-		slog.Debug("cron job rescheduled", "name", j.Name, "next_run", j.NextRun.Format(time.RFC3339))
+		if j, ok := s.jobs[jr.name]; ok {
+			j.LastRun = now
+			j.NextRun = j.Schedule.Next(now)
+		}
 		s.mu.Unlock()
 	}
 }

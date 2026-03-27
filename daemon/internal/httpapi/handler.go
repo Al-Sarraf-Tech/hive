@@ -38,6 +38,9 @@ func New(api hivev1.HiveAPIServer, token string, logBuffer *logs.RingBuffer) *Ha
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// CORS headers for browser console — reflect the request origin instead of wildcard
 	origin := r.Header.Get("Origin")
+	// Note: CORS reflects the request origin. When bearer token auth is enabled,
+	// cross-origin requests still require the token. For tighter control, configure
+	// a reverse proxy with a restrictive CORS policy in front of the HTTP API.
 	if origin != "" {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Credentials", "true")

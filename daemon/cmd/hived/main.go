@@ -92,6 +92,11 @@ func main() {
 	})
 	cfg = cfg.Merge(overrides)
 
+	if err := cfg.Validate(); err != nil {
+		slog.Error("invalid configuration", "error", err)
+		os.Exit(1)
+	}
+
 	// Configure logging
 	var level slog.Level
 	switch cfg.Logging.Level {
@@ -451,7 +456,7 @@ func main() {
 	// Start HTTP API server for web console
 	if cfg.HTTP.Port > 0 {
 		addr := fmt.Sprintf(":%d", cfg.HTTP.Port)
-		httpServer = httpapi.NewServer(addr, apiServer, "", logCollector.Buffer())
+		httpServer = httpapi.NewServer(addr, apiServer, cfg.HTTP.Token, logCollector.Buffer())
 		go func() {
 			slog.Info("http api server listening", "addr", addr)
 			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
