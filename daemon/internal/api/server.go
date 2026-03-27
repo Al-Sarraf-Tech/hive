@@ -378,10 +378,10 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 
 		slog.Info("deploying service", "name", name, "image", svcDef.Image, "target", targetNode)
 
-		// Resolve env with secrets
+		// Resolve env with secrets — fail if any secret references are unresolved
 		env, err := hivefile.ResolveEnv(svcDef.Env, secrets)
 		if err != nil {
-			slog.Warn("unresolved secrets in service env", "service", name, "error", err)
+			return nil, status.Errorf(codes.FailedPrecondition, "service %q: %v — set missing secrets with 'hive secret set'", name, err)
 		}
 
 		// Parse memory limit

@@ -118,7 +118,38 @@ func TestTopoSort_SelfDep(t *testing.T) {
 	}
 	_, err := TopoSort(services)
 	if err == nil {
-		t.Fatal("expected cycle error for self-dependency, got nil")
+		t.Fatal("expected error for self-dependency, got nil")
+	}
+	if !strings.Contains(err.Error(), "depends on itself") {
+		t.Errorf("expected 'depends on itself' error, got: %v", err)
+	}
+}
+
+func TestTopoSort_Empty(t *testing.T) {
+	order, err := TopoSort(map[string]ServiceDef{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(order) != 0 {
+		t.Errorf("expected empty order, got %v", order)
+	}
+}
+
+func TestTopoSort_DuplicateDeps(t *testing.T) {
+	// Duplicate dependencies should be silently deduplicated
+	services := map[string]ServiceDef{
+		"db":  {Image: "postgres"},
+		"api": {Image: "api", DependsOn: DependsDef{Services: []string{"db", "db", "db"}}},
+	}
+	order, err := TopoSort(services)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(order) != 2 {
+		t.Fatalf("expected 2 services, got %d", len(order))
+	}
+	if order[0] != "db" || order[1] != "api" {
+		t.Errorf("expected [db, api], got %v", order)
 	}
 }
 

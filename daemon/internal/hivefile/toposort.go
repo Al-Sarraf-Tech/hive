@@ -15,10 +15,18 @@ func TopoSort(services map[string]ServiceDef) ([]string, error) {
 	}
 
 	for name, svc := range services {
+		seen := make(map[string]bool, len(svc.DependsOn.Services))
 		for _, dep := range svc.DependsOn.Services {
+			if dep == name {
+				return nil, fmt.Errorf("service %q depends on itself", name)
+			}
 			if _, ok := services[dep]; !ok {
 				return nil, fmt.Errorf("service %q depends on %q, which is not defined in the hivefile", name, dep)
 			}
+			if seen[dep] {
+				continue // deduplicate
+			}
+			seen[dep] = true
 			dependents[dep] = append(dependents[dep], name)
 			inDegree[name]++
 		}
