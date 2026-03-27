@@ -348,14 +348,6 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 		}
 	}
 
-	// Warn about unimplemented depends_on (deploy order is non-deterministic)
-	for name, svcDef := range hf.Service {
-		if len(svcDef.DependsOn.Services) > 0 {
-			slog.Warn("depends_on is not yet enforced — services may start in any order",
-				"service", name, "depends_on", svcDef.DependsOn.Services)
-		}
-	}
-
 	// Validate all service names before deploying any
 	for name := range hf.Service {
 		if !validServiceName.MatchString(name) {
@@ -363,8 +355,17 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 		}
 	}
 
+	// Topologically sort services by depends_on (dependencies deploy first).
+	// Detects cycles and missing dependency references.
+	deployOrder, err := hivefile.TopoSort(hf.Service)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "dependency error: %v", err)
+	}
+	slog.Debug("deploy order resolved", "order", deployOrder)
+
 	var deployed []*hivev1.Service
-	for name, svcDef := range hf.Service {
+	for _, name := range deployOrder {
+		svcDef := hf.Service[name]
 		// Use scheduler to pick target node
 		targetNode := s.nodeName
 		if s.scheduler != nil {
