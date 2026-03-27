@@ -1,0 +1,51 @@
+name: Repo Guard
+
+on:
+  workflow_call:
+
+# Reusable workflow: ownership verification + thermal safety for amarillo.
+# Called by ci.yml and release.yml per Haskell Orchestrator Enterprise governance.
+
+jobs:
+  guard:
+    name: Repo guard + thermal check
+    runs-on: [self-hosted, Linux, X64, unified-all]
+    steps:
+      - name: Verify repository ownership
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER}"
+          if [ "$owner" != "Al-Sarraf-Tech" ]; then
+            echo "ERROR: CI must run under Al-Sarraf-Tech org, got: $owner"
+            exit 1
+          fi
+          echo "Repository ownership verified: $owner"
+
+      - name: Thermal safety check (amarillo only)
+        run: |
+          hostname="$(hostname)"
+          echo "Running on: $hostname"
+
+          # dominus and WSL2 are watercooled — skip thermal gate
+          if [ "$hostname" = "dominus" ] || [ "$hostname" = "DOMINUS" ] || grep -qi "microsoft" /proc/version 2>/dev/null; then
+            echo "Watercooled host detected ($hostname) — thermal gate skipped"
+            exit 0
+          fi
+
+          # amarillo (air-cooled): enforce 70°C hard limit
+          if command -v sensors >/dev/null 2>&1; then
+            temp=$(sensors 2>/dev/null | grep -oP '\+\K[0-9]+\.[0-9]+(?=°C)' | sort -rn | head -1)
+            if [ -n "$temp" ]; then
+              int_temp=${temp%.*}
+              echo "Current max temperature: ${temp}°C"
+              if [ "$int_temp" -ge 70 ]; then
+                echo "ABORT: Temperature ${temp}°C exceeds 70°C hard limit on $hostname"
+                exit 1
+              elif [ "$int_temp" -ge 65 ]; then
+                echo "WARNING: Temperature ${temp}°C approaching 70°C limit"
+              fi
+            else
+              echo "WARNING: Could not read temperature sensors"
+            fi
+          else
+            echo "INFO: lm-sensors not available — thermal check skipped"
+          fi

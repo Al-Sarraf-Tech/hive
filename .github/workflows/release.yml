@@ -11,8 +11,13 @@ permissions:
   contents: write
 
 jobs:
+  guard:
+    name: Repo Guard
+    uses: ./.github/workflows/repo-guard.yml
+
   build-daemon:
     name: Build daemon (${{ matrix.target }})
+    needs: [guard]
     runs-on: [self-hosted, Linux, X64, unified-all]
     strategy:
       matrix:
@@ -47,6 +52,7 @@ jobs:
 
   build-rust:
     name: Build Rust (${{ matrix.crate }}-${{ matrix.target }})
+    needs: [guard]
     runs-on: [self-hosted, Linux, X64, unified-all]
     strategy:
       matrix:
@@ -71,6 +77,18 @@ jobs:
             target: linux-arm64
             rust_target: aarch64-unknown-linux-gnu
             use_cross: true
+          - crate: cli
+            binary: hive
+            target: windows-amd64
+            rust_target: x86_64-pc-windows-gnu
+            use_cross: true
+            ext: .exe
+          - crate: tui
+            binary: hivetop
+            target: windows-amd64
+            rust_target: x86_64-pc-windows-gnu
+            use_cross: true
+            ext: .exe
     steps:
       - uses: actions/checkout@v4
 
@@ -89,12 +107,12 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp ${{ matrix.crate }}/target/${{ matrix.rust_target }}/release/${{ matrix.binary }} dist/${{ matrix.binary }}-${{ matrix.target }}
+          cp ${{ matrix.crate }}/target/${{ matrix.rust_target }}/release/${{ matrix.binary }}${{ matrix.ext }} dist/${{ matrix.binary }}-${{ matrix.target }}${{ matrix.ext }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.binary }}-${{ matrix.target }}
-          path: dist/${{ matrix.binary }}-${{ matrix.target }}
+          path: dist/${{ matrix.binary }}-${{ matrix.target }}*
 
   release:
     name: Create GitHub Release
