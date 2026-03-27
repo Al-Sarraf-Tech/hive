@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  CARGO_HOME: ${{ github.workspace }}/.cargo
-  GOPATH: ${{ github.workspace }}/.go
+  CARGO_HOME: /tmp/hive-ci-cargo
+  GOPATH: /tmp/hive-ci-go
   PROTOC_VERSION: "29.3"
 
 jobs:
