@@ -17,6 +17,7 @@ var (
 	bucketMeta              = []byte("meta")
 	bucketServicePlacements = []byte("service_placements")
 	bucketHealthState       = []byte("health_state")
+	bucketServiceHistory    = []byte("service_history")
 )
 
 // Store is a local persistent key-value store backed by bbolt.
@@ -34,7 +35,7 @@ func Open(dataDir string) (*Store, error) {
 
 	// Create buckets
 	err = db.Update(func(tx *bolt.Tx) error {
-		for _, bucket := range [][]byte{bucketServices, bucketContainers, bucketSecrets, bucketMeta, bucketServicePlacements, bucketHealthState} {
+		for _, bucket := range [][]byte{bucketServices, bucketContainers, bucketSecrets, bucketMeta, bucketServicePlacements, bucketHealthState, bucketServiceHistory} {
 			if _, err := tx.CreateBucketIfNotExists(bucket); err != nil {
 				return fmt.Errorf("create bucket %s: %w", bucket, err)
 			}

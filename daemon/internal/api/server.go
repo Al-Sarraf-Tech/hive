@@ -451,6 +451,11 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 			slog.Error("failed to record service placement", "service", name, "error", err)
 		}
 
+		// Archive previous version for rollback before persisting new definition
+		if prev, _ := s.store.Get("services", name); prev != nil {
+			_ = s.store.Put("service_history", name, prev)
+		}
+
 		// Persist service definition
 		svcJSON, err := json.Marshal(svcDef)
 		if err != nil {
@@ -891,13 +896,83 @@ func (s *Server) ScaleService(ctx context.Context, req *hivev1.ScaleServiceReque
 	return &emptypb.Empty{}, nil
 }
 
-// RollbackService rolls back to the previous version.
-func (s *Server) RollbackService(_ context.Context, req *hivev1.RollbackServiceRequest) (*emptypb.Empty, error) {
+// RollbackService rolls back a service to its previous version by redeploying
+// the archived service definition from service_history.
+func (s *Server) RollbackService(ctx context.Context, req *hivev1.RollbackServiceRequest) (*emptypb.Empty, error) {
 	if req.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "service name is required")
 	}
-	slog.Info("rollback requested", "service", req.Name)
-	return nil, status.Error(codes.Unimplemented, "rollback is not yet implemented")
+
+	s.deployMu.Lock()
+	defer s.deployMu.Unlock()
+
+	// Load previous version from history
+	prevData, err := s.store.Get("service_history", req.Name)
+	if err != nil || prevData == nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "no previous version of %q to roll back to", req.Name)
+	}
+	var prevDef hivefile.ServiceDef
+	if err := json.Unmarshal(prevData, &prevDef); err != nil {
+		return nil, status.Errorf(codes.Internal, "corrupt service history for %q: %v", req.Name, err)
+	}
+
+	slog.Info("rolling back service", "name", req.Name, "image", prevDef.Image)
+
+	// Stop all current containers for this service
+	containers, err := s.container.ListContainers(ctx, map[string]string{
+		"hive.managed": "true",
+		"hive.service": req.Name,
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "list containers: %v", err)
+	}
+	for _, c := range containers {
+		_ = s.container.Stop(ctx, c.ID, 10)
+		_ = s.container.Remove(ctx, c.ID)
+	}
+
+	// Resolve secrets for the previous definition
+	secretKeys, _ := s.store.List("secrets")
+	secrets := make(map[string]string, len(secretKeys))
+	for _, key := range secretKeys {
+		val, getErr := s.store.Get("secrets", key)
+		if getErr == nil && val != nil && s.vault != nil {
+			if decrypted, decErr := s.vault.Decrypt(val); decErr == nil {
+				secrets[key] = string(decrypted)
+			}
+		}
+	}
+	env, _ := hivefile.ResolveEnv(prevDef.Env, secrets)
+	memBytes, _ := hivefile.ParseMemory(prevDef.Resources.Memory)
+
+	if pullErr := s.container.PullImage(ctx, prevDef.Image); pullErr != nil {
+		slog.Warn("image pull failed (may be local)", "image", prevDef.Image, "error", pullErr)
+	}
+
+	// Redeploy all replicas with the previous definition
+	replicas := prevDef.Replicas
+	if replicas <= 0 {
+		replicas = 1
+	}
+
+	// Archive current version as history (swap)
+	if current, _ := s.store.Get("services", req.Name); current != nil {
+		_ = s.store.Put("service_history", req.Name, current)
+	}
+
+	for i := 0; i < replicas; i++ {
+		if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, prevDef, env, memBytes); deployErr != nil {
+			slog.Error("failed to deploy rollback replica", "service", req.Name, "replica", i, "error", deployErr)
+		}
+	}
+
+	// Persist the rolled-back definition as current
+	if svcJSON, marshalErr := json.Marshal(prevDef); marshalErr == nil {
+		_ = s.store.Put("services", req.Name, svcJSON)
+	}
+
+	slog.Info("service rolled back", "name", req.Name, "image", prevDef.Image, "replicas", replicas)
+	return &emptypb.Empty{}, nil
 }
 
 // ListContainers lists containers, optionally filtered.
