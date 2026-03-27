@@ -13,6 +13,7 @@ permissions:
 env:
   CARGO_HOME: ${{ github.workspace }}/.cargo
   GOPATH: ${{ github.workspace }}/.go
+  PROTOC_VERSION: "29.3"
 
 jobs:
   guard:
@@ -95,6 +96,11 @@ jobs:
             ext: .exe
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: ${{ env.PROTOC_VERSION }}
 
       - name: Install cross
         if: matrix.use_cross

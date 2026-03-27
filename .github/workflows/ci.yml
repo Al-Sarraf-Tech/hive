@@ -13,6 +13,7 @@ concurrency:
 env:
   CARGO_HOME: ${{ github.workspace }}/.cargo
   GOPATH: ${{ github.workspace }}/.go
+  PROTOC_VERSION: "29.3"
 
 jobs:
   guard:
@@ -53,6 +54,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: ${{ env.PROTOC_VERSION }}
+
       - name: Format check
         run: cd cli && cargo fmt --check
 
@@ -77,6 +83,11 @@ jobs:
     runs-on: [self-hosted, Linux, X64, unified-all]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: ${{ env.PROTOC_VERSION }}
 
       - name: Format check
         run: cd tui && cargo fmt --check
@@ -109,14 +120,9 @@ jobs:
           go-version-file: daemon/go.mod
 
       - name: Install protoc
-        run: |
-          if command -v apt-get >/dev/null 2>&1; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq protobuf-compiler
-          elif command -v dnf >/dev/null 2>&1; then
-            sudo dnf install -y -q protobuf-compiler
-          else
-            echo "ERROR: No supported package manager found" && exit 1
-          fi
+        uses: arduino/setup-protoc@v3
+        with:
+          version: ${{ env.PROTOC_VERSION }}
 
       - name: Install protoc plugins
         run: |
