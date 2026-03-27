@@ -12,7 +12,6 @@ permissions:
 
 env:
   CARGO_HOME: /tmp/hive-ci-cargo
-  RUSTUP_HOME: /tmp/hive-ci-rustup
   GOPATH: /tmp/hive-ci-go
   PROTOC_VERSION: "29.3"
 
@@ -68,34 +67,10 @@ jobs:
             binary: hive
             target: linux-amd64
             rust_target: x86_64-unknown-linux-gnu
-            use_cross: false
           - crate: tui
             binary: hivetop
             target: linux-amd64
             rust_target: x86_64-unknown-linux-gnu
-            use_cross: false
-          - crate: cli
-            binary: hive
-            target: linux-arm64
-            rust_target: aarch64-unknown-linux-gnu
-            use_cross: true
-          - crate: tui
-            binary: hivetop
-            target: linux-arm64
-            rust_target: aarch64-unknown-linux-gnu
-            use_cross: true
-          - crate: cli
-            binary: hive
-            target: windows-amd64
-            rust_target: x86_64-pc-windows-gnu
-            use_cross: true
-            ext: .exe
-          - crate: tui
-            binary: hivetop
-            target: windows-amd64
-            rust_target: x86_64-pc-windows-gnu
-            use_cross: true
-            ext: .exe
     steps:
       - uses: actions/checkout@v4
 
@@ -105,32 +80,13 @@ jobs:
           version: ${{ env.PROTOC_VERSION }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Bootstrap writable rustup
-        run: |
-          if [ ! -f "$RUSTUP_HOME/settings.toml" ]; then
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --default-toolchain stable
-          fi
-          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
-
-      - name: Add cargo bin to PATH
-        run: echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
-
-      - name: Install cross
-        if: matrix.use_cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
-
-      - name: Build release (native)
-        if: ${{ !matrix.use_cross }}
+      - name: Build release
         run: cd ${{ matrix.crate }} && cargo build --release --target ${{ matrix.rust_target }}
-
-      - name: Build release (cross)
-        if: matrix.use_cross
-        run: cd ${{ matrix.crate }} && cross build --release --target ${{ matrix.rust_target }}
 
       - name: Package
         run: |
           mkdir -p dist
-          cp ${{ matrix.crate }}/target/${{ matrix.rust_target }}/release/${{ matrix.binary }}${{ matrix.ext }} dist/${{ matrix.binary }}-${{ matrix.target }}${{ matrix.ext }}
+          cp ${{ matrix.crate }}/target/${{ matrix.rust_target }}/release/${{ matrix.binary }} dist/${{ matrix.binary }}-${{ matrix.target }}
 
       - uses: actions/upload-artifact@v4
         with:
