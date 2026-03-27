@@ -21,12 +21,7 @@ pub enum Tab {
 
 impl Tab {
     fn titles() -> Vec<&'static str> {
-        vec![
-            "[1] Overview",
-            "[2] Nodes",
-            "[3] Services",
-            "[4] Logs (wip)",
-        ]
+        vec!["[1] Overview", "[2] Nodes", "[3] Services", "[4] Logs"]
     }
 
     fn index(self) -> usize {
@@ -51,6 +46,7 @@ pub struct App {
     pub tab: Tab,
     pub addr: String,
     pub data: Option<ClusterData>,
+    pub logs: Vec<String>,
 }
 
 impl App {
@@ -59,11 +55,20 @@ impl App {
             tab: Tab::Overview,
             addr,
             data: None,
+            logs: Vec::new(),
         }
     }
 
     pub fn update_data(&mut self, data: ClusterData) {
         self.data = Some(data);
+    }
+
+    pub fn push_log(&mut self, line: String) {
+        self.logs.push(line);
+        // Keep at most 500 lines
+        if self.logs.len() > 500 {
+            self.logs.remove(0);
+        }
     }
 
     pub fn draw(&self, frame: &mut Frame) {
@@ -122,7 +127,7 @@ impl App {
             Tab::Overview => views::overview::draw(frame, area, &self.data),
             Tab::Nodes => views::nodes::draw(frame, area, &self.data),
             Tab::Services => views::services::draw(frame, area, &self.data),
-            Tab::Logs => views::logs::draw(frame, area),
+            Tab::Logs => views::logs::draw(frame, area, &self.logs),
         }
     }
 

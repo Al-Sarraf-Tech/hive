@@ -89,10 +89,45 @@ async fn run(
         }
     });
 
+    // Channel for event stream
+    let (log_tx, mut log_rx) = mpsc::channel::<String>(64);
+
+    // Spawn event stream listener
+    let stream_addr = addr.to_string();
+    let stream_ca = ca_cert.map(|s| s.to_string());
+    tokio::spawn(async move {
+        loop {
+            // Connect and stream events — reconnect on failure
+            if let Ok(mut client) = grpc_client::connect(&stream_addr, stream_ca.as_deref()).await {
+                if let Ok(response) = client.stream_events(()).await {
+                    let mut stream = response.into_inner();
+                    while let Ok(Some(event)) = stream.message().await {
+                        let line = format!(
+                            "{} [{}] {}",
+                            chrono_timestamp(),
+                            event.source,
+                            event.message
+                        );
+                        if log_tx.send(line).await.is_err() {
+                            return; // receiver dropped
+                        }
+                    }
+                }
+            }
+            // Wait before reconnecting
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    });
+
     loop {
         // Process any pending data updates
         while let Ok(data) = rx.try_recv() {
             app.update_data(data);
+        }
+
+        // Process any pending log events
+        while let Ok(line) = log_rx.try_recv() {
+            app.push_log(line);
         }
 
         terminal.draw(|frame| app.draw(frame))?;
@@ -183,4 +218,15 @@ async fn fetch_cluster_data(
         nodes: nodes_res.ok().map(|r| r.into_inner()),
         error: None,
     }
+}
+
+fn chrono_timestamp() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs();
+    let hours = (secs % 86400) / 3600;
+    let mins = (secs % 3600) / 60;
+    let secs = secs % 60;
+    format!("{hours:02}:{mins:02}:{secs:02}")
 }

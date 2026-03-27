@@ -3,24 +3,57 @@ use ratatui::{
     layout::Rect,
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Paragraph, Wrap},
 };
 
-pub fn draw(frame: &mut Frame, area: Rect) {
-    let block = Block::default().borders(Borders::ALL).title(" Logs ");
+pub fn draw(frame: &mut Frame, area: Rect, logs: &[String]) {
+    let block = Block::default().borders(Borders::ALL).title(" Events ");
 
-    let text = Paragraph::new(vec![
-        Line::from(Span::styled(
-            "  No log streams active.",
-            Style::default().fg(Color::DarkGray),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            "  Deploy a service and logs will stream here.",
-            Style::default().fg(Color::DarkGray),
-        )),
-    ])
-    .block(block);
+    if logs.is_empty() {
+        let text = Paragraph::new(vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "  Waiting for cluster events...",
+                Style::default().fg(Color::DarkGray),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "  Events will appear here as nodes join/leave and services deploy.",
+                Style::default().fg(Color::DarkGray),
+            )),
+        ])
+        .block(block);
+        frame.render_widget(text, area);
+        return;
+    }
+
+    // Show latest logs, auto-scrolled to bottom
+    let lines: Vec<Line> = logs
+        .iter()
+        .map(|l| {
+            let style = if l.contains("ERR") || l.contains("failed") || l.contains("FAILED") {
+                Style::default().fg(Color::Red)
+            } else if l.contains("WARN") || l.contains("degraded") {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default().fg(Color::Gray)
+            };
+            Line::from(Span::styled(l.as_str(), style))
+        })
+        .collect();
+
+    // Auto-scroll: show the last N lines that fit in the area
+    let visible_height = area.height.saturating_sub(2) as usize; // subtract borders
+    let scroll = if lines.len() > visible_height {
+        (lines.len() - visible_height) as u16
+    } else {
+        0
+    };
+
+    let text = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false })
+        .scroll((scroll, 0));
 
     frame.render_widget(text, area);
 }
