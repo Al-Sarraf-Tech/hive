@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	hivev1 "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1"
@@ -144,6 +145,17 @@ func (s *MeshServer) StartContainer(ctx context.Context, req *hivev1.StartContai
 	svc := req.Service
 	slog.Info("remote deploy request", "service", svc.Name, "image", svc.Image, "from_node", "remote")
 
+	// Parse base service name and replica index from the name (format: "name-N")
+	baseName := svc.Name
+	replicaLabel := "0"
+	if idx := strings.LastIndex(svc.Name, "-"); idx > 0 {
+		suffix := svc.Name[idx+1:]
+		if _, err := fmt.Sscanf(suffix, "%d", new(int)); err == nil {
+			baseName = svc.Name[:idx]
+			replicaLabel = suffix
+		}
+	}
+
 	// Build env from the service proto + injected secrets
 	env := make(map[string]string)
 	for k, v := range svc.Env {
@@ -174,7 +186,8 @@ func (s *MeshServer) StartContainer(ctx context.Context, req *hivev1.StartContai
 		Ports: svc.Ports,
 		Labels: map[string]string{
 			"hive.managed": "true",
-			"hive.service": svc.Name,
+			"hive.service": baseName,
+			"hive.replica": replicaLabel,
 		},
 		MemoryMB:      memMB,
 		CPUs:          cpus,
@@ -186,9 +199,10 @@ func (s *MeshServer) StartContainer(ctx context.Context, req *hivev1.StartContai
 		slog.Warn("image pull failed (may be local)", "image", svc.Image, "error", err)
 	}
 
-	// Stop and remove existing container if any (graceful shutdown)
+	// Stop and remove existing container for this specific replica only
 	existing, _ := s.container.ListContainers(ctx, map[string]string{
-		"hive.service": svc.Name,
+		"hive.service": baseName,
+		"hive.replica": replicaLabel,
 	})
 	for _, c := range existing {
 		_ = s.container.Stop(ctx, c.ID, 10)
@@ -207,15 +221,15 @@ func (s *MeshServer) StartContainer(ctx context.Context, req *hivev1.StartContai
 		RestartPolicy: "on-failure",
 	}
 	if svcJSON, err := json.Marshal(svcDef); err == nil {
-		_ = s.store.Put("services", svc.Name, svcJSON)
+		_ = s.store.Put("services", baseName, svcJSON)
 	}
 
-	slog.Info("container started via remote deploy", "service", svc.Name, "id", id)
+	slog.Info("container started via remote deploy", "service", baseName, "replica", replicaLabel, "id", id)
 
 	return &hivev1.StartContainerResponse{
 		Container: &hivev1.Container{
 			Id:          id,
-			ServiceName: svc.Name,
+			ServiceName: baseName,
 			NodeId:      s.nodeName,
 			Image:       svc.Image,
 			Status:      hivev1.ContainerStatus_CONTAINER_STATUS_RUNNING,

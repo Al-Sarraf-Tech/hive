@@ -366,17 +366,6 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 	var deployed []*hivev1.Service
 	for _, name := range deployOrder {
 		svcDef := hf.Service[name]
-		// Use scheduler to pick target node
-		targetNode := s.nodeName
-		if s.scheduler != nil {
-			candidate, err := s.scheduler.Pick(svcDef)
-			if err != nil {
-				return nil, status.Errorf(codes.FailedPrecondition, "no node available for %q: %v", name, err)
-			}
-			targetNode = candidate.NodeName
-		}
-
-		slog.Info("deploying service", "name", name, "image", svcDef.Image, "target", targetNode)
 
 		// Resolve env with secrets — fail if any secret references are unresolved
 		env, err := hivefile.ResolveEnv(svcDef.Env, secrets)
@@ -393,24 +382,73 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 			return nil, status.Errorf(codes.InvalidArgument, "service %q: memory %q is below 1MB minimum", name, svcDef.Resources.Memory)
 		}
 
-		var svcProto *hivev1.Service
-
-		if targetNode == s.nodeName {
-			// Deploy locally
-			svcProto, err = s.deployLocal(ctx, name, svcDef, env, memBytes)
-		} else {
-			// Deploy remotely via MeshServer.StartContainer
-			svcProto, err = s.deployRemote(ctx, name, svcDef, env, targetNode)
-		}
-		if err != nil {
-			return nil, err
+		// Pull image once before deploying replicas
+		if err := s.container.PullImage(ctx, svcDef.Image); err != nil {
+			slog.Warn("image pull failed (may be local)", "image", svcDef.Image, "error", err)
 		}
 
+		// Deploy N replicas, distributing across nodes via scheduler
+		replicas := svcDef.Replicas
+		if replicas <= 0 {
+			replicas = 1
+		}
+
+		var containerIDs []string
+		replicasRunning := uint32(0)
+
+		for i := 0; i < replicas; i++ {
+			// Pick a target node for each replica independently (spread)
+			targetNode := s.nodeName
+			if s.scheduler != nil {
+				candidate, err := s.scheduler.Pick(svcDef)
+				if err != nil {
+					return nil, status.Errorf(codes.FailedPrecondition, "no node available for %q replica %d: %v", name, i, err)
+				}
+				targetNode = candidate.NodeName
+			}
+
+			slog.Info("deploying replica", "service", name, "replica", i, "target", targetNode)
+
+			var id string
+			if targetNode == s.nodeName {
+				id, err = s.deployLocalReplica(ctx, name, i, svcDef, env, memBytes)
+			} else {
+				id, err = s.deployRemoteReplica(ctx, name, i, svcDef, env, targetNode)
+			}
+			if err != nil {
+				slog.Error("failed to deploy replica", "service", name, "replica", i, "error", err)
+				continue // deploy remaining replicas even if one fails
+			}
+
+			containerIDs = append(containerIDs, id)
+			replicasRunning++
+		}
+
+		if replicasRunning == 0 {
+			return nil, status.Errorf(codes.Internal, "all replicas of %q failed to deploy", name)
+		}
+
+		svcStatus := hivev1.ServiceStatus_SERVICE_STATUS_RUNNING
+		if replicasRunning < uint32(replicas) {
+			svcStatus = hivev1.ServiceStatus_SERVICE_STATUS_DEGRADED
+		}
+
+		svcProto := &hivev1.Service{
+			Id:              containerIDs[0], // primary container ID
+			Name:            name,
+			Image:           svcDef.Image,
+			ReplicasDesired: uint32(replicas),
+			ReplicasRunning: replicasRunning,
+			Status:          svcStatus,
+			NodeConstraint:  svcDef.Node,
+			CreatedAt:       timestamppb.Now(),
+			UpdatedAt:       timestamppb.Now(),
+		}
 		deployed = append(deployed, svcProto)
 
-		// Record placement
-		if err := s.store.SetPlacement(name, targetNode); err != nil {
-			slog.Error("failed to record service placement", "service", name, "node", targetNode, "error", err)
+		// Record placement (primary node)
+		if err := s.store.SetPlacement(name, s.nodeName); err != nil {
+			slog.Error("failed to record service placement", "service", name, "error", err)
 		}
 
 		// Persist service definition
@@ -421,16 +459,16 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 			slog.Error("failed to persist service definition", "service", name, "error", err)
 		}
 
-		slog.Info("service deployed", "name", name, "node", targetNode, "id", svcProto.Id)
+		slog.Info("service deployed", "name", name, "replicas", fmt.Sprintf("%d/%d", replicasRunning, replicas))
 	}
 
 	return &hivev1.DeployServiceResponse{Services: deployed}, nil
 }
 
-// deployLocal creates a container on this node.
-func (s *Server) deployLocal(ctx context.Context, name string, svcDef hivefile.ServiceDef, env map[string]string, memBytes int64) (*hivev1.Service, error) {
+// deployLocalReplica creates a single replica container on this node.
+func (s *Server) deployLocalReplica(ctx context.Context, name string, replicaIndex int, svcDef hivefile.ServiceDef, env map[string]string, memBytes int64) (string, error) {
 	memMB := memBytes / (1024 * 1024)
-	containerName := fmt.Sprintf("hive-%s", name)
+	containerName := fmt.Sprintf("hive-%s-%d", name, replicaIndex)
 	spec := container.ContainerSpec{
 		Name:  containerName,
 		Image: svcDef.Image,
@@ -439,6 +477,7 @@ func (s *Server) deployLocal(ctx context.Context, name string, svcDef hivefile.S
 		Labels: map[string]string{
 			"hive.managed": "true",
 			"hive.service": name,
+			"hive.replica": fmt.Sprintf("%d", replicaIndex),
 		},
 		MemoryMB:      memMB,
 		CPUs:          svcDef.Resources.CPUs,
@@ -467,13 +506,11 @@ func (s *Server) deployLocal(ctx context.Context, name string, svcDef hivefile.S
 		spec.Volumes = append(spec.Volumes, vs)
 	}
 
-	// Pull image
-	if err := s.container.PullImage(ctx, svcDef.Image); err != nil {
-		slog.Warn("image pull failed (may be local)", "image", svcDef.Image, "error", err)
-	}
-
-	// Remove existing container
-	existing, _ := s.container.ListContainers(ctx, map[string]string{"hive.service": name})
+	// Remove existing container with this name (redeploy)
+	existing, _ := s.container.ListContainers(ctx, map[string]string{
+		"hive.service": name,
+		"hive.replica":  fmt.Sprintf("%d", replicaIndex),
+	})
 	for _, c := range existing {
 		_ = s.container.Stop(ctx, c.ID, 10)
 		_ = s.container.Remove(ctx, c.ID)
@@ -481,36 +518,29 @@ func (s *Server) deployLocal(ctx context.Context, name string, svcDef hivefile.S
 
 	id, err := s.container.CreateAndStart(ctx, spec)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "deploy %q locally: %v", name, err)
+		return "", status.Errorf(codes.Internal, "deploy %q replica %d locally: %v", name, replicaIndex, err)
 	}
 
-	return &hivev1.Service{
-		Id:              id,
-		Name:            name,
-		Image:           svcDef.Image,
-		ReplicasDesired: uint32(svcDef.Replicas),
-		ReplicasRunning: 1,
-		Status:          hivev1.ServiceStatus_SERVICE_STATUS_RUNNING,
-		NodeConstraint:  s.nodeName,
-		CreatedAt:       timestamppb.Now(),
-		UpdatedAt:       timestamppb.Now(),
-	}, nil
+	slog.Info("replica started", "service", name, "replica", replicaIndex, "id", container.ShortID(id))
+	return id, nil
 }
 
-// deployRemote sends a StartContainer RPC to a remote node via the mesh.
-func (s *Server) deployRemote(ctx context.Context, name string, svcDef hivefile.ServiceDef, env map[string]string, targetNode string) (*hivev1.Service, error) {
+// deployRemoteReplica sends a StartContainer RPC for a single replica to a remote node.
+func (s *Server) deployRemoteReplica(ctx context.Context, name string, replicaIndex int, svcDef hivefile.ServiceDef, env map[string]string, targetNode string) (string, error) {
 	if s.mesh == nil {
-		return nil, status.Error(codes.FailedPrecondition, "mesh not initialized for remote deploy")
+		return "", status.Error(codes.FailedPrecondition, "mesh not initialized for remote deploy")
 	}
 
 	peer, err := s.mesh.PeerByName(targetNode)
 	if err != nil {
-		return nil, status.Errorf(codes.NotFound, "target node %q not reachable: %v", targetNode, err)
+		return "", status.Errorf(codes.NotFound, "target node %q not reachable: %v", targetNode, err)
 	}
 
-	// Build the Service proto for the remote call
+	// Use indexed name so the remote node creates a uniquely named container
+	replicaName := fmt.Sprintf("%s-%d", name, replicaIndex)
+
 	svcProto := &hivev1.Service{
-		Name:  name,
+		Name:  replicaName,
 		Image: svcDef.Image,
 		Env:   env,
 		Ports: svcDef.Ports,
@@ -522,19 +552,16 @@ func (s *Server) deployRemote(ctx context.Context, name string, svcDef hivefile.
 		}
 	}
 
-	// Send secrets separately — only env vars that originated from secret references.
-	// The resolved env is already in svcProto.Env; secrets duplicates were causing
-	// every plain env var to be sent twice (once in Env, once in Secrets).
+	// Send secrets separately
 	secretRefs := hivefile.ExtractSecretRefs(svcDef)
 
 	// Refuse to transit secrets over unencrypted mesh connections
 	if !pki.HasNodeCert(s.dataDir) && len(secretRefs) > 0 {
-		return nil, status.Errorf(codes.FailedPrecondition, "cannot send secrets to remote node: mTLS not active — run 'hive init' and restart")
+		return "", status.Errorf(codes.FailedPrecondition, "cannot send secrets to remote node: mTLS not active")
 	}
 
 	secretBytes := make(map[string][]byte, len(secretRefs))
 	for _, ref := range secretRefs {
-		// Find env keys whose original values contained this secret ref
 		for k, origVal := range svcDef.Env {
 			if strings.Contains(origVal, "secret:"+ref) {
 				secretBytes[k] = []byte(env[k])
@@ -547,20 +574,11 @@ func (s *Server) deployRemote(ctx context.Context, name string, svcDef hivefile.
 		Secrets: secretBytes,
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "deploy %q on %s: %v", name, targetNode, err)
+		return "", status.Errorf(codes.Internal, "deploy %q replica %d on %s: %v", name, replicaIndex, targetNode, err)
 	}
 
-	return &hivev1.Service{
-		Id:              resp.Container.Id,
-		Name:            name,
-		Image:           svcDef.Image,
-		ReplicasDesired: uint32(svcDef.Replicas),
-		ReplicasRunning: 1,
-		Status:          hivev1.ServiceStatus_SERVICE_STATUS_RUNNING,
-		NodeConstraint:  targetNode,
-		CreatedAt:       timestamppb.Now(),
-		UpdatedAt:       timestamppb.Now(),
-	}, nil
+	slog.Info("remote replica started", "service", name, "replica", replicaIndex, "node", targetNode, "id", container.ShortID(resp.Container.Id))
+	return resp.Container.Id, nil
 }
 
 // ListServices returns all deployed services.
