@@ -92,6 +92,12 @@ enum Commands {
         service: String,
     },
 
+    /// Restart all replicas of a service (rolling restart)
+    Restart {
+        /// Service name
+        service: String,
+    },
+
     /// Execute a command in a service container
     Exec {
         /// Service name
@@ -179,6 +185,9 @@ async fn main() -> Result<()> {
         }
         Commands::Rollback { service } => {
             commands::rollback::run(&service, &cli.addr, cli.ca_cert.as_deref()).await
+        }
+        Commands::Restart { service } => {
+            commands::restart::run(&service, &cli.addr, cli.ca_cert.as_deref()).await
         }
         Commands::Exec { service, command } => {
             commands::exec::run(&service, &command, &cli.addr, cli.ca_cert.as_deref()).await

@@ -6,6 +6,7 @@ pub mod join;
 pub mod logs;
 pub mod nodes;
 pub mod ps;
+pub mod restart;
 pub mod rollback;
 pub mod scale;
 pub mod secret;

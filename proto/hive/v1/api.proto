@@ -29,6 +29,7 @@ service HiveAPI {
   rpc StopService(StopServiceRequest) returns (google.protobuf.Empty);
   rpc ScaleService(ScaleServiceRequest) returns (google.protobuf.Empty);
   rpc RollbackService(RollbackServiceRequest) returns (google.protobuf.Empty);
+  rpc RestartService(RestartServiceRequest) returns (google.protobuf.Empty);
 
   // ─── Containers ────────────────────────────────────────────
   rpc ListContainers(ListContainersRequest) returns (ListContainersResponse);
@@ -122,6 +123,10 @@ message ScaleServiceRequest {
 }
 
 message RollbackServiceRequest {
+  string name = 1;
+}
+
+message RestartServiceRequest {
   string name = 1;
 }
 

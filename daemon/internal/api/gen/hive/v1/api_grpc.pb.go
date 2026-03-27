@@ -32,6 +32,7 @@ const (
 	HiveAPI_StopService_FullMethodName      = "/hive.v1.HiveAPI/StopService"
 	HiveAPI_ScaleService_FullMethodName     = "/hive.v1.HiveAPI/ScaleService"
 	HiveAPI_RollbackService_FullMethodName  = "/hive.v1.HiveAPI/RollbackService"
+	HiveAPI_RestartService_FullMethodName   = "/hive.v1.HiveAPI/RestartService"
 	HiveAPI_ListContainers_FullMethodName   = "/hive.v1.HiveAPI/ListContainers"
 	HiveAPI_ContainerLogs_FullMethodName    = "/hive.v1.HiveAPI/ContainerLogs"
 	HiveAPI_ExecContainer_FullMethodName    = "/hive.v1.HiveAPI/ExecContainer"
@@ -63,6 +64,7 @@ type HiveAPIClient interface {
 	StopService(ctx context.Context, in *StopServiceRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ScaleService(ctx context.Context, in *ScaleServiceRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	RollbackService(ctx context.Context, in *RollbackServiceRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	RestartService(ctx context.Context, in *RestartServiceRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// ─── Containers ────────────────────────────────────────────
 	ListContainers(ctx context.Context, in *ListContainersRequest, opts ...grpc.CallOption) (*ListContainersResponse, error)
 	ContainerLogs(ctx context.Context, in *ContainerLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LogEntry], error)
@@ -203,6 +205,16 @@ func (c *hiveAPIClient) RollbackService(ctx context.Context, in *RollbackService
 	return out, nil
 }
 
+func (c *hiveAPIClient) RestartService(ctx context.Context, in *RestartServiceRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, HiveAPI_RestartService_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *hiveAPIClient) ListContainers(ctx context.Context, in *ListContainersRequest, opts ...grpc.CallOption) (*ListContainersResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListContainersResponse)
@@ -313,6 +325,7 @@ type HiveAPIServer interface {
 	StopService(context.Context, *StopServiceRequest) (*emptypb.Empty, error)
 	ScaleService(context.Context, *ScaleServiceRequest) (*emptypb.Empty, error)
 	RollbackService(context.Context, *RollbackServiceRequest) (*emptypb.Empty, error)
+	RestartService(context.Context, *RestartServiceRequest) (*emptypb.Empty, error)
 	// ─── Containers ────────────────────────────────────────────
 	ListContainers(context.Context, *ListContainersRequest) (*ListContainersResponse, error)
 	ContainerLogs(*ContainerLogsRequest, grpc.ServerStreamingServer[LogEntry]) error
@@ -368,6 +381,9 @@ func (UnimplementedHiveAPIServer) ScaleService(context.Context, *ScaleServiceReq
 }
 func (UnimplementedHiveAPIServer) RollbackService(context.Context, *RollbackServiceRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method RollbackService not implemented")
+}
+func (UnimplementedHiveAPIServer) RestartService(context.Context, *RestartServiceRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method RestartService not implemented")
 }
 func (UnimplementedHiveAPIServer) ListContainers(context.Context, *ListContainersRequest) (*ListContainersResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListContainers not implemented")
@@ -627,6 +643,24 @@ func _HiveAPI_RollbackService_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HiveAPI_RestartService_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RestartServiceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).RestartService(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_RestartService_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).RestartService(ctx, req.(*RestartServiceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _HiveAPI_ListContainers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListContainersRequest)
 	if err := dec(in); err != nil {
@@ -793,6 +827,10 @@ var HiveAPI_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RollbackService",
 			Handler:    _HiveAPI_RollbackService_Handler,
+		},
+		{
+			MethodName: "RestartService",
+			Handler:    _HiveAPI_RestartService_Handler,
 		},
 		{
 			MethodName: "ListContainers",

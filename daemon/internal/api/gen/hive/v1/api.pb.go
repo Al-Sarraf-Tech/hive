@@ -779,6 +779,50 @@ func (x *RollbackServiceRequest) GetName() string {
 	return ""
 }
 
+type RestartServiceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RestartServiceRequest) Reset() {
+	*x = RestartServiceRequest{}
+	mi := &file_hive_v1_api_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RestartServiceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RestartServiceRequest) ProtoMessage() {}
+
+func (x *RestartServiceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_hive_v1_api_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RestartServiceRequest.ProtoReflect.Descriptor instead.
+func (*RestartServiceRequest) Descriptor() ([]byte, []int) {
+	return file_hive_v1_api_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *RestartServiceRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
 type ListContainersRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServiceName   string                 `protobuf:"bytes,1,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"` // filter by service, empty = all
@@ -789,7 +833,7 @@ type ListContainersRequest struct {
 
 func (x *ListContainersRequest) Reset() {
 	*x = ListContainersRequest{}
-	mi := &file_hive_v1_api_proto_msgTypes[15]
+	mi := &file_hive_v1_api_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -801,7 +845,7 @@ func (x *ListContainersRequest) String() string {
 func (*ListContainersRequest) ProtoMessage() {}
 
 func (x *ListContainersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hive_v1_api_proto_msgTypes[15]
+	mi := &file_hive_v1_api_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -814,7 +858,7 @@ func (x *ListContainersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListContainersRequest.ProtoReflect.Descriptor instead.
 func (*ListContainersRequest) Descriptor() ([]byte, []int) {
-	return file_hive_v1_api_proto_rawDescGZIP(), []int{15}
+	return file_hive_v1_api_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ListContainersRequest) GetServiceName() string {
@@ -840,7 +884,7 @@ type ListContainersResponse struct {
 
 func (x *ListContainersResponse) Reset() {
 	*x = ListContainersResponse{}
-	mi := &file_hive_v1_api_proto_msgTypes[16]
+	mi := &file_hive_v1_api_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -852,7 +896,7 @@ func (x *ListContainersResponse) String() string {
 func (*ListContainersResponse) ProtoMessage() {}
 
 func (x *ListContainersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hive_v1_api_proto_msgTypes[16]
+	mi := &file_hive_v1_api_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -865,7 +909,7 @@ func (x *ListContainersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListContainersResponse.ProtoReflect.Descriptor instead.
 func (*ListContainersResponse) Descriptor() ([]byte, []int) {
-	return file_hive_v1_api_proto_rawDescGZIP(), []int{16}
+	return file_hive_v1_api_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ListContainersResponse) GetContainers() []*Container {
@@ -887,7 +931,7 @@ type ContainerLogsRequest struct {
 
 func (x *ContainerLogsRequest) Reset() {
 	*x = ContainerLogsRequest{}
-	mi := &file_hive_v1_api_proto_msgTypes[17]
+	mi := &file_hive_v1_api_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -899,7 +943,7 @@ func (x *ContainerLogsRequest) String() string {
 func (*ContainerLogsRequest) ProtoMessage() {}
 
 func (x *ContainerLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hive_v1_api_proto_msgTypes[17]
+	mi := &file_hive_v1_api_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -912,7 +956,7 @@ func (x *ContainerLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContainerLogsRequest.ProtoReflect.Descriptor instead.
 func (*ContainerLogsRequest) Descriptor() ([]byte, []int) {
-	return file_hive_v1_api_proto_rawDescGZIP(), []int{17}
+	return file_hive_v1_api_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ContainerLogsRequest) GetContainerId() string {
@@ -957,7 +1001,7 @@ type LogEntry struct {
 
 func (x *LogEntry) Reset() {
 	*x = LogEntry{}
-	mi := &file_hive_v1_api_proto_msgTypes[18]
+	mi := &file_hive_v1_api_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -969,7 +1013,7 @@ func (x *LogEntry) String() string {
 func (*LogEntry) ProtoMessage() {}
 
 func (x *LogEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_hive_v1_api_proto_msgTypes[18]
+	mi := &file_hive_v1_api_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -982,7 +1026,7 @@ func (x *LogEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogEntry.ProtoReflect.Descriptor instead.
 func (*LogEntry) Descriptor() ([]byte, []int) {
-	return file_hive_v1_api_proto_rawDescGZIP(), []int{18}
+	return file_hive_v1_api_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *LogEntry) GetContainerId() string {
@@ -1038,7 +1082,7 @@ type ExecContainerRequest struct {
 
 func (x *ExecContainerRequest) Reset() {
 	*x = ExecContainerRequest{}
-	mi := &file_hive_v1_api_proto_msgTypes[19]
+	mi := &file_hive_v1_api_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1050,7 +1094,7 @@ func (x *ExecContainerRequest) String() string {
 func (*ExecContainerRequest) ProtoMessage() {}
 
 func (x *ExecContainerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hive_v1_api_proto_msgTypes[19]
+	mi := &file_hive_v1_api_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1063,7 +1107,7 @@ func (x *ExecContainerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecContainerRequest.ProtoReflect.Descriptor instead.
 func (*ExecContainerRequest) Descriptor() ([]byte, []int) {
-	return file_hive_v1_api_proto_rawDescGZIP(), []int{19}
+	return file_hive_v1_api_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ExecContainerRequest) GetContainerId() string {
@@ -1098,7 +1142,7 @@ type ExecContainerResponse struct {
 
 func (x *ExecContainerResponse) Reset() {
 	*x = ExecContainerResponse{}
-	mi := &file_hive_v1_api_proto_msgTypes[20]
+	mi := &file_hive_v1_api_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1110,7 +1154,7 @@ func (x *ExecContainerResponse) String() string {
 func (*ExecContainerResponse) ProtoMessage() {}
 
 func (x *ExecContainerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hive_v1_api_proto_msgTypes[20]
+	mi := &file_hive_v1_api_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1123,7 +1167,7 @@ func (x *ExecContainerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecContainerResponse.ProtoReflect.Descriptor instead.
 func (*ExecContainerResponse) Descriptor() ([]byte, []int) {
-	return file_hive_v1_api_proto_rawDescGZIP(), []int{20}
+	return file_hive_v1_api_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ExecContainerResponse) GetExitCode() int32 {
@@ -1157,7 +1201,7 @@ type SetSecretRequest struct {
 
 func (x *SetSecretRequest) Reset() {
 	*x = SetSecretRequest{}
-	mi := &file_hive_v1_api_proto_msgTypes[21]
+	mi := &file_hive_v1_api_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1169,7 +1213,7 @@ func (x *SetSecretRequest) String() string {
 func (*SetSecretRequest) ProtoMessage() {}
 
 func (x *SetSecretRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hive_v1_api_proto_msgTypes[21]
+	mi := &file_hive_v1_api_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1182,7 +1226,7 @@ func (x *SetSecretRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetSecretRequest.ProtoReflect.Descriptor instead.
 func (*SetSecretRequest) Descriptor() ([]byte, []int) {
-	return file_hive_v1_api_proto_rawDescGZIP(), []int{21}
+	return file_hive_v1_api_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *SetSecretRequest) GetKey() string {
@@ -1208,7 +1252,7 @@ type ListSecretsResponse struct {
 
 func (x *ListSecretsResponse) Reset() {
 	*x = ListSecretsResponse{}
-	mi := &file_hive_v1_api_proto_msgTypes[22]
+	mi := &file_hive_v1_api_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1220,7 +1264,7 @@ func (x *ListSecretsResponse) String() string {
 func (*ListSecretsResponse) ProtoMessage() {}
 
 func (x *ListSecretsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hive_v1_api_proto_msgTypes[22]
+	mi := &file_hive_v1_api_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1233,7 +1277,7 @@ func (x *ListSecretsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSecretsResponse.ProtoReflect.Descriptor instead.
 func (*ListSecretsResponse) Descriptor() ([]byte, []int) {
-	return file_hive_v1_api_proto_rawDescGZIP(), []int{22}
+	return file_hive_v1_api_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ListSecretsResponse) GetSecrets() []*SecretMeta {
@@ -1255,7 +1299,7 @@ type SecretMeta struct {
 
 func (x *SecretMeta) Reset() {
 	*x = SecretMeta{}
-	mi := &file_hive_v1_api_proto_msgTypes[23]
+	mi := &file_hive_v1_api_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1267,7 +1311,7 @@ func (x *SecretMeta) String() string {
 func (*SecretMeta) ProtoMessage() {}
 
 func (x *SecretMeta) ProtoReflect() protoreflect.Message {
-	mi := &file_hive_v1_api_proto_msgTypes[23]
+	mi := &file_hive_v1_api_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1280,7 +1324,7 @@ func (x *SecretMeta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretMeta.ProtoReflect.Descriptor instead.
 func (*SecretMeta) Descriptor() ([]byte, []int) {
-	return file_hive_v1_api_proto_rawDescGZIP(), []int{23}
+	return file_hive_v1_api_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *SecretMeta) GetKey() string {
@@ -1320,7 +1364,7 @@ type DeleteSecretRequest struct {
 
 func (x *DeleteSecretRequest) Reset() {
 	*x = DeleteSecretRequest{}
-	mi := &file_hive_v1_api_proto_msgTypes[24]
+	mi := &file_hive_v1_api_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1332,7 +1376,7 @@ func (x *DeleteSecretRequest) String() string {
 func (*DeleteSecretRequest) ProtoMessage() {}
 
 func (x *DeleteSecretRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hive_v1_api_proto_msgTypes[24]
+	mi := &file_hive_v1_api_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1345,7 +1389,7 @@ func (x *DeleteSecretRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSecretRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSecretRequest) Descriptor() ([]byte, []int) {
-	return file_hive_v1_api_proto_rawDescGZIP(), []int{24}
+	return file_hive_v1_api_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *DeleteSecretRequest) GetKey() string {
@@ -1407,6 +1451,8 @@ const file_hive_v1_api_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1a\n" +
 	"\breplicas\x18\x02 \x01(\rR\breplicas\",\n" +
 	"\x16RollbackServiceRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"+\n" +
+	"\x15RestartServiceRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"W\n" +
 	"\x15ListContainersRequest\x12!\n" +
 	"\fservice_name\x18\x01 \x01(\tR\vserviceName\x12\x1b\n" +
@@ -1449,7 +1495,7 @@ const file_hive_v1_api_proto_rawDesc = "" +
 	"\x0fcreated_at_unix\x18\x03 \x01(\x03R\rcreatedAtUnix\x12&\n" +
 	"\x0fupdated_at_unix\x18\x04 \x01(\x03R\rupdatedAtUnix\"'\n" +
 	"\x13DeleteSecretRequest\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key2\xb3\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key2\xfd\n" +
 	"\n" +
 	"\aHiveAPI\x12J\n" +
 	"\x10GetClusterStatus\x12\x16.google.protobuf.Empty\x1a\x1e.hive.v1.ClusterStatusResponse\x12H\n" +
@@ -1464,7 +1510,8 @@ const file_hive_v1_api_proto_rawDesc = "" +
 	"GetService\x12\x1a.hive.v1.GetServiceRequest\x1a\x10.hive.v1.Service\x12B\n" +
 	"\vStopService\x12\x1b.hive.v1.StopServiceRequest\x1a\x16.google.protobuf.Empty\x12D\n" +
 	"\fScaleService\x12\x1c.hive.v1.ScaleServiceRequest\x1a\x16.google.protobuf.Empty\x12J\n" +
-	"\x0fRollbackService\x12\x1f.hive.v1.RollbackServiceRequest\x1a\x16.google.protobuf.Empty\x12Q\n" +
+	"\x0fRollbackService\x12\x1f.hive.v1.RollbackServiceRequest\x1a\x16.google.protobuf.Empty\x12H\n" +
+	"\x0eRestartService\x12\x1e.hive.v1.RestartServiceRequest\x1a\x16.google.protobuf.Empty\x12Q\n" +
 	"\x0eListContainers\x12\x1e.hive.v1.ListContainersRequest\x1a\x1f.hive.v1.ListContainersResponse\x12C\n" +
 	"\rContainerLogs\x12\x1d.hive.v1.ContainerLogsRequest\x1a\x11.hive.v1.LogEntry0\x01\x12N\n" +
 	"\rExecContainer\x12\x1d.hive.v1.ExecContainerRequest\x1a\x1e.hive.v1.ExecContainerResponse\x12>\n" +
@@ -1485,7 +1532,7 @@ func file_hive_v1_api_proto_rawDescGZIP() []byte {
 	return file_hive_v1_api_proto_rawDescData
 }
 
-var file_hive_v1_api_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_hive_v1_api_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_hive_v1_api_proto_goTypes = []any{
 	(*InitClusterRequest)(nil),     // 0: hive.v1.InitClusterRequest
 	(*InitClusterResponse)(nil),    // 1: hive.v1.InitClusterResponse
@@ -1502,71 +1549,74 @@ var file_hive_v1_api_proto_goTypes = []any{
 	(*StopServiceRequest)(nil),     // 12: hive.v1.StopServiceRequest
 	(*ScaleServiceRequest)(nil),    // 13: hive.v1.ScaleServiceRequest
 	(*RollbackServiceRequest)(nil), // 14: hive.v1.RollbackServiceRequest
-	(*ListContainersRequest)(nil),  // 15: hive.v1.ListContainersRequest
-	(*ListContainersResponse)(nil), // 16: hive.v1.ListContainersResponse
-	(*ContainerLogsRequest)(nil),   // 17: hive.v1.ContainerLogsRequest
-	(*LogEntry)(nil),               // 18: hive.v1.LogEntry
-	(*ExecContainerRequest)(nil),   // 19: hive.v1.ExecContainerRequest
-	(*ExecContainerResponse)(nil),  // 20: hive.v1.ExecContainerResponse
-	(*SetSecretRequest)(nil),       // 21: hive.v1.SetSecretRequest
-	(*ListSecretsResponse)(nil),    // 22: hive.v1.ListSecretsResponse
-	(*SecretMeta)(nil),             // 23: hive.v1.SecretMeta
-	(*DeleteSecretRequest)(nil),    // 24: hive.v1.DeleteSecretRequest
-	(*Node)(nil),                   // 25: hive.v1.Node
-	(*Event)(nil),                  // 26: hive.v1.Event
-	(*Service)(nil),                // 27: hive.v1.Service
-	(*Container)(nil),              // 28: hive.v1.Container
-	(*emptypb.Empty)(nil),          // 29: google.protobuf.Empty
+	(*RestartServiceRequest)(nil),  // 15: hive.v1.RestartServiceRequest
+	(*ListContainersRequest)(nil),  // 16: hive.v1.ListContainersRequest
+	(*ListContainersResponse)(nil), // 17: hive.v1.ListContainersResponse
+	(*ContainerLogsRequest)(nil),   // 18: hive.v1.ContainerLogsRequest
+	(*LogEntry)(nil),               // 19: hive.v1.LogEntry
+	(*ExecContainerRequest)(nil),   // 20: hive.v1.ExecContainerRequest
+	(*ExecContainerResponse)(nil),  // 21: hive.v1.ExecContainerResponse
+	(*SetSecretRequest)(nil),       // 22: hive.v1.SetSecretRequest
+	(*ListSecretsResponse)(nil),    // 23: hive.v1.ListSecretsResponse
+	(*SecretMeta)(nil),             // 24: hive.v1.SecretMeta
+	(*DeleteSecretRequest)(nil),    // 25: hive.v1.DeleteSecretRequest
+	(*Node)(nil),                   // 26: hive.v1.Node
+	(*Event)(nil),                  // 27: hive.v1.Event
+	(*Service)(nil),                // 28: hive.v1.Service
+	(*Container)(nil),              // 29: hive.v1.Container
+	(*emptypb.Empty)(nil),          // 30: google.protobuf.Empty
 }
 var file_hive_v1_api_proto_depIdxs = []int32{
-	25, // 0: hive.v1.JoinClusterResponse.nodes:type_name -> hive.v1.Node
-	25, // 1: hive.v1.ClusterStatusResponse.nodes:type_name -> hive.v1.Node
-	26, // 2: hive.v1.ClusterStatusResponse.recent_events:type_name -> hive.v1.Event
-	25, // 3: hive.v1.ListNodesResponse.nodes:type_name -> hive.v1.Node
-	27, // 4: hive.v1.DeployServiceResponse.services:type_name -> hive.v1.Service
-	27, // 5: hive.v1.ListServicesResponse.services:type_name -> hive.v1.Service
-	28, // 6: hive.v1.ListContainersResponse.containers:type_name -> hive.v1.Container
-	23, // 7: hive.v1.ListSecretsResponse.secrets:type_name -> hive.v1.SecretMeta
-	29, // 8: hive.v1.HiveAPI.GetClusterStatus:input_type -> google.protobuf.Empty
+	26, // 0: hive.v1.JoinClusterResponse.nodes:type_name -> hive.v1.Node
+	26, // 1: hive.v1.ClusterStatusResponse.nodes:type_name -> hive.v1.Node
+	27, // 2: hive.v1.ClusterStatusResponse.recent_events:type_name -> hive.v1.Event
+	26, // 3: hive.v1.ListNodesResponse.nodes:type_name -> hive.v1.Node
+	28, // 4: hive.v1.DeployServiceResponse.services:type_name -> hive.v1.Service
+	28, // 5: hive.v1.ListServicesResponse.services:type_name -> hive.v1.Service
+	29, // 6: hive.v1.ListContainersResponse.containers:type_name -> hive.v1.Container
+	24, // 7: hive.v1.ListSecretsResponse.secrets:type_name -> hive.v1.SecretMeta
+	30, // 8: hive.v1.HiveAPI.GetClusterStatus:input_type -> google.protobuf.Empty
 	0,  // 9: hive.v1.HiveAPI.InitCluster:input_type -> hive.v1.InitClusterRequest
 	2,  // 10: hive.v1.HiveAPI.JoinCluster:input_type -> hive.v1.JoinClusterRequest
-	29, // 11: hive.v1.HiveAPI.ListNodes:input_type -> google.protobuf.Empty
+	30, // 11: hive.v1.HiveAPI.ListNodes:input_type -> google.protobuf.Empty
 	6,  // 12: hive.v1.HiveAPI.GetNode:input_type -> hive.v1.GetNodeRequest
 	7,  // 13: hive.v1.HiveAPI.DrainNode:input_type -> hive.v1.DrainNodeRequest
 	8,  // 14: hive.v1.HiveAPI.DeployService:input_type -> hive.v1.DeployServiceRequest
-	29, // 15: hive.v1.HiveAPI.ListServices:input_type -> google.protobuf.Empty
+	30, // 15: hive.v1.HiveAPI.ListServices:input_type -> google.protobuf.Empty
 	11, // 16: hive.v1.HiveAPI.GetService:input_type -> hive.v1.GetServiceRequest
 	12, // 17: hive.v1.HiveAPI.StopService:input_type -> hive.v1.StopServiceRequest
 	13, // 18: hive.v1.HiveAPI.ScaleService:input_type -> hive.v1.ScaleServiceRequest
 	14, // 19: hive.v1.HiveAPI.RollbackService:input_type -> hive.v1.RollbackServiceRequest
-	15, // 20: hive.v1.HiveAPI.ListContainers:input_type -> hive.v1.ListContainersRequest
-	17, // 21: hive.v1.HiveAPI.ContainerLogs:input_type -> hive.v1.ContainerLogsRequest
-	19, // 22: hive.v1.HiveAPI.ExecContainer:input_type -> hive.v1.ExecContainerRequest
-	21, // 23: hive.v1.HiveAPI.SetSecret:input_type -> hive.v1.SetSecretRequest
-	29, // 24: hive.v1.HiveAPI.ListSecrets:input_type -> google.protobuf.Empty
-	24, // 25: hive.v1.HiveAPI.DeleteSecret:input_type -> hive.v1.DeleteSecretRequest
-	29, // 26: hive.v1.HiveAPI.StreamEvents:input_type -> google.protobuf.Empty
-	4,  // 27: hive.v1.HiveAPI.GetClusterStatus:output_type -> hive.v1.ClusterStatusResponse
-	1,  // 28: hive.v1.HiveAPI.InitCluster:output_type -> hive.v1.InitClusterResponse
-	3,  // 29: hive.v1.HiveAPI.JoinCluster:output_type -> hive.v1.JoinClusterResponse
-	5,  // 30: hive.v1.HiveAPI.ListNodes:output_type -> hive.v1.ListNodesResponse
-	25, // 31: hive.v1.HiveAPI.GetNode:output_type -> hive.v1.Node
-	29, // 32: hive.v1.HiveAPI.DrainNode:output_type -> google.protobuf.Empty
-	9,  // 33: hive.v1.HiveAPI.DeployService:output_type -> hive.v1.DeployServiceResponse
-	10, // 34: hive.v1.HiveAPI.ListServices:output_type -> hive.v1.ListServicesResponse
-	27, // 35: hive.v1.HiveAPI.GetService:output_type -> hive.v1.Service
-	29, // 36: hive.v1.HiveAPI.StopService:output_type -> google.protobuf.Empty
-	29, // 37: hive.v1.HiveAPI.ScaleService:output_type -> google.protobuf.Empty
-	29, // 38: hive.v1.HiveAPI.RollbackService:output_type -> google.protobuf.Empty
-	16, // 39: hive.v1.HiveAPI.ListContainers:output_type -> hive.v1.ListContainersResponse
-	18, // 40: hive.v1.HiveAPI.ContainerLogs:output_type -> hive.v1.LogEntry
-	20, // 41: hive.v1.HiveAPI.ExecContainer:output_type -> hive.v1.ExecContainerResponse
-	29, // 42: hive.v1.HiveAPI.SetSecret:output_type -> google.protobuf.Empty
-	22, // 43: hive.v1.HiveAPI.ListSecrets:output_type -> hive.v1.ListSecretsResponse
-	29, // 44: hive.v1.HiveAPI.DeleteSecret:output_type -> google.protobuf.Empty
-	26, // 45: hive.v1.HiveAPI.StreamEvents:output_type -> hive.v1.Event
-	27, // [27:46] is the sub-list for method output_type
-	8,  // [8:27] is the sub-list for method input_type
+	15, // 20: hive.v1.HiveAPI.RestartService:input_type -> hive.v1.RestartServiceRequest
+	16, // 21: hive.v1.HiveAPI.ListContainers:input_type -> hive.v1.ListContainersRequest
+	18, // 22: hive.v1.HiveAPI.ContainerLogs:input_type -> hive.v1.ContainerLogsRequest
+	20, // 23: hive.v1.HiveAPI.ExecContainer:input_type -> hive.v1.ExecContainerRequest
+	22, // 24: hive.v1.HiveAPI.SetSecret:input_type -> hive.v1.SetSecretRequest
+	30, // 25: hive.v1.HiveAPI.ListSecrets:input_type -> google.protobuf.Empty
+	25, // 26: hive.v1.HiveAPI.DeleteSecret:input_type -> hive.v1.DeleteSecretRequest
+	30, // 27: hive.v1.HiveAPI.StreamEvents:input_type -> google.protobuf.Empty
+	4,  // 28: hive.v1.HiveAPI.GetClusterStatus:output_type -> hive.v1.ClusterStatusResponse
+	1,  // 29: hive.v1.HiveAPI.InitCluster:output_type -> hive.v1.InitClusterResponse
+	3,  // 30: hive.v1.HiveAPI.JoinCluster:output_type -> hive.v1.JoinClusterResponse
+	5,  // 31: hive.v1.HiveAPI.ListNodes:output_type -> hive.v1.ListNodesResponse
+	26, // 32: hive.v1.HiveAPI.GetNode:output_type -> hive.v1.Node
+	30, // 33: hive.v1.HiveAPI.DrainNode:output_type -> google.protobuf.Empty
+	9,  // 34: hive.v1.HiveAPI.DeployService:output_type -> hive.v1.DeployServiceResponse
+	10, // 35: hive.v1.HiveAPI.ListServices:output_type -> hive.v1.ListServicesResponse
+	28, // 36: hive.v1.HiveAPI.GetService:output_type -> hive.v1.Service
+	30, // 37: hive.v1.HiveAPI.StopService:output_type -> google.protobuf.Empty
+	30, // 38: hive.v1.HiveAPI.ScaleService:output_type -> google.protobuf.Empty
+	30, // 39: hive.v1.HiveAPI.RollbackService:output_type -> google.protobuf.Empty
+	30, // 40: hive.v1.HiveAPI.RestartService:output_type -> google.protobuf.Empty
+	17, // 41: hive.v1.HiveAPI.ListContainers:output_type -> hive.v1.ListContainersResponse
+	19, // 42: hive.v1.HiveAPI.ContainerLogs:output_type -> hive.v1.LogEntry
+	21, // 43: hive.v1.HiveAPI.ExecContainer:output_type -> hive.v1.ExecContainerResponse
+	30, // 44: hive.v1.HiveAPI.SetSecret:output_type -> google.protobuf.Empty
+	23, // 45: hive.v1.HiveAPI.ListSecrets:output_type -> hive.v1.ListSecretsResponse
+	30, // 46: hive.v1.HiveAPI.DeleteSecret:output_type -> google.protobuf.Empty
+	27, // 47: hive.v1.HiveAPI.StreamEvents:output_type -> hive.v1.Event
+	28, // [28:48] is the sub-list for method output_type
+	8,  // [8:28] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
 	8,  // [8:8] is the sub-list for extension extendee
 	0,  // [0:8] is the sub-list for field type_name
@@ -1584,7 +1634,7 @@ func file_hive_v1_api_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hive_v1_api_proto_rawDesc), len(file_hive_v1_api_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   25,
+			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

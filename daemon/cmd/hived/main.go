@@ -16,6 +16,7 @@ import (
 	"github.com/jalsarraf0/hive/daemon/internal/api"
 	"github.com/jalsarraf0/hive/daemon/internal/container"
 	"github.com/jalsarraf0/hive/daemon/internal/health"
+	"github.com/jalsarraf0/hive/daemon/internal/httpapi"
 	"github.com/jalsarraf0/hive/daemon/internal/mesh"
 	"github.com/jalsarraf0/hive/daemon/internal/pki"
 	"github.com/jalsarraf0/hive/daemon/internal/platform"
@@ -39,6 +40,7 @@ func main() {
 	flagGossipKey := flag.String("gossip-key", "", "AES-256 key (hex-encoded) for gossip encryption")
 	flagMeshPort := flag.Int("mesh-port", 7948, "gRPC port for daemon-to-daemon mesh (mTLS)")
 	flagTLS := flag.Bool("tls", false, "Enable TLS for CLI/TUI connections")
+	flagHTTPPort := flag.Int("http-port", 7949, "HTTP API port for web console (0 to disable)")
 	flag.Parse()
 
 	// Configure logging
@@ -274,6 +276,7 @@ func main() {
 		"node", nodeName,
 		"api", fmt.Sprintf(":%d", grpcPort),
 		"mesh", fmt.Sprintf(":%d", *flagMeshPort),
+		"http", fmt.Sprintf(":%d", *flagHTTPPort),
 		"gossip", fmt.Sprintf(":%d", gossipPort),
 		"tls", tlsEnabled,
 		"members", hiveMesh.Members(),
@@ -288,6 +291,16 @@ func main() {
 			}
 		}
 	}()
+
+	// Start HTTP API server for web console
+	if *flagHTTPPort > 0 {
+		go func() {
+			addr := fmt.Sprintf(":%d", *flagHTTPPort)
+			if err := httpapi.ListenAndServe(addr, apiServer); err != nil && ctx.Err() == nil {
+				slog.Error("http api server failed", "error", err)
+			}
+		}()
+	}
 
 	if err := apiGRPC.Serve(lis); err != nil {
 		if ctx.Err() != nil {

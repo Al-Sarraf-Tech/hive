@@ -24,6 +24,7 @@ import (
 	"github.com/jalsarraf0/hive/daemon/internal/scheduler"
 	"github.com/jalsarraf0/hive/daemon/internal/secrets"
 	"github.com/jalsarraf0/hive/daemon/internal/store"
+	"github.com/jalsarraf0/hive/daemon/internal/sysinfo"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -82,6 +83,10 @@ func (s *Server) makeNode() *hivev1.Node {
 		advertiseAddr = local.AdvertiseAddr
 		grpcPort = uint32(local.GRPCPort)
 	}
+
+	memTotal, memAvail := sysinfo.MemInfo()
+	diskTotal, diskAvail := sysinfo.DiskInfo(s.dataDir)
+
 	return &hivev1.Node{
 		Id:            s.nodeName,
 		Name:          s.nodeName,
@@ -93,6 +98,13 @@ func (s *Server) makeNode() *hivev1.Node {
 			Arch:             runtime.GOARCH,
 			Platforms:        s.container.DetectCapabilities(),
 			ContainerRuntime: s.container.RuntimeName(),
+		},
+		Resources: &hivev1.NodeResources{
+			CpuCores:             sysinfo.CPUCount(),
+			MemoryTotalBytes:     memTotal,
+			MemoryAvailableBytes: memAvail,
+			DiskTotalBytes:       diskTotal,
+			DiskAvailableBytes:   diskAvail,
 		},
 		JoinedAt: timestamppb.New(s.startedAt),
 	}
@@ -1111,6 +1123,61 @@ func (s *Server) RollbackService(ctx context.Context, req *hivev1.RollbackServic
 	}
 
 	slog.Info("service rolled back", "name", req.Name, "image", prevDef.Image, "replicas", replicas)
+	return &emptypb.Empty{}, nil
+}
+
+// RestartService performs a rolling restart of all replicas without changing the service definition.
+func (s *Server) RestartService(ctx context.Context, req *hivev1.RestartServiceRequest) (*emptypb.Empty, error) {
+	if req.Name == "" {
+		return nil, status.Error(codes.InvalidArgument, "service name is required")
+	}
+
+	s.deployMu.Lock()
+	defer s.deployMu.Unlock()
+
+	// Load service definition
+	svcData, err := s.store.Get("services", req.Name)
+	if err != nil || svcData == nil {
+		return nil, status.Errorf(codes.NotFound, "service %q not found", req.Name)
+	}
+	var svcDef hivefile.ServiceDef
+	if err := json.Unmarshal(svcData, &svcDef); err != nil {
+		return nil, status.Errorf(codes.Internal, "corrupt service definition for %q: %v", req.Name, err)
+	}
+
+	// Resolve secrets
+	secretKeys, _ := s.store.List("secrets")
+	secrets := make(map[string]string, len(secretKeys))
+	for _, key := range secretKeys {
+		val, getErr := s.store.Get("secrets", key)
+		if getErr == nil && val != nil && s.vault != nil {
+			if decrypted, decErr := s.vault.Decrypt(val); decErr == nil {
+				secrets[key] = string(decrypted)
+			}
+		}
+	}
+	env, _ := hivefile.ResolveEnv(svcDef.Env, secrets)
+	memBytes, _ := hivefile.ParseMemory(svcDef.Resources.Memory)
+
+	if pullErr := s.container.PullImage(ctx, svcDef.Image); pullErr != nil {
+		slog.Warn("image pull failed (may be local)", "image", svcDef.Image, "error", pullErr)
+	}
+
+	replicas := svcDef.Replicas
+	if replicas <= 0 {
+		replicas = 1
+	}
+
+	slog.Info("restarting service", "name", req.Name, "replicas", replicas)
+
+	// Rolling restart: replace each replica one at a time
+	for i := 0; i < replicas; i++ {
+		if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, svcDef, env, memBytes); deployErr != nil {
+			slog.Error("failed to restart replica", "service", req.Name, "replica", i, "error", deployErr)
+		}
+	}
+
+	slog.Info("service restarted", "name", req.Name)
 	return &emptypb.Empty{}, nil
 }
 
