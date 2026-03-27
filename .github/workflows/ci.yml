@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  daemon:
+    name: Daemon (Go)
+    runs-on: [self-hosted, Linux, X64, unified-all]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: daemon/go.mod
+
+      - name: Vet
+        run: cd daemon && go vet ./...
+
+      - name: Test
+        run: cd daemon && go test -race -count=1 ./...
+
+      - name: Build
+        run: cd daemon && CGO_ENABLED=0 go build -o ../dist/hived ./cmd/hived
+
+  cli:
+    name: CLI (Rust)
+    runs-on: [self-hosted, Linux, X64, unified-all]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Format check
+        run: cd cli && cargo fmt --check
+
+      - name: Clippy
+        run: cd cli && cargo clippy -- -D warnings
+
+      - name: Test
+        run: cd cli && cargo test
+
+      - name: Build
+        run: cd cli && cargo build --release
+
+  tui:
+    name: TUI (Rust)
+    runs-on: [self-hosted, Linux, X64, unified-all]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Format check
+        run: cd tui && cargo fmt --check
+
+      - name: Clippy
+        run: cd tui && cargo clippy -- -D warnings
+
+      - name: Test
+        run: cd tui && cargo test
+
+      - name: Build
+        run: cd tui && cargo build --release
+
+  proto-check:
+    name: Proto sync check
+    runs-on: [self-hosted, Linux, X64, unified-all]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: daemon/go.mod
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Regenerate and diff
+        run: |
+          make proto
+          git diff --exit-code daemon/internal/api/gen/ || {
+            echo "ERROR: Generated proto code is out of sync. Run 'make proto' and commit."
+            exit 1
+          }
