@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -20,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	hivev1 "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1"
+	"github.com/jalsarraf0/hive/daemon/internal/console"
 	"github.com/jalsarraf0/hive/daemon/internal/joincode"
 	"github.com/jalsarraf0/hive/daemon/internal/logs"
 	"github.com/jalsarraf0/hive/daemon/internal/store"
@@ -119,6 +121,30 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("POST /api/v1/validate", h.validateHivefile)
 	h.mux.HandleFunc("POST /api/v1/diff", h.diffDeploy)
 	h.mux.HandleFunc("GET /api/v1/services/{name}/health", h.getServiceHealth)
+
+	// Serve embedded web console at / — SPA fallback to index.html for client-side routing
+	consoleBuild, err := fs.Sub(console.Files, "build")
+	if err != nil {
+		slog.Error("failed to load embedded console", "error", err)
+		return
+	}
+	consoleFS := http.FileServer(http.FS(consoleBuild))
+	h.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Try serving the exact file first
+		path := r.URL.Path
+		if path == "/" {
+			path = "/index.html"
+		}
+		// Check if the file exists in the embedded FS
+		if f, err := consoleBuild.Open(strings.TrimPrefix(path, "/")); err == nil {
+			f.Close()
+			consoleFS.ServeHTTP(w, r)
+			return
+		}
+		// SPA fallback: serve index.html for unmatched paths (client-side routing)
+		r.URL.Path = "/"
+		consoleFS.ServeHTTP(w, r)
+	})
 }
 
 func (h *Handler) getLogs(w http.ResponseWriter, r *http.Request) {
