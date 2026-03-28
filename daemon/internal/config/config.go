@@ -75,7 +75,7 @@ func Default() Config {
 			Port: 7949,
 		},
 		WireGuard: WireGuardConfig{
-			Port: 51820,
+			Port: 39471, // non-standard port to avoid conflicts with existing WireGuard
 		},
 	}
 }
