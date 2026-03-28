@@ -2,7 +2,7 @@ use anyhow::Result;
 use colored::Colorize;
 
 use crate::grpc_client;
-use crate::grpc_client::hive_proto::JoinClusterRequest;
+use crate::grpc_client::hive_proto::{JoinClusterRequest, NodeStatus};
 
 pub async fn run(
     addresses: &[String],
@@ -27,10 +27,10 @@ pub async fn run(
         resp.nodes_joined
     );
     for node in &resp.nodes {
-        let status = match node.status {
-            1 => "●".green(),
-            2 => "◐".yellow(),
-            3 => "○".red(),
+        let status = match NodeStatus::try_from(node.status) {
+            Ok(NodeStatus::Ready) => "●".green(),
+            Ok(NodeStatus::Draining) => "◐".yellow(),
+            Ok(NodeStatus::Down) => "○".red(),
             _ => "?".dimmed(),
         };
         println!("  {} {}", status, node.name.bold());

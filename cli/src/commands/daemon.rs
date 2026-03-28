@@ -42,9 +42,10 @@ WantedBy=multi-user.target
         .spawn()
         .and_then(|mut child| {
             use std::io::Write;
-            if let Some(ref mut stdin) = child.stdin {
+            if let Some(mut stdin) = child.stdin.take() {
                 stdin.write_all(unit.as_bytes())?;
             }
+            // stdin is dropped here, sending EOF to tee
             child.wait()
         })
         .context("failed to install unit file (sudo required)")?;

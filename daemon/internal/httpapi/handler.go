@@ -37,13 +37,22 @@ func New(api hivev1.HiveAPIServer, token string, logBuffer *logs.RingBuffer) *Ha
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// CORS headers for browser console — use wildcard since auth is token-based.
-	// Do NOT combine Access-Control-Allow-Credentials with a reflected origin,
-	// as that allows any website to make authenticated cross-origin requests.
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	// CORS headers for browser console.
+	// GET/OPTIONS: allow any origin (read-only, auth is token-based).
+	// Mutations (POST/DELETE): echo back the request Origin so only the console
+	// (same host) or explicitly-originated requests work; browsers enforce
+	// same-origin when no CORS header is present.
+	if r.Method == http.MethodOptions || r.Method == http.MethodGet {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+	} else {
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+		}
+	}
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-	w.Header().Set("Vary", "Origin")
 
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -85,6 +94,8 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("POST /api/v1/secrets/{key}", h.setSecret)
 	h.mux.HandleFunc("DELETE /api/v1/secrets/{key}", h.deleteSecret)
 	h.mux.HandleFunc("GET /api/v1/cron", h.listCronJobs)
+	h.mux.HandleFunc("POST /api/v1/validate", h.validateHivefile)
+	h.mux.HandleFunc("GET /api/v1/services/{name}/health", h.getServiceHealth)
 }
 
 func (h *Handler) getLogs(w http.ResponseWriter, r *http.Request) {
@@ -97,6 +108,9 @@ func (h *Handler) getLogs(w http.ResponseWriter, r *http.Request) {
 		if parsed, err := strconv.Atoi(q); err == nil && parsed > 0 {
 			n = parsed
 		}
+	}
+	if n > 10000 {
+		n = 10000
 	}
 	writeJSON(w, h.logBuffer.Last(n))
 }
@@ -112,6 +126,9 @@ func (h *Handler) getServiceLogs(w http.ResponseWriter, r *http.Request) {
 		if parsed, err := strconv.Atoi(q); err == nil && parsed > 0 {
 			n = parsed
 		}
+	}
+	if n > 10000 {
+		n = 10000
 	}
 	writeJSON(w, h.logBuffer.ForService(service, n))
 }
@@ -172,7 +189,7 @@ func (h *Handler) deploy(w http.ResponseWriter, r *http.Request) {
 		HivefileToml string `json:"hivefile_toml"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
+		jsonError(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
 	resp, err := h.api.DeployService(r.Context(), &hivev1.DeployServiceRequest{
@@ -202,7 +219,7 @@ func (h *Handler) scaleService(w http.ResponseWriter, r *http.Request) {
 		Replicas uint32 `json:"replicas"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
+		jsonError(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
 	_, err := h.api.ScaleService(r.Context(), &hivev1.ScaleServiceRequest{
@@ -233,7 +250,11 @@ func (h *Handler) execContainer(w http.ResponseWriter, r *http.Request) {
 		Command []string `json:"command"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
+		jsonError(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if len(body.Command) == 0 {
+		jsonError(w, "command must not be empty", http.StatusBadRequest)
 		return
 	}
 	resp, err := h.api.ExecContainer(r.Context(), &hivev1.ExecContainerRequest{
@@ -274,7 +295,7 @@ func (h *Handler) setSecret(w http.ResponseWriter, r *http.Request) {
 		Value string `json:"value"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
+		jsonError(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
 	_, err := h.api.SetSecret(r.Context(), &hivev1.SetSecretRequest{
@@ -307,12 +328,61 @@ func (h *Handler) listCronJobs(w http.ResponseWriter, r *http.Request) {
 	writeProto(w, resp)
 }
 
+func (h *Handler) validateHivefile(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10MB limit for hivefiles
+	var body struct {
+		HivefileToml string `json:"hivefile_toml"`
+		ServerChecks bool   `json:"server_checks"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	resp, err := h.api.ValidateHivefile(r.Context(), &hivev1.ValidateHivefileRequest{
+		HivefileToml: body.HivefileToml,
+		ServerChecks: body.ServerChecks,
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
+}
+
+func (h *Handler) getServiceHealth(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var limit int32
+	if q := r.URL.Query().Get("limit"); q != "" {
+		if parsed, err := strconv.Atoi(q); err == nil && parsed > 0 {
+			limit = int32(parsed)
+		}
+	}
+	resp, err := h.api.GetServiceHealth(r.Context(), &hivev1.GetServiceHealthRequest{
+		Name:  name,
+		Limit: limit,
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
+}
+
+// jsonError sends a JSON-encoded error response with the given HTTP status code.
+// Unlike http.Error(), this sets Content-Type to application/json so the console
+// UI can parse error responses consistently.
+func jsonError(w http.ResponseWriter, msg string, code int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
 // writeProto serializes a protobuf message as JSON using protojson.
 func writeProto(w http.ResponseWriter, msg proto.Message) {
 	w.Header().Set("Content-Type", "application/json")
 	data, err := protojson.Marshal(msg)
 	if err != nil {
-		http.Error(w, `{"error":"failed to marshal response"}`, http.StatusInternalServerError)
+		jsonError(w, "failed to marshal response", http.StatusInternalServerError)
 		return
 	}
 	w.Write(data)

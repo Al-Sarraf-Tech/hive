@@ -22,6 +22,9 @@ service HiveAPI {
   rpc GetNode(GetNodeRequest) returns (Node);
   rpc DrainNode(DrainNodeRequest) returns (google.protobuf.Empty);
 
+  // ─── Validation ────────────────────────────────────────────
+  rpc ValidateHivefile(ValidateHivefileRequest) returns (ValidateHivefileResponse);
+
   // ─── Services ──────────────────────────────────────────────
   rpc DeployService(DeployServiceRequest) returns (DeployServiceResponse);
   rpc ListServices(google.protobuf.Empty) returns (ListServicesResponse);
@@ -46,6 +49,9 @@ service HiveAPI {
 
   // ─── Cron ────────────────────────────────────────────────
   rpc ListCronJobs(google.protobuf.Empty) returns (ListCronJobsResponse);
+
+  // ─── Health Timeline ──────────────────────────────────────
+  rpc GetServiceHealth(GetServiceHealthRequest) returns (GetServiceHealthResponse);
 }
 
 // ─── Cluster Management ───────────────────────────────────────
@@ -81,6 +87,7 @@ message ClusterStatusResponse {
   uint32 running_containers = 4;
   repeated Node nodes = 5;
   repeated Event recent_events = 6;
+  map<string, uint32> containers_per_node = 7;
 }
 
 // ─── Nodes ───────────────────────────────────────────────────
@@ -207,4 +214,44 @@ message CronJob {
 
 message ListCronJobsResponse {
   repeated CronJob jobs = 1;
+}
+
+// ─── Validate ─────────────────────────────────────────────
+
+message ValidateHivefileRequest {
+  string hivefile_toml = 1;
+  bool server_checks = 2;  // if true, also check secrets, nodes, port conflicts
+}
+
+message ValidateHivefileResponse {
+  bool valid = 1;
+  repeated ValidationIssue issues = 2;
+}
+
+message ValidationIssue {
+  ValidationSeverity severity = 1;
+  string field = 2;       // e.g. "service.web.health.port"
+  string message = 3;
+  string service = 4;     // which service, empty for file-level
+}
+
+enum ValidationSeverity {
+  VALIDATION_SEVERITY_UNSPECIFIED = 0;
+  VALIDATION_SEVERITY_ERROR = 1;
+  VALIDATION_SEVERITY_WARNING = 2;
+  VALIDATION_SEVERITY_INFO = 3;
+}
+
+// ─── Service Health ───────────────────────────────────────
+
+message GetServiceHealthRequest {
+  string name = 1;
+  int32 limit = 2;  // max events, 0 = default (100)
+}
+
+message GetServiceHealthResponse {
+  string service_name = 1;
+  repeated HealthEvent events = 2;
+  bool currently_healthy = 3;
+  int32 consecutive_failures = 4;
 }

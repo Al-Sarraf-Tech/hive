@@ -2,6 +2,7 @@ use anyhow::Result;
 use tabled::{Table, Tabled};
 
 use crate::grpc_client;
+use crate::grpc_client::hive_proto::ServiceStatus;
 
 #[derive(Tabled)]
 struct ServiceRow {
@@ -39,12 +40,12 @@ pub async fn run(addr: &str, ca_cert: Option<&str>) -> Result<()> {
             name: s.name.clone(),
             image: s.image.clone(),
             replicas: format!("{}/{}", s.replicas_running, s.replicas_desired),
-            status: match s.status {
-                1 => "running".into(),
-                2 => "degraded".into(),
-                3 => "stopped".into(),
-                4 => "deploying".into(),
-                5 => "rolling back".into(),
+            status: match ServiceStatus::try_from(s.status) {
+                Ok(ServiceStatus::Running) => "running".into(),
+                Ok(ServiceStatus::Degraded) => "degraded".into(),
+                Ok(ServiceStatus::Stopped) => "stopped".into(),
+                Ok(ServiceStatus::Deploying) => "deploying".into(),
+                Ok(ServiceStatus::RollingBack) => "rolling back".into(),
                 _ => "unknown".into(),
             },
             node: s.node_constraint.clone(),

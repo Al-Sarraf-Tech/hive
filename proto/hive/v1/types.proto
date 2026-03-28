@@ -134,6 +134,17 @@ enum ContainerStatus {
   CONTAINER_STATUS_FAILED = 4;
 }
 
+// ─── Health Events ────────────────────────────────────────────
+
+message HealthEvent {
+  google.protobuf.Timestamp timestamp = 1;
+  bool healthy = 2;
+  string message = 3;           // e.g. "HTTP 200 in 45ms", "TCP connect refused"
+  int32 duration_ms = 4;
+  string check_type = 5;        // "http", "tcp", "exec"
+  int32 consecutive_failures = 6;
+}
+
 // ─── Events ────────────────────────────────────────────────────
 
 message Event {

@@ -127,6 +127,15 @@ enum Commands {
 
     /// Launch the TUI dashboard
     Top,
+
+    /// Validate a Hivefile without deploying
+    Validate {
+        /// Path to Hivefile (TOML)
+        file: String,
+        /// Also check cluster state (secrets, nodes, ports)
+        #[arg(long)]
+        server: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -214,5 +223,8 @@ async fn main() -> Result<()> {
             DaemonAction::Status => commands::daemon::status(),
         },
         Commands::Top => commands::top::run(&cli.addr, cli.ca_cert.as_deref()),
+        Commands::Validate { file, server } => {
+            commands::validate::run(&file, server, &cli.addr, cli.ca_cert.as_deref()).await
+        }
     }
 }

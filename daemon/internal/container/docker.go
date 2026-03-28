@@ -89,6 +89,12 @@ func (d *dockerProvider) ListContainers(ctx context.Context, filters map[string]
 		if len(c.Names) > 0 {
 			cname = strings.TrimPrefix(c.Names[0], "/")
 		}
+		ports := make(map[string]string)
+		for _, p := range c.Ports {
+			if p.PublicPort > 0 {
+				ports[fmt.Sprintf("%d", p.PublicPort)] = fmt.Sprintf("%d", p.PrivatePort)
+			}
+		}
 		out = append(out, ContainerInfo{
 			ID:        c.ID,
 			Name:      cname,
@@ -96,6 +102,7 @@ func (d *dockerProvider) ListContainers(ctx context.Context, filters map[string]
 			Status:    string(c.State),
 			CreatedAt: c.Created,
 			Labels:    c.Labels,
+			Ports:     ports,
 		})
 	}
 	return out, nil
@@ -324,11 +331,15 @@ func (d *dockerProvider) Inspect(ctx context.Context, id string) (*ContainerInfo
 		return nil, fmt.Errorf("inspect container %q: %w", id, err)
 	}
 	info := result.Container
+	status := ""
+	if info.State != nil {
+		status = string(info.State.Status)
+	}
 	return &ContainerInfo{
 		ID:     info.ID,
 		Name:   strings.TrimPrefix(info.Name, "/"),
 		Image:  info.Config.Image,
-		Status: string(info.State.Status),
+		Status: status,
 		Labels: info.Config.Labels,
 	}, nil
 }
@@ -347,9 +358,13 @@ func (d *dockerProvider) CreateNetwork(ctx context.Context, name string) (string
 		Labels: map[string]string{"hive.managed": "true"},
 	})
 	if err != nil {
-		// Idempotent: if network already exists, ignore
+		// Idempotent: if network already exists, return its ID
 		if strings.Contains(err.Error(), "already exists") {
-			return "", nil
+			existing, inspErr := d.cli.NetworkInspect(ctx, name, client.NetworkInspectOptions{})
+			if inspErr != nil {
+				return "", fmt.Errorf("network %q exists but inspect failed: %w", name, inspErr)
+			}
+			return existing.Network.ID, nil
 		}
 		return "", fmt.Errorf("create network %q: %w", name, err)
 	}

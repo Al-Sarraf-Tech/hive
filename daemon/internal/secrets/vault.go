@@ -23,24 +23,35 @@ type Vault struct {
 func NewVault(dataDir string) (*Vault, error) {
 	keyPath := filepath.Join(dataDir, "hive-key.txt")
 
-	// Defense-in-depth: Lstat to detect symlinks before opening.
-	// Then open and read from the fd to avoid TOCTOU between check and read.
-	if fi, lstatErr := os.Lstat(keyPath); lstatErr == nil {
-		if fi.Mode()&os.ModeSymlink != 0 {
-			return nil, fmt.Errorf("security: %s is a symlink — refusing to read (possible symlink attack)", keyPath)
-		}
-		// Verify restrictive permissions (owner-only read/write) — only meaningful on Unix
-		if runtime.GOOS != "windows" && fi.Mode().Perm()&0o077 != 0 {
-			return nil, fmt.Errorf("security: %s has overly permissive permissions %04o — expected 0600", keyPath, fi.Mode().Perm())
-		}
-	}
-
-	data, err := os.ReadFile(keyPath)
+	// Open the file first, then check properties on the fd to avoid TOCTOU
+	// between security checks (symlink, permissions) and the actual read.
+	f, err := os.Open(keyPath)
 	if err == nil {
+		defer f.Close()
+
+		fi, statErr := f.Stat()
+		if statErr != nil {
+			return nil, fmt.Errorf("stat %s: %w", keyPath, statErr)
+		}
+
+		// Symlink check: Lstat on the path detects symlinks (fd-based Stat follows them)
+		if lfi, lstatErr := os.Lstat(keyPath); lstatErr == nil && lfi.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("security: %s is a symlink", keyPath)
+		}
+
+		if runtime.GOOS != "windows" && fi.Mode().Perm()&0o077 != 0 {
+			return nil, fmt.Errorf("security: %s has overly permissive permissions %04o (expected 0600)", keyPath, fi.Mode().Perm())
+		}
+
+		data, readErr := io.ReadAll(f)
+		if readErr != nil {
+			return nil, fmt.Errorf("read age identity from %s: %w", keyPath, readErr)
+		}
+
 		// Parse existing identity
-		identity, err := age.ParseX25519Identity(string(data))
-		if err != nil {
-			return nil, fmt.Errorf("parse age identity from %s: %w", keyPath, err)
+		identity, parseErr := age.ParseX25519Identity(string(data))
+		if parseErr != nil {
+			return nil, fmt.Errorf("parse age identity from %s: %w", keyPath, parseErr)
 		}
 		return &Vault{
 			identity:  identity,

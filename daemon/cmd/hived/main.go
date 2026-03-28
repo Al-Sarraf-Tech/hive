@@ -302,27 +302,23 @@ func main() {
 	logCollector := logs.NewCollector(containerProvider, nodeName)
 	go logCollector.Start(ctx)
 
-	healthLoop := health.NewLoop(healthChecker, containerProvider, stateStore, 30*time.Second, hiveMesh.UpdateContainerCount)
-	go healthLoop.Start(ctx)
-
-	// System resource metrics (update every 30s alongside health checks)
-	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				memTotal, memAvail := sysinfo.MemInfo()
-				metrics.SystemMemoryTotal.Set(float64(memTotal))
-				metrics.SystemMemoryAvailable.Set(float64(memAvail))
-				diskTotal, diskAvail := sysinfo.DiskInfo(dataDir)
-				metrics.SystemDiskTotal.Set(float64(diskTotal))
-				metrics.SystemDiskAvailable.Set(float64(diskAvail))
-			}
+	healthHistory := health.NewHistory(100)
+	apiServer.SetHealthHistory(healthHistory)
+	onHealthTick := func() {
+		// Update system resource metrics and gossip metadata
+		memTotal, memAvail := sysinfo.MemInfo()
+		metrics.SystemMemoryTotal.Set(float64(memTotal))
+		metrics.SystemMemoryAvailable.Set(float64(memAvail))
+		diskTotal, diskAvail := sysinfo.DiskInfo(dataDir)
+		metrics.SystemDiskTotal.Set(float64(diskTotal))
+		metrics.SystemDiskAvailable.Set(float64(diskAvail))
+		if hiveMesh != nil {
+			hiveMesh.UpdateResources(sysinfo.CPUCount(), memTotal, memAvail, diskTotal, diskAvail)
 		}
-	}()
+	}
+	onHealthTick() // run once at startup so gossip has initial values
+	healthLoop := health.NewLoop(healthChecker, containerProvider, stateStore, 30*time.Second, hiveMesh.UpdateContainerCount, onHealthTick, healthHistory)
+	go healthLoop.Start(ctx)
 
 	// Start certificate renewal checker with automatic CSR-based renewal.
 	if pki.HasNodeCert(dataDir) {

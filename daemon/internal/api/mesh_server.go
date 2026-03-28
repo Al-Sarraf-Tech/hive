@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/subtle"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -203,6 +204,7 @@ func (s *MeshServer) StartContainer(ctx context.Context, req *hivev1.StartContai
 
 	// Stop and remove existing container for this specific replica only
 	existing, _ := s.container.ListContainers(ctx, map[string]string{
+		"hive.managed": "true",
 		"hive.service": baseName,
 		"hive.replica": replicaLabel,
 	})
@@ -308,7 +310,7 @@ func (s *MeshServer) SignNodeCSR(_ context.Context, req *hivev1.SignCSRRequest) 
 	if err != nil || storedToken == nil {
 		return nil, status.Error(codes.FailedPrecondition, "no join token configured — run 'hive init' first")
 	}
-	if req.JoinToken == "" || req.JoinToken != string(storedToken) {
+	if req.JoinToken == "" || subtle.ConstantTimeCompare([]byte(req.JoinToken), storedToken) != 1 {
 		return nil, status.Error(codes.PermissionDenied, "invalid join token")
 	}
 

@@ -6,7 +6,7 @@ Hive is a lightweight, cross-platform container orchestrator. Three components:
 - **cli/** — Rust CLI (`hive`), user-facing commands via gRPC to daemon
 - **tui/** — Rust TUI (`hivetop`), real-time dashboard via gRPC to daemon
 - **proto/** — Protobuf definitions, source of truth for API contracts
-- **console/** — Svelte 5 web UI (Phase 3, not yet implemented)
+- **console/** — Svelte 5 web UI (SvelteKit + Vite, static build, proxies to daemon HTTP API)
 - **recipes/** — TOML-based one-click deploy templates
 
 ## Build

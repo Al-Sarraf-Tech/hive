@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/memberlist"
@@ -33,6 +34,11 @@ type NodeInfo struct {
 	Platforms     []string `json:"p" msg:"p"` // e.g. ["linux/amd64"]
 	Status        int      `json:"s" msg:"s"` // NodeStatus
 	Containers    int      `json:"c" msg:"c"` // running container count
+	CPUCores      uint32   `json:"C" msg:"C"` // CPU core count
+	MemTotal      uint64   `json:"M" msg:"M"` // total memory bytes
+	MemAvail      uint64   `json:"A" msg:"A"` // available memory bytes
+	DiskTotal     uint64   `json:"D" msg:"D"` // total disk bytes
+	DiskAvail     uint64   `json:"d" msg:"d"` // available disk bytes
 }
 
 // Peer represents a remote node in the cluster.
@@ -72,6 +78,7 @@ type Mesh struct {
 	peers     map[string]*Peer // keyed by node name
 	peersMu   sync.RWMutex
 	eventCh   chan MeshEvent
+	stopped   atomic.Bool // set during shutdown to prevent sends on closed eventCh
 	config    Config
 	delegate  *meshDelegate
 }
@@ -164,16 +171,22 @@ func (m *Mesh) Join(addrs []string) (int, error) {
 
 // Leave gracefully leaves the cluster and closes peer connections.
 func (m *Mesh) Leave(timeout time.Duration) error {
+	m.stopped.Store(true)
+	err := m.mlist.Leave(timeout)
 	m.closePeerConns()
-	return m.mlist.Leave(timeout)
+	return err
 }
 
 // Shutdown stops the mesh and closes all peer connections.
-// mlist.Shutdown() must be called before closing eventCh to prevent
-// memberlist callbacks from sending on a closed channel (panic).
+// Order: (1) set stopped flag so late callbacks skip eventCh sends,
+// (2) shut down memberlist so no new callbacks fire after return,
+// (3) close peer gRPC connections, (4) close eventCh.
+// The stopped flag covers the narrow window where memberlist is
+// shutting down but callbacks can still fire.
 func (m *Mesh) Shutdown() error {
-	m.closePeerConns()
+	m.stopped.Store(true)
 	err := m.mlist.Shutdown()
+	m.closePeerConns()
 	close(m.eventCh)
 	return err
 }
@@ -204,6 +217,17 @@ func (m *Mesh) SetStatus(status int) {
 	m.peersMu.Unlock()
 }
 
+// UpdateResources updates the local node's resource metrics (thread-safe).
+func (m *Mesh) UpdateResources(cpuCores uint32, memTotal, memAvail, diskTotal, diskAvail uint64) {
+	m.peersMu.Lock()
+	m.local.CPUCores = cpuCores
+	m.local.MemTotal = memTotal
+	m.local.MemAvail = memAvail
+	m.local.DiskTotal = diskTotal
+	m.local.DiskAvail = diskAvail
+	m.peersMu.Unlock()
+}
+
 // Peers returns a snapshot of all known remote peers.
 // Returns copies of the peer info to avoid data races with concurrent updates.
 func (m *Mesh) Peers() []Peer {
@@ -221,8 +245,11 @@ func (m *Mesh) Peers() []Peer {
 
 // PeerByName returns a snapshot of a peer by name, establishing a gRPC connection if needed.
 // Thread-safe: uses write lock for the lazy connection establishment.
-// Returns a copy so that concurrent NotifyUpdate calls that reset the connection
-// do not race with the caller using the returned Peer.
+// The returned snapshot does NOT include the grpcConn to prevent use-after-close:
+// if the peer disconnects or its endpoint changes, the internal connection is closed
+// by removePeer/NotifyUpdate; callers holding a snapshot with the old conn would
+// hit a closed transport. The gRPC client stub is safe to use — RPCs on a closed
+// conn return a transport error rather than causing undefined behavior.
 func (m *Mesh) PeerByName(name string) (*Peer, error) {
 	m.peersMu.Lock()
 	defer m.peersMu.Unlock()
@@ -241,10 +268,10 @@ func (m *Mesh) PeerByName(name string) (*Peer, error) {
 		peer.client = hivev1.NewHiveMeshClient(conn)
 	}
 
-	// Return a snapshot copy to avoid data races with concurrent connection resets
+	// Return a snapshot copy WITHOUT grpcConn — caller gets the client stub only.
+	// This prevents use-after-close if the internal conn is reset concurrently.
 	return &Peer{
 		Info:     peer.Info,
-		grpcConn: peer.grpcConn,
 		client:   peer.client,
 		LastSeen: peer.LastSeen,
 	}, nil

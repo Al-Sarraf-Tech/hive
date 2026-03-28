@@ -34,10 +34,12 @@ func (d *meshEventDelegate) NotifyJoin(node *memberlist.Node) {
 	d.mesh.updatePeer(info)
 
 	slog.Info("node joined cluster", "node", node.Name, "addr", node.Addr)
-	select {
-	case d.mesh.eventCh <- MeshEvent{Type: EventNodeJoined, Node: node.Name, Info: info}:
-	default:
-		slog.Warn("event channel full, dropped node join event", "node", node.Name)
+	if !d.mesh.stopped.Load() {
+		select {
+		case d.mesh.eventCh <- MeshEvent{Type: EventNodeJoined, Node: node.Name, Info: info}:
+		default:
+			slog.Warn("event channel full, dropped node join event", "node", node.Name)
+		}
 	}
 }
 
@@ -52,10 +54,12 @@ func (d *meshEventDelegate) NotifyLeave(node *memberlist.Node) {
 	d.mesh.removePeer(node.Name)
 
 	slog.Info("node left cluster", "node", node.Name)
-	select {
-	case d.mesh.eventCh <- MeshEvent{Type: EventNodeLeft, Node: node.Name}:
-	default:
-		slog.Warn("event channel full, dropped node leave event", "node", node.Name)
+	if !d.mesh.stopped.Load() {
+		select {
+		case d.mesh.eventCh <- MeshEvent{Type: EventNodeLeft, Node: node.Name}:
+		default:
+			slog.Warn("event channel full, dropped node leave event", "node", node.Name)
+		}
 	}
 }
 
@@ -76,7 +80,7 @@ func (d *meshEventDelegate) NotifyUpdate(node *memberlist.Node) {
 	// Close stale gRPC connection and update peer atomically to avoid TOCTOU race
 	d.mesh.peersMu.Lock()
 	existing, ok := d.mesh.peers[node.Name]
-	if ok && (existing.Info.AdvertiseAddr != info.AdvertiseAddr || existing.Info.GRPCPort != info.GRPCPort) {
+	if ok && (existing.Info.AdvertiseAddr != info.AdvertiseAddr || existing.Info.GRPCPort != info.GRPCPort || existing.Info.MeshPort != info.MeshPort) {
 		slog.Info("peer endpoint changed, resetting connection",
 			"node", node.Name,
 			"old", fmt.Sprintf("%s:%d", existing.Info.AdvertiseAddr, existing.Info.GRPCPort),
@@ -97,10 +101,12 @@ func (d *meshEventDelegate) NotifyUpdate(node *memberlist.Node) {
 	}
 	d.mesh.peersMu.Unlock()
 
-	select {
-	case d.mesh.eventCh <- MeshEvent{Type: EventNodeUpdated, Node: node.Name, Info: info}:
-	default:
-		slog.Warn("event channel full, dropped node update event", "node", node.Name)
+	if !d.mesh.stopped.Load() {
+		select {
+		case d.mesh.eventCh <- MeshEvent{Type: EventNodeUpdated, Node: node.Name, Info: info}:
+		default:
+			slog.Warn("event channel full, dropped node update event", "node", node.Name)
+		}
 	}
 }
 

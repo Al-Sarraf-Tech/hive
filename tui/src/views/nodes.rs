@@ -7,6 +7,7 @@ use ratatui::{
 };
 
 use crate::app::ClusterData;
+use crate::grpc_client::hive_proto::NodeStatus;
 
 pub fn draw(frame: &mut Frame, area: Rect, data: &Option<ClusterData>) {
     let header = Row::new(vec![
@@ -50,10 +51,10 @@ pub fn draw(frame: &mut Frame, area: Rect, data: &Option<ClusterData>) {
                 .map(|node| {
                     let caps = node.capabilities.as_ref();
                     Row::new(vec![
-                        Cell::from(match node.status {
-                            1 => "● ready",
-                            2 => "◐ draining",
-                            3 => "○ down",
+                        Cell::from(match NodeStatus::try_from(node.status) {
+                            Ok(NodeStatus::Ready) => "● ready",
+                            Ok(NodeStatus::Draining) => "◐ draining",
+                            Ok(NodeStatus::Down) => "○ down",
                             _ => "? unknown",
                         }),
                         Cell::from(node.name.as_str()),

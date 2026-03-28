@@ -2,6 +2,7 @@ use anyhow::Result;
 use colored::Colorize;
 
 use crate::grpc_client;
+use crate::grpc_client::hive_proto::NodeStatus;
 
 pub async fn run(addr: &str, ca_cert: Option<&str>) -> Result<()> {
     let mut client = grpc_client::connect(addr, ca_cert).await?;
@@ -27,10 +28,10 @@ pub async fn run(addr: &str, ca_cert: Option<&str>) -> Result<()> {
     if !resp.nodes.is_empty() {
         println!();
         for node in &resp.nodes {
-            let (indicator, status_text) = match node.status {
-                1 => ("●".green(), "ready".green()),
-                2 => ("◐".yellow(), "draining".yellow()),
-                3 => ("○".red(), "down".red()),
+            let (indicator, status_text) = match NodeStatus::try_from(node.status) {
+                Ok(NodeStatus::Ready) => ("●".green(), "ready".green()),
+                Ok(NodeStatus::Draining) => ("◐".yellow(), "draining".yellow()),
+                Ok(NodeStatus::Down) => ("○".red(), "down".red()),
                 _ => ("?".dimmed(), "unknown".dimmed()),
             };
             let caps = node

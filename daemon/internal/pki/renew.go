@@ -57,7 +57,7 @@ func NewRenewalChecker(dataDir string, renewFn func() error) *RenewalChecker {
 // Start runs the renewal checker until ctx is cancelled.
 func (rc *RenewalChecker) Start(ctx context.Context) {
 	for {
-		rc.check()
+		rc.check(ctx)
 
 		// Adaptive interval: check more frequently when cert is close to expiry
 		interval := rc.checkInterval
@@ -80,7 +80,7 @@ func (rc *RenewalChecker) Start(ctx context.Context) {
 	}
 }
 
-func (rc *RenewalChecker) check() {
+func (rc *RenewalChecker) check(ctx context.Context) {
 	if !HasNodeCert(rc.dataDir) {
 		return
 	}
@@ -99,20 +99,20 @@ func (rc *RenewalChecker) check() {
 		slog.Error("node certificate has EXPIRED",
 			"expired_at", notAfter.Format(time.RFC3339),
 		)
-		rc.tryRenew()
+		rc.tryRenew(ctx)
 	case daysLeft <= 7:
 		slog.Error("node certificate expires in less than 7 days",
 			"expires_at", notAfter.Format(time.RFC3339),
 			"days_left", daysLeft,
 		)
-		rc.tryRenew()
+		rc.tryRenew(ctx)
 	case daysLeft <= renewDays:
 		slog.Warn("node certificate expires soon — renewal threshold reached",
 			"expires_at", notAfter.Format(time.RFC3339),
 			"days_left", daysLeft,
 			"renew_threshold_days", renewDays,
 		)
-		rc.tryRenew()
+		rc.tryRenew(ctx)
 	case daysLeft <= warnDays:
 		slog.Info("node certificate status",
 			"expires_at", notAfter.Format(time.RFC3339),
@@ -126,7 +126,7 @@ func (rc *RenewalChecker) check() {
 	}
 }
 
-func (rc *RenewalChecker) tryRenew() {
+func (rc *RenewalChecker) tryRenew(ctx context.Context) {
 	if rc.renewFn == nil {
 		slog.Warn("certificate renewal not configured — manual renewal required")
 		return
@@ -142,7 +142,11 @@ func (rc *RenewalChecker) tryRenew() {
 		jitter := time.Duration(mathrand.Int63n(int64(backoff / 4)))
 		wait := backoff + jitter
 		slog.Info("renewal backoff", "attempt", rc.consecutiveFails+1, "wait", wait)
-		time.Sleep(wait)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
 	}
 
 	slog.Info("attempting automatic certificate renewal...")

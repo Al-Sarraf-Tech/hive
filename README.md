@@ -1,8 +1,10 @@
 # Hive
 
-A lightweight, cross-platform container orchestrator for homelabs and small teams.
+**Deploy and manage Docker containers across multiple computers from one place.**
 
-Deploy containers across Linux and Windows machines from a single CLI, TUI, or web dashboard — with no control plane, no YAML mountains, and no PhD required.
+Hive is a single control panel that can install, monitor, and scale your apps on any machine in your network. Point it at your machines, hand it a TOML file describing your services, and it handles the rest — pulling images, scheduling replicas, checking health, managing secrets, and keeping everything running.
+
+No Kubernetes. No YAML mountains. No PhD required.
 
 ## What Is This?
 
@@ -12,9 +14,12 @@ Hive sits in the gap between Docker Compose (single machine) and Kubernetes (ent
 
 - **No control plane** — every node is equal, state is shared via SWIM gossip protocol
 - **Cross-platform** — Linux and Windows nodes in the same cluster
-- **Minimal binaries** — one daemon (`hived`), one CLI (`hive`), one TUI (`hivetop`)
+- **Minimal binaries** — one daemon (`hived`), one CLI (`hive`), one TUI (`hivetop`), one web console
 - **TOML config** — readable service definitions, not YAML walls
 - **Security by default** — mTLS between nodes, encrypted secrets at rest
+- **Validate before you deploy** — `hive validate` catches errors before anything touches Docker
+- **Health timeline** — per-service health history, not just a snapshot
+- **Cluster-wide visibility** — see every container across every node from one dashboard
 
 ## Architecture
 
@@ -137,6 +142,7 @@ hive join <addrs> --token <token>       Join an existing cluster
 hive nodes                              List cluster nodes
 hive status                             Show cluster health summary
 hive deploy <hivefile.toml>             Deploy services from a Hivefile
+hive validate <hivefile.toml> [--server] Validate a Hivefile without deploying
 hive ps                                 List running services
 hive logs <service> [-f] [-n <lines>]   Stream service logs
 hive stop <service>                     Stop a service
@@ -175,13 +181,18 @@ Controls: `1-4` switch tabs, `q`/`Esc` quit.
 
 ## Web Console
 
-The Svelte 5 web console connects to the HTTP API on port 7949 and provides:
+The Svelte 5 web console connects to the HTTP API on port 7949 and provides 10 pages:
 
-- **Dashboard** — cluster overview with health indicators
-- **Services** — deploy, scale, stop, rollback from the browser
-- **Nodes** — node health, resource utilization, drain controls
-- **Deploy** — upload Hivefiles directly
-- **Secrets** — manage the encrypted secret vault
+- **Overview** — cluster stats, node list, recent events, containers per node
+- **Services** — service list with replicas, status, health badges
+- **Service Detail** — 6 tabs: Overview, Containers, Config, Health Timeline, Logs, Exec
+- **Nodes** — node list with CPU/memory/disk, drain controls
+- **Node Detail** — system info, resource bars, containers on this node
+- **Containers** — cluster-wide container list with service/node filters
+- **Logs** — live log viewer with service filter, line count, auto-refresh
+- **Cron** — scheduled job list with next/last run times
+- **Deploy** — TOML editor with templates (nginx, postgres, redis), validate button, deploy
+- **Secrets** — add/delete secrets, masked values
 
 The console is compiled to static HTML/CSS/JS and served directly by `hived`.
 
@@ -285,18 +296,20 @@ Services can be deployed with `isolation = "strict"` to restrict network access.
 
 The API is defined in `proto/hive/v1/` with two services:
 
-### HiveAPI (port 7947) — 19 RPCs
+### HiveAPI (port 7947) — 23 RPCs
 Client-facing API for CLI, TUI, and web console.
 
 | Category | RPCs |
 |----------|------|
 | Cluster | `InitCluster`, `JoinCluster`, `GetClusterStatus` |
 | Nodes | `ListNodes`, `GetNode`, `DrainNode` |
+| Validation | `ValidateHivefile` |
 | Services | `DeployService`, `ListServices`, `GetService`, `StopService`, `ScaleService`, `RollbackService`, `RestartService` |
 | Containers | `ListContainers`, `ContainerLogs` (stream), `ExecContainer` |
 | Secrets | `SetSecret`, `ListSecrets`, `DeleteSecret` |
 | Events | `StreamEvents` (stream) |
 | Cron | `ListCronJobs` |
+| Health | `GetServiceHealth` |
 
 ### HiveMesh (port 7948, mTLS) — 6 RPCs
 Internal daemon-to-daemon communication.
@@ -334,9 +347,9 @@ hive/
       secrets/        age-encrypted secret vault
       store/          bbolt persistent key-value store
       sysinfo/        System resource queries
-  cli/              Rust CLI (hive) — 17 commands via gRPC
-  tui/              Rust TUI (hivetop) — 4-tab ratatui dashboard
-  console/          Svelte 5 web console — 5 pages
+  cli/              Rust CLI (hive) — 18 commands via gRPC
+  tui/              Rust TUI (hivetop) — 4-tab ratatui dashboard with health column
+  console/          Svelte 5 web console — 10 pages with dark theme
   proto/            Protobuf definitions (api.proto, mesh.proto, types.proto)
   recipes/          TOML one-click deploy templates
   .github/          CI and release workflows

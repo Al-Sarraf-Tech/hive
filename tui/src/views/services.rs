@@ -7,12 +7,14 @@ use ratatui::{
 };
 
 use crate::app::ClusterData;
+use crate::grpc_client::hive_proto::ServiceStatus;
 
 pub fn draw(frame: &mut Frame, area: Rect, data: &Option<ClusterData>) {
     let header = Row::new(vec![
         Cell::from("NAME"),
         Cell::from("IMAGE"),
         Cell::from("REPLICAS"),
+        Cell::from("HEALTH"),
         Cell::from("STATUS"),
         Cell::from("NODE"),
     ])
@@ -47,18 +49,28 @@ pub fn draw(frame: &mut Frame, area: Rect, data: &Option<ClusterData>) {
             s.services
                 .iter()
                 .map(|svc| {
-                    let status_str = match svc.status {
-                        1 => "running",
-                        2 => "degraded",
-                        3 => "stopped",
-                        4 => "deploying",
-                        5 => "rolling back",
+                    let status_str = match ServiceStatus::try_from(svc.status) {
+                        Ok(ServiceStatus::Running) => "running",
+                        Ok(ServiceStatus::Degraded) => "degraded",
+                        Ok(ServiceStatus::Stopped) => "stopped",
+                        Ok(ServiceStatus::Deploying) => "deploying",
+                        Ok(ServiceStatus::RollingBack) => "rolling back",
                         _ => "unknown",
+                    };
+                    let health_cell = if svc.replicas_desired == 0 {
+                        Cell::from("-").style(Style::default().fg(Color::DarkGray))
+                    } else if svc.replicas_running == svc.replicas_desired {
+                        Cell::from("OK").style(Style::default().fg(Color::Green))
+                    } else if svc.replicas_running > 0 {
+                        Cell::from("DEGRADED").style(Style::default().fg(Color::Yellow))
+                    } else {
+                        Cell::from("DOWN").style(Style::default().fg(Color::Red))
                     };
                     Row::new(vec![
                         Cell::from(svc.name.as_str()),
                         Cell::from(svc.image.as_str()),
                         Cell::from(format!("{}/{}", svc.replicas_running, svc.replicas_desired)),
+                        health_cell,
                         Cell::from(status_str),
                         Cell::from(svc.node_constraint.as_str()),
                     ])
@@ -72,6 +84,7 @@ pub fn draw(frame: &mut Frame, area: Rect, data: &Option<ClusterData>) {
         [
             Constraint::Min(15),
             Constraint::Min(20),
+            Constraint::Length(10),
             Constraint::Length(10),
             Constraint::Length(12),
             Constraint::Min(12),

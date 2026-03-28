@@ -14,3 +14,4 @@ pub mod secret;
 pub mod status;
 pub mod stop;
 pub mod top;
+pub mod validate;

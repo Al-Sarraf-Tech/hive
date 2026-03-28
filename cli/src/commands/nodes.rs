@@ -2,6 +2,7 @@ use anyhow::Result;
 use tabled::{Table, Tabled};
 
 use crate::grpc_client;
+use crate::grpc_client::hive_proto::NodeStatus;
 
 #[derive(Tabled)]
 struct NodeRow {
@@ -40,10 +41,10 @@ pub async fn run(addr: &str, ca_cert: Option<&str>) -> Result<()> {
         .map(|n| {
             let caps = n.capabilities.as_ref();
             NodeRow {
-                status: match n.status {
-                    1 => "● ready".into(),
-                    2 => "◐ draining".into(),
-                    3 => "○ down".into(),
+                status: match NodeStatus::try_from(n.status) {
+                    Ok(NodeStatus::Ready) => "● ready".into(),
+                    Ok(NodeStatus::Draining) => "◐ draining".into(),
+                    Ok(NodeStatus::Down) => "○ down".into(),
                     _ => "? unknown".into(),
                 },
                 name: n.name.clone(),

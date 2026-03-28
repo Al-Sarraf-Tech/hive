@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"regexp"
 	"runtime"
@@ -51,6 +52,7 @@ type Server struct {
 	dataDir   string
 	startedAt time.Time
 	cronSched       *cron.Scheduler // nil if no cron jobs
+	healthHistory   *health.History // nil if health timeline disabled
 	deployMu        sync.Mutex      // serializes DeployService to prevent concurrent races
 	certBootstrapMu sync.Mutex      // serializes bootstrapNodeCert to prevent concurrent CSR signing
 }
@@ -74,6 +76,11 @@ func NewServer(s *store.Store, c container.Provider, h *health.Checker, nodeName
 // SetCronScheduler sets the cron scheduler for ListCronJobs.
 func (s *Server) SetCronScheduler(cs *cron.Scheduler) {
 	s.cronSched = cs
+}
+
+// SetHealthHistory sets the health event history for the timeline API.
+func (s *Server) SetHealthHistory(h *health.History) {
+	s.healthHistory = h
 }
 
 // Register registers the gRPC services on the given server.
@@ -273,12 +280,22 @@ func (s *Server) GetClusterStatus(ctx context.Context, _ *emptypb.Empty) (*hivev
 	metrics.NodeCount.Set(float64(totalNodes))
 	metrics.ServiceCount.Set(float64(len(serviceNames)))
 
+	// Populate containers per node from gossip metadata
+	containersPerNode := make(map[string]uint32)
+	containersPerNode[s.nodeName] = uint32(localRunning)
+	if s.mesh != nil {
+		for _, peer := range s.mesh.Peers() {
+			containersPerNode[peer.Info.Name] = uint32(peer.Info.Containers)
+		}
+	}
+
 	return &hivev1.ClusterStatusResponse{
 		TotalNodes:        totalNodes,
 		HealthyNodes:      healthyNodes,
 		TotalServices:     uint32(len(serviceNames)),
 		RunningContainers: uint32(totalRunning),
 		Nodes:             nodes,
+		ContainersPerNode: containersPerNode,
 	}, nil
 }
 
@@ -315,10 +332,18 @@ func (s *Server) GetNode(_ context.Context, req *hivev1.GetNodeRequest) (*hivev1
 // peerToNode converts mesh NodeInfo to a proto Node.
 func peerToNode(info mesh.NodeInfo) *hivev1.Node {
 	return &hivev1.Node{
+		Id:            info.Name,
 		Name:          info.Name,
 		AdvertiseAddr: info.AdvertiseAddr,
 		GrpcPort:      uint32(info.GRPCPort),
 		Status:        hivev1.NodeStatus(info.Status),
+		Resources: &hivev1.NodeResources{
+			CpuCores:             info.CPUCores,
+			MemoryTotalBytes:     info.MemTotal,
+			MemoryAvailableBytes: info.MemAvail,
+			DiskTotalBytes:       info.DiskTotal,
+			DiskAvailableBytes:   info.DiskAvail,
+		},
 		Capabilities: &hivev1.NodeCapabilities{
 			Os:               info.OS,
 			Arch:             info.Arch,
@@ -392,9 +417,15 @@ func (s *Server) DrainNode(ctx context.Context, req *hivev1.DrainNodeRequest) (*
 		secrets := make(map[string]string, len(secretKeys))
 		for _, key := range secretKeys {
 			val, _ := s.store.Get("secrets", key)
-			if val != nil && s.vault != nil {
-				if dec, decErr := s.vault.Decrypt(val); decErr == nil {
-					secrets[key] = string(dec)
+			if val != nil {
+				if s.vault != nil {
+					if dec, decErr := s.vault.Decrypt(val); decErr == nil {
+						secrets[key] = string(dec)
+					} else {
+						slog.Warn("drain: failed to decrypt secret for migrated service, secret will be missing", "service", svcName, "key", key, "error", decErr)
+					}
+				} else {
+					secrets[key] = string(val)
 				}
 			}
 		}
@@ -469,11 +500,9 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 			if s.vault != nil {
 				decrypted, err := s.vault.Decrypt(val)
 				if err != nil {
-					slog.Warn("failed to decrypt secret, using raw value", "key", key, "error", err)
-					secrets[key] = string(val)
-				} else {
-					secrets[key] = string(decrypted)
+					return nil, status.Errorf(codes.Internal, "failed to decrypt secret %q: %v", key, err)
 				}
+				secrets[key] = string(decrypted)
 			} else {
 				secrets[key] = string(val)
 			}
@@ -492,6 +521,9 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 	deployOrder, err := hivefile.TopoSort(hf.Service)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "dependency error: %v", err)
+	}
+	if len(deployOrder) == 0 {
+		return nil, status.Errorf(codes.InvalidArgument, "hivefile contains no services")
 	}
 	slog.Debug("deploy order resolved", "order", deployOrder)
 
@@ -604,6 +636,7 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 
 		var containerIDs []string
 		replicasRunning := uint32(0)
+		primaryNode := s.nodeName // track the node of the first successful replica for placement
 
 		if isUpdate && strategy == "rolling" {
 			// Rolling update: replace replicas one at a time
@@ -626,6 +659,22 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 
 				slog.Info("rolling update replica", "service", name, "replica", i, "target", targetNode)
 
+				// If the replica moved to a remote node, stop the old local
+				// container for this replica index first. deployLocalReplica
+				// handles this internally, but deployRemoteReplica does not.
+				if targetNode != s.nodeName {
+					oldLocal, _ := s.container.ListContainers(ctx, map[string]string{
+						"hive.managed": "true",
+						"hive.service": name,
+						"hive.replica": fmt.Sprintf("%d", i),
+					})
+					for _, old := range oldLocal {
+						slog.Info("rolling update: stopping old local container (replica moved remote)", "service", name, "replica", i, "id", container.ShortID(old.ID))
+						_ = s.container.Stop(ctx, old.ID, 10)
+						_ = s.container.Remove(ctx, old.ID)
+					}
+				}
+
 				var id string
 				replicaEnv := cloneEnv(env)
 				if targetNode == s.nodeName {
@@ -640,6 +689,9 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 
 				containerIDs = append(containerIDs, id)
 				replicasRunning++
+				if replicasRunning == 1 {
+					primaryNode = targetNode
+				}
 
 				// Verify the new replica is healthy before proceeding
 				if svcDef.Health.Type != "" && svcDef.Health.Port > 0 {
@@ -736,6 +788,9 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 
 				containerIDs = append(containerIDs, id)
 				replicasRunning++
+				if replicasRunning == 1 {
+					primaryNode = targetNode
+				}
 			}
 		}
 
@@ -763,7 +818,7 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 		deployed = append(deployed, svcProto)
 
 		// Record placement (primary node)
-		if err := s.store.SetPlacement(name, s.nodeName); err != nil {
+		if err := s.store.SetPlacement(name, primaryNode); err != nil {
 			slog.Error("failed to record service placement", "service", name, "error", err)
 		}
 
@@ -838,6 +893,7 @@ func (s *Server) deployLocalReplica(ctx context.Context, name string, replicaInd
 
 	// Remove existing container with this name (redeploy)
 	existing, _ := s.container.ListContainers(ctx, map[string]string{
+		"hive.managed": "true",
 		"hive.service": name,
 		"hive.replica":  fmt.Sprintf("%d", replicaIndex),
 	})
@@ -1479,7 +1535,19 @@ func (s *Server) RestartService(ctx context.Context, req *hivev1.RestartServiceR
 
 	// Rolling restart: replace each replica one at a time, using scheduler for placement
 	restarted := 0
+	name := req.Name
 	for i := 0; i < replicas; i++ {
+		// Clean up existing container for this replica before deploying replacement
+		existing, _ := s.container.ListContainers(ctx, map[string]string{
+			"hive.managed": "true",
+			"hive.service": name,
+			"hive.replica": fmt.Sprintf("%d", i),
+		})
+		for _, old := range existing {
+			_ = s.container.Stop(ctx, old.ID, 10)
+			_ = s.container.Remove(ctx, old.ID)
+		}
+
 		targetNode := s.nodeName
 		if s.scheduler != nil {
 			if candidate, pickErr := s.scheduler.Pick(svcDef); pickErr == nil {
@@ -1511,10 +1579,30 @@ func (s *Server) RestartService(ctx context.Context, req *hivev1.RestartServiceR
 
 // ListContainers lists containers, optionally filtered.
 func (s *Server) ListContainers(ctx context.Context, req *hivev1.ListContainersRequest) (*hivev1.ListContainersResponse, error) {
-	// If a specific node was requested and it's not this node, return empty.
-	// In multi-node mode the request should be forwarded to the correct node.
+	// If a specific remote node was requested, fan out only to that peer.
 	if req.NodeName != "" && req.NodeName != s.nodeName {
-		return &hivev1.ListContainersResponse{}, nil
+		if s.mesh == nil {
+			return &hivev1.ListContainersResponse{}, nil
+		}
+		peerConn, err := s.mesh.PeerByName(req.NodeName)
+		if err != nil {
+			return &hivev1.ListContainersResponse{}, nil
+		}
+		peerCtx, peerCancel := context.WithTimeout(ctx, 5*time.Second)
+		defer peerCancel()
+		state, err := peerConn.MeshClient().SyncState(peerCtx, &emptypb.Empty{})
+		if err != nil {
+			slog.Debug("failed to sync state from peer for ListContainers", "peer", req.NodeName, "error", err)
+			return &hivev1.ListContainersResponse{}, nil
+		}
+		var protos []*hivev1.Container
+		for _, c := range state.Containers {
+			if req.ServiceName != "" && c.ServiceName != req.ServiceName {
+				continue
+			}
+			protos = append(protos, c)
+		}
+		return &hivev1.ListContainersResponse{Containers: protos}, nil
 	}
 
 	filters := map[string]string{"hive.managed": "true"}
@@ -1528,6 +1616,7 @@ func (s *Server) ListContainers(ctx context.Context, req *hivev1.ListContainersR
 	}
 
 	var protos []*hivev1.Container
+	seenIDs := make(map[string]bool)
 	for _, c := range containers {
 		cStatus := hivev1.ContainerStatus_CONTAINER_STATUS_STOPPED
 		switch c.Status {
@@ -1536,6 +1625,7 @@ func (s *Server) ListContainers(ctx context.Context, req *hivev1.ListContainersR
 		case "restarting":
 			cStatus = hivev1.ContainerStatus_CONTAINER_STATUS_RESTARTING
 		}
+		seenIDs[c.ID] = true
 		protos = append(protos, &hivev1.Container{
 			Id:          c.ID,
 			ServiceName: c.Labels["hive.service"],
@@ -1545,84 +1635,205 @@ func (s *Server) ListContainers(ctx context.Context, req *hivev1.ListContainersR
 		})
 	}
 
+	// Fan out to peers for cluster-wide container view
+	if s.mesh != nil && req.NodeName == "" {
+		type peerResult struct {
+			peerName   string
+			containers []*hivev1.Container
+		}
+
+		peers := s.mesh.Peers()
+		resultCh := make(chan peerResult, len(peers))
+
+		fanoutCtx, fanoutCancel := context.WithTimeout(ctx, 10*time.Second)
+		defer fanoutCancel()
+
+		for _, peer := range peers {
+			go func(peerName string) {
+				peerConn, err := s.mesh.PeerByName(peerName)
+				if err != nil {
+					resultCh <- peerResult{}
+					return
+				}
+				peerCtx, peerCancel := context.WithTimeout(fanoutCtx, 5*time.Second)
+				state, err := peerConn.MeshClient().SyncState(peerCtx, &emptypb.Empty{})
+				peerCancel()
+				if err != nil {
+					slog.Debug("failed to sync state from peer for ListContainers", "peer", peerName, "error", err)
+					resultCh <- peerResult{}
+					return
+				}
+				var filtered []*hivev1.Container
+				for _, c := range state.Containers {
+					if req.ServiceName != "" && c.ServiceName != req.ServiceName {
+						continue
+					}
+					filtered = append(filtered, c)
+				}
+				resultCh <- peerResult{peerName: peerName, containers: filtered}
+			}(peer.Info.Name)
+		}
+
+		for range peers {
+			var pr peerResult
+			select {
+			case pr = <-resultCh:
+			case <-ctx.Done():
+				return nil, status.Errorf(codes.Canceled, "client disconnected during container list fan-out")
+			}
+			for _, c := range pr.containers {
+				if !seenIDs[c.Id] {
+					seenIDs[c.Id] = true
+					if c.NodeId == "" {
+						c.NodeId = pr.peerName
+					}
+					protos = append(protos, c)
+				}
+			}
+		}
+	}
+
 	return &hivev1.ListContainersResponse{Containers: protos}, nil
 }
 
 // ContainerLogs streams logs from a container (local or remote).
+// When service_name is provided instead of container_id, logs are streamed
+// from ALL replicas of the service concurrently.
 func (s *Server) ContainerLogs(req *hivev1.ContainerLogsRequest, stream hivev1.HiveAPI_ContainerLogsServer) error {
 	if req.ContainerId == "" && req.ServiceName == "" {
 		return status.Error(codes.InvalidArgument, "container_id or service_name is required")
 	}
 
-	// If service_name is provided, look up the container
-	containerID := req.ContainerId
-	if containerID == "" && req.ServiceName != "" {
-		containers, err := s.container.ListContainers(stream.Context(), map[string]string{
-			"hive.service": req.ServiceName,
-		})
-		if err == nil && len(containers) > 0 {
-			containerID = containers[0].ID
+	// If a specific container_id is given, stream from that single container.
+	if req.ContainerId != "" {
+		return s.streamSingleContainerLogs(req.ContainerId, req, stream)
+	}
+
+	// service_name provided — find ALL local replicas and stream from all of them.
+	containers, err := s.container.ListContainers(stream.Context(), map[string]string{
+		"hive.managed": "true",
+		"hive.service": req.ServiceName,
+	})
+	if err != nil {
+		slog.Debug("failed to list containers for service", "service", req.ServiceName, "error", err)
+	}
+
+	if len(containers) > 0 {
+		return s.streamMultiContainerLogs(containers, req, stream)
+	}
+
+	// No local containers — try remote peers via SyncState
+	if s.mesh != nil {
+		// Collect all remote container IDs across all peers for this service.
+		type remoteTarget struct {
+			containerID string
+			peerConn    *mesh.Peer
+		}
+		var remoteTargets []remoteTarget
+
+		for _, peer := range s.mesh.Peers() {
+			peerConn, err := s.mesh.PeerByName(peer.Info.Name)
+			if err != nil {
+				continue
+			}
+			state, err := peerConn.MeshClient().SyncState(stream.Context(), &emptypb.Empty{})
+			if err != nil {
+				continue
+			}
+			for _, c := range state.Containers {
+				if c.ServiceName == req.ServiceName {
+					remoteTargets = append(remoteTargets, remoteTarget{
+						containerID: c.Id,
+						peerConn:    peerConn,
+					})
+				}
+			}
+		}
+
+		if len(remoteTargets) > 0 {
+			// Stream from all remote replicas concurrently using a merged channel.
+			entryCh := make(chan *hivev1.LogEntry, 64)
+			var wg sync.WaitGroup
+			for _, rt := range remoteTargets {
+				wg.Add(1)
+				go func(rt remoteTarget) {
+					defer wg.Done()
+					remoteStream, err := rt.peerConn.MeshClient().PullLogs(stream.Context(), &hivev1.PullLogsRequest{
+						ContainerId: rt.containerID,
+						Follow:      req.Follow,
+						TailLines:   req.TailLines,
+					})
+					if err != nil {
+						return
+					}
+					for {
+						entry, err := remoteStream.Recv()
+						if err != nil {
+							return
+						}
+						select {
+						case entryCh <- entry:
+						case <-stream.Context().Done():
+							return
+						}
+					}
+				}(rt)
+			}
+
+			// Close channel when all goroutines finish.
+			go func() {
+				wg.Wait()
+				close(entryCh)
+			}()
+
+			for entry := range entryCh {
+				if err := stream.Send(entry); err != nil {
+					return err
+				}
+			}
+			return nil
 		}
 	}
 
-	// Try local first
-	if containerID != "" {
-		reader, err := s.container.Logs(stream.Context(), containerID, container.LogOpts{
-			Follow:    req.Follow,
-			TailLines: int(req.TailLines),
-		})
-		if err == nil {
-			defer reader.Close()
-			return container.StreamDockerLogs(reader, func(line, streamType string) error {
-				return stream.Send(&hivev1.LogEntry{
-					ContainerId:   containerID,
-					NodeName:      s.nodeName,
-					ServiceName:   req.ServiceName,
-					Line:          line,
-					Stream:        streamType,
-					TimestampUnix: time.Now().Unix(),
-				})
+	return status.Errorf(codes.NotFound, "no containers found for service %q on any node", req.ServiceName)
+}
+
+// streamSingleContainerLogs streams logs from one specific container (local or remote).
+func (s *Server) streamSingleContainerLogs(containerID string, req *hivev1.ContainerLogsRequest, stream hivev1.HiveAPI_ContainerLogsServer) error {
+	reader, err := s.container.Logs(stream.Context(), containerID, container.LogOpts{
+		Follow:    req.Follow,
+		TailLines: int(req.TailLines),
+	})
+	if err == nil {
+		defer reader.Close()
+		return container.StreamDockerLogs(reader, func(line, streamType string) error {
+			return stream.Send(&hivev1.LogEntry{
+				ContainerId:   containerID,
+				NodeName:      s.nodeName,
+				ServiceName:   req.ServiceName,
+				Line:          line,
+				Stream:        streamType,
+				TimestampUnix: time.Now().Unix(),
 			})
-		}
-		// Only fall through to remote if the container wasn't found locally.
-		// For other errors (permission denied, runtime failure), return immediately.
-		if !strings.Contains(err.Error(), "No such container") && !strings.Contains(err.Error(), "not found") {
-			return status.Errorf(codes.Internal, "get logs for %s: %v", containerID, err)
-		}
-		slog.Debug("container not found locally, trying remote peers", "container", containerID, "error", err)
+		})
 	}
 
-	// Not local — try remote peers via SyncState to find the container
+	// Only fall through to remote if the container wasn't found locally.
+	// For other errors (permission denied, runtime failure), return immediately.
+	if !strings.Contains(err.Error(), "No such container") && !strings.Contains(err.Error(), "not found") {
+		return status.Errorf(codes.Internal, "get logs for %s: %v", containerID, err)
+	}
+	slog.Debug("container not found locally, trying remote peers", "container", containerID, "error", err)
+
+	// Try remote peers
 	if s.mesh != nil {
 		for _, peer := range s.mesh.Peers() {
 			peerConn, err := s.mesh.PeerByName(peer.Info.Name)
 			if err != nil {
 				continue
 			}
-
-			// If we don't have a container ID, look it up on the remote node
-			remoteContainerID := containerID
-			if remoteContainerID == "" && req.ServiceName != "" {
-				state, err := peerConn.MeshClient().SyncState(stream.Context(), &emptypb.Empty{})
-				if err != nil {
-					continue
-				}
-				for _, c := range state.Containers {
-					if c.ServiceName == req.ServiceName {
-						remoteContainerID = c.Id
-						break
-					}
-				}
-				if remoteContainerID == "" {
-					continue // this peer doesn't have the service
-				}
-			}
-			if remoteContainerID == "" {
-				continue
-			}
-
 			remoteStream, err := peerConn.MeshClient().PullLogs(stream.Context(), &hivev1.PullLogsRequest{
-				ContainerId: remoteContainerID,
+				ContainerId: containerID,
 				Follow:      req.Follow,
 				TailLines:   req.TailLines,
 			})
@@ -1642,7 +1853,80 @@ func (s *Server) ContainerLogs(req *hivev1.ContainerLogsRequest, stream hivev1.H
 		}
 	}
 
-	return status.Errorf(codes.NotFound, "container not found on any node")
+	return status.Errorf(codes.NotFound, "container %s not found on any node", containerID)
+}
+
+// streamMultiContainerLogs streams logs from multiple local containers concurrently.
+// All container log entries are merged into the single gRPC response stream.
+func (s *Server) streamMultiContainerLogs(containers []container.ContainerInfo, req *hivev1.ContainerLogsRequest, stream hivev1.HiveAPI_ContainerLogsServer) error {
+	if len(containers) == 1 {
+		// Optimization: single replica, no goroutine overhead needed.
+		return s.streamSingleContainerLogs(containers[0].ID, req, stream)
+	}
+
+	// Stream from all replicas concurrently, merging into one channel.
+	// Use a cancellable context so workers exit promptly when stream.Send fails.
+	cancelCtx, cancel := context.WithCancel(stream.Context())
+	defer cancel()
+
+	entryCh := make(chan *hivev1.LogEntry, 64)
+	var wg sync.WaitGroup
+	var readers []io.ReadCloser
+
+	for _, c := range containers {
+		cID := c.ID
+		reader, err := s.container.Logs(cancelCtx, cID, container.LogOpts{
+			Follow:    req.Follow,
+			TailLines: int(req.TailLines),
+		})
+		if err != nil {
+			slog.Debug("failed to get logs for replica", "container", cID, "error", err)
+			continue
+		}
+		readers = append(readers, reader)
+
+		wg.Add(1)
+		go func(cID string, reader io.ReadCloser) {
+			defer wg.Done()
+			_ = container.StreamDockerLogs(reader, func(line, streamType string) error {
+				entry := &hivev1.LogEntry{
+					ContainerId:   cID,
+					NodeName:      s.nodeName,
+					ServiceName:   req.ServiceName,
+					Line:          line,
+					Stream:        streamType,
+					TimestampUnix: time.Now().Unix(),
+				}
+				select {
+				case entryCh <- entry:
+					return nil
+				case <-cancelCtx.Done():
+					return cancelCtx.Err()
+				}
+			})
+		}(cID, reader)
+	}
+
+	if len(readers) == 0 {
+		return status.Errorf(codes.NotFound, "no containers found for service %q", req.ServiceName)
+	}
+
+	// Close channel and readers when all goroutines finish.
+	go func() {
+		wg.Wait()
+		close(entryCh)
+		for _, r := range readers {
+			r.Close()
+		}
+	}()
+
+	for entry := range entryCh {
+		if err := stream.Send(entry); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // ExecContainer runs a command in a running container.
@@ -1882,4 +2166,161 @@ func findColonSplit(s string) int {
 		}
 	}
 	return -1
+}
+
+// ValidateHivefile validates a hivefile and optionally runs server-side checks.
+func (s *Server) ValidateHivefile(ctx context.Context, req *hivev1.ValidateHivefileRequest) (*hivev1.ValidateHivefileResponse, error) {
+	if req.HivefileToml == "" {
+		return nil, status.Error(codes.InvalidArgument, "hivefile_toml is required")
+	}
+
+	// Run client-side (pure) validation
+	clientIssues := hivefile.Validate(req.HivefileToml)
+
+	// Convert to proto issues
+	var protoIssues []*hivev1.ValidationIssue
+	hasError := false
+	for _, ci := range clientIssues {
+		pi := &hivev1.ValidationIssue{
+			Severity: toProtoSeverity(ci.Severity),
+			Field:    ci.Field,
+			Message:  ci.Message,
+			Service:  ci.Service,
+		}
+		protoIssues = append(protoIssues, pi)
+		if ci.Severity == "error" {
+			hasError = true
+		}
+	}
+
+	// Server-side checks (secrets, nodes, port conflicts)
+	if req.ServerChecks {
+		hf, err := hivefile.Parse([]byte(req.HivefileToml))
+		if err == nil {
+			// Check secrets exist
+			secretKeys, _ := s.store.List("secrets")
+			secretSet := make(map[string]bool, len(secretKeys))
+			for _, k := range secretKeys {
+				secretSet[k] = true
+			}
+
+			// Build set of known node names
+			knownNodes := map[string]bool{s.nodeName: true}
+			if s.mesh != nil {
+				for _, peer := range s.mesh.Peers() {
+					knownNodes[peer.Info.Name] = true
+				}
+			}
+
+			// Get running containers for port conflict detection
+			runningContainers, _ := s.container.ListContainers(ctx, map[string]string{
+				"hive.managed": "true",
+			})
+			usedPorts := make(map[string]string) // hostPort -> serviceName
+			for _, c := range runningContainers {
+				svcName := c.Labels["hive.service"]
+				for hostPort := range c.Ports {
+					usedPorts[hostPort] = svcName
+				}
+			}
+
+			for svcName, svc := range hf.Service {
+				// Check secret references
+				refs := hivefile.ExtractSecretRefs(svc)
+				for _, ref := range refs {
+					if !secretSet[ref] {
+						protoIssues = append(protoIssues, &hivev1.ValidationIssue{
+							Severity: hivev1.ValidationSeverity_VALIDATION_SEVERITY_ERROR,
+							Field:    fmt.Sprintf("service.%s.env", svcName),
+							Message:  fmt.Sprintf("secret %q not found in vault", ref),
+							Service:  svcName,
+						})
+						hasError = true
+					}
+				}
+
+				// Check node constraints
+				if svc.Node != "" && !knownNodes[svc.Node] {
+					protoIssues = append(protoIssues, &hivev1.ValidationIssue{
+						Severity: hivev1.ValidationSeverity_VALIDATION_SEVERITY_ERROR,
+						Field:    fmt.Sprintf("service.%s.node", svcName),
+						Message:  fmt.Sprintf("node %q is not a known cluster member", svc.Node),
+						Service:  svcName,
+					})
+					hasError = true
+				}
+
+				// Check port conflicts with running containers
+				for hostPort := range svc.Ports {
+					if existingSvc, conflict := usedPorts[hostPort]; conflict {
+						protoIssues = append(protoIssues, &hivev1.ValidationIssue{
+							Severity: hivev1.ValidationSeverity_VALIDATION_SEVERITY_WARNING,
+							Field:    fmt.Sprintf("service.%s.ports", svcName),
+							Message:  fmt.Sprintf("host port %s is already in use by running service %q", hostPort, existingSvc),
+							Service:  svcName,
+						})
+					}
+				}
+			}
+		}
+	}
+
+	return &hivev1.ValidateHivefileResponse{
+		Valid:  !hasError,
+		Issues: protoIssues,
+	}, nil
+}
+
+// toProtoSeverity converts a string severity to the proto enum.
+func toProtoSeverity(sev string) hivev1.ValidationSeverity {
+	switch sev {
+	case "error":
+		return hivev1.ValidationSeverity_VALIDATION_SEVERITY_ERROR
+	case "warning":
+		return hivev1.ValidationSeverity_VALIDATION_SEVERITY_WARNING
+	case "info":
+		return hivev1.ValidationSeverity_VALIDATION_SEVERITY_INFO
+	default:
+		return hivev1.ValidationSeverity_VALIDATION_SEVERITY_UNSPECIFIED
+	}
+}
+
+// GetServiceHealth returns the health check timeline for a service.
+func (s *Server) GetServiceHealth(_ context.Context, req *hivev1.GetServiceHealthRequest) (*hivev1.GetServiceHealthResponse, error) {
+	if req.Name == "" {
+		return nil, status.Error(codes.InvalidArgument, "service name is required")
+	}
+
+	if s.healthHistory == nil {
+		return &hivev1.GetServiceHealthResponse{
+			ServiceName: req.Name,
+		}, nil
+	}
+
+	limit := int(req.Limit)
+	if limit <= 0 {
+		limit = 100
+	}
+
+	events := s.healthHistory.Get(req.Name, limit)
+	healthy, consecutiveFailures := s.healthHistory.CurrentState(req.Name)
+
+	var protoEvents []*hivev1.HealthEvent
+	for _, e := range events {
+		protoEvents = append(protoEvents, &hivev1.HealthEvent{
+			Timestamp:           timestamppb.New(e.Timestamp),
+			Healthy:             e.Healthy,
+			Message:             e.Message,
+			DurationMs:          e.DurationMs,
+			CheckType:           e.CheckType,
+			ConsecutiveFailures: e.ConsecutiveFailures,
+		})
+	}
+
+	return &hivev1.GetServiceHealthResponse{
+		ServiceName:         req.Name,
+		Events:              protoEvents,
+		CurrentlyHealthy:    healthy,
+		ConsecutiveFailures: int32(consecutiveFailures),
+	}, nil
 }

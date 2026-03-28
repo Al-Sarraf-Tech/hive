@@ -1,4 +1,4 @@
-.PHONY: all build build-daemon build-daemon-all build-cli build-tui test test-daemon test-cli test-tui lint lint-daemon lint-rust clean proto fmt
+.PHONY: all build build-daemon build-daemon-all build-cli build-tui build-console test test-daemon test-cli test-tui lint lint-daemon lint-rust clean proto fmt
 
 # Platforms — no macOS, ever
 DAEMON_PLATFORMS = linux/amd64 windows/amd64 linux/arm64
@@ -17,7 +17,7 @@ proto:
 	@echo "==> Protobuf generation complete"
 
 # ─── Build ──────────────────────────────────────────────────────
-build: build-daemon build-cli build-tui
+build: build-daemon build-cli build-tui build-console
 
 build-daemon:
 	@mkdir -p dist
@@ -63,6 +63,11 @@ build-tui:
 	fi
 	@echo "==> hivetop built"
 
+build-console:
+	@echo "==> Building Hive console..."
+	cd console && npm run build
+	@echo "==> Console built: console/build/"
+
 # ─── Test ───────────────────────────────────────────────────────
 test: test-daemon test-cli test-tui
 
@@ -100,3 +105,4 @@ clean:
 	cd cli && cargo clean
 	cd tui && cargo clean
 	cd daemon && go clean ./...
+	rm -rf console/build/ console/.svelte-kit/

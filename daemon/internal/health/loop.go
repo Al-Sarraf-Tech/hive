@@ -23,11 +23,14 @@ type Loop struct {
 	stopCh               chan struct{}
 	stopOnce             sync.Once
 	onContainerCountFunc func(int) // callback to update container count in gossip metadata
+	onTickFunc           func()   // callback after each health tick (update resources in gossip, etc.)
+	history              *History // health event history (may be nil)
 }
 
 // NewLoop creates a health check loop.
 // onContainerCount is called each tick with the current running container count (may be nil).
-func NewLoop(checker *Checker, c container.Provider, s *store.Store, interval time.Duration, onContainerCount func(int)) *Loop {
+// history records health events for the timeline API (may be nil).
+func NewLoop(checker *Checker, c container.Provider, s *store.Store, interval time.Duration, onContainerCount func(int), onTick func(), history *History) *Loop {
 	return &Loop{
 		checker:              checker,
 		container:            c,
@@ -36,6 +39,8 @@ func NewLoop(checker *Checker, c container.Provider, s *store.Store, interval ti
 		failures:             make(map[string]int),
 		stopCh:               make(chan struct{}),
 		onContainerCountFunc: onContainerCount,
+		onTickFunc:           onTick,
+		history:              history,
 	}
 }
 
@@ -89,6 +94,9 @@ func (l *Loop) runChecks(ctx context.Context) {
 	if l.onContainerCountFunc != nil {
 		l.onContainerCountFunc(runningCount)
 	}
+	if l.onTickFunc != nil {
+		l.onTickFunc()
+	}
 
 	for _, c := range containers {
 		if c.Status != "running" {
@@ -133,17 +141,33 @@ func (l *Loop) runChecks(ctx context.Context) {
 
 		result := l.checker.Check(ctx, cfg)
 
+		// Update failure counter BEFORE recording so the event has the correct count
 		if result.Healthy {
 			metrics.HealthCheckTotal.WithLabelValues("healthy").Inc()
 			if l.failures[svcName] > 0 {
 				slog.Info("health check recovered", "service", svcName)
 			}
 			l.failures[svcName] = 0
-			continue
+		} else {
+			metrics.HealthCheckTotal.WithLabelValues("unhealthy").Inc()
+			l.failures[svcName]++
 		}
 
-		metrics.HealthCheckTotal.WithLabelValues("unhealthy").Inc()
-		l.failures[svcName]++
+		// Record health event in timeline history
+		if l.history != nil {
+			l.history.Record(svcName, HealthEvent{
+				Timestamp:           result.CheckedAt,
+				Healthy:             result.Healthy,
+				Message:             result.Message,
+				DurationMs:          int32(result.Duration.Milliseconds()),
+				CheckType:           string(cfg.Type),
+				ConsecutiveFailures: int32(l.failures[svcName]),
+			})
+		}
+
+		if result.Healthy {
+			continue
+		}
 		slog.Warn("health check failed",
 			"service", svcName,
 			"consecutive", l.failures[svcName],

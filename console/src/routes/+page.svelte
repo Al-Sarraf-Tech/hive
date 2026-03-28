@@ -1,6 +1,8 @@
 <script>
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
   import { api } from '$lib/api.js';
+  import { nodeBadge, eventIcon, timeAgo, fmtBytes } from '$lib/utils.js';
 
   let status = $state(null);
   let error = $state(null);
@@ -22,15 +24,6 @@
     const interval = setInterval(refresh, 3000);
     return () => clearInterval(interval);
   });
-
-  function statusBadge(s) {
-    switch (s) {
-      case 'NODE_STATUS_READY': return { text: 'ready', cls: 'badge-green' };
-      case 'NODE_STATUS_DRAINING': return { text: 'draining', cls: 'badge-yellow' };
-      case 'NODE_STATUS_DOWN': return { text: 'down', cls: 'badge-red' };
-      default: return { text: 'unknown', cls: '' };
-    }
-  }
 </script>
 
 <div class="page-header">
@@ -48,7 +41,7 @@
 {:else if status}
   <div class="stats-grid">
     <div class="card">
-      <div class="card-title">Nodes</div>
+      <div class="card-title">Healthy Nodes</div>
       <div class="card-value text-cyan">
         {status.healthyNodes ?? 0}<span class="muted" style="font-size:1rem">/{status.totalNodes ?? 0}</span>
       </div>
@@ -63,41 +56,69 @@
     </div>
   </div>
 
-  {#if status.nodes?.length}
+  {#if status.containersPerNode && Object.keys(status.containersPerNode).length}
     <div class="card">
-      <div class="card-title" style="margin-bottom:1rem">Nodes</div>
+      <div class="card-title" style="margin-bottom:1rem">Containers per Node</div>
       <table>
-        <thead>
-          <tr>
-            <th>Status</th>
-            <th>Name</th>
-            <th>Address</th>
-            <th>Runtime</th>
-            <th>CPU</th>
-            <th>Memory</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Node</th><th>Containers</th></tr></thead>
         <tbody>
-          {#each status.nodes as node}
-            {@const badge = statusBadge(node.status)}
-            <tr>
-              <td><span class="badge {badge.cls}">{badge.text}</span></td>
-              <td>{node.name}</td>
-              <td class="muted">{node.advertiseAddr || '-'}:{node.grpcPort || '-'}</td>
-              <td class="muted">{node.capabilities?.containerRuntime || '-'}</td>
-              <td>{node.resources?.cpuCores || '-'} cores</td>
-              <td>
-                {#if node.resources?.memoryTotalBytes}
-                  {Math.round(Number(node.resources.memoryAvailableBytes) / 1073741824)}
-                  <span class="muted">/ {Math.round(Number(node.resources.memoryTotalBytes) / 1073741824)} GB</span>
-                {:else}
-                  -
-                {/if}
-              </td>
+          {#each Object.entries(status.containersPerNode) as [node, count]}
+            <tr class="clickable" onclick={() => goto(`/nodes/${node}`)}>
+              <td>{node}</td>
+              <td>{count}</td>
             </tr>
           {/each}
         </tbody>
       </table>
     </div>
   {/if}
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title" style="margin-bottom:1rem">Nodes</div>
+      {#if status.nodes?.length}
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Name</th>
+              <th>Address</th>
+              <th>CPU</th>
+              <th>Memory</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each status.nodes as node}
+              {@const badge = nodeBadge(node.status)}
+              <tr class="clickable" onclick={() => goto(`/nodes/${node.name}`)}>
+                <td><span class="badge {badge.cls}">{badge.text}</span></td>
+                <td>{node.name}</td>
+                <td class="muted">{node.advertiseAddr || '-'}</td>
+                <td>{node.resources?.cpuCores || '-'}</td>
+                <td>{fmtBytes(node.resources?.memoryAvailableBytes)} <span class="muted">/ {fmtBytes(node.resources?.memoryTotalBytes)}</span></td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {:else}
+        <p class="muted">No nodes</p>
+      {/if}
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:1rem">Recent Events</div>
+      {#if status.recentEvents?.length}
+        {#each status.recentEvents as evt}
+          {@const ei = eventIcon(evt.type)}
+          <div class="event-item">
+            <span class="event-icon {ei.cls}">{ei.icon}</span>
+            <span class="event-msg">{evt.message}</span>
+            <span class="event-time">{timeAgo(evt.timestamp)}</span>
+          </div>
+        {/each}
+      {:else}
+        <p class="muted">No recent events</p>
+      {/if}
+    </div>
+  </div>
 {/if}

@@ -79,6 +79,7 @@ async fn run(
     let fetch_tx = tx;
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(refresh_secs));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let mut client: Option<grpc_client::HiveApiClient<tonic::transport::Channel>> = None;
         loop {
             interval.tick().await;
@@ -95,23 +96,82 @@ async fn run(
     // Spawn event stream listener
     let stream_addr = addr.to_string();
     let stream_ca = ca_cert.map(|s| s.to_string());
+    #[allow(unused_assignments)]
     tokio::spawn(async move {
+        let mut was_connected = false;
         loop {
             // Connect and stream events — reconnect on failure
-            if let Ok(mut client) = grpc_client::connect(&stream_addr, stream_ca.as_deref()).await {
-                if let Ok(response) = client.stream_events(()).await {
-                    let mut stream = response.into_inner();
-                    while let Ok(Some(event)) = stream.message().await {
-                        let line = format!(
-                            "{} [{}] {}",
-                            chrono_timestamp(),
-                            event.source,
-                            event.message
-                        );
-                        if log_tx.send(line).await.is_err() {
-                            return; // receiver dropped
+            match grpc_client::connect(&stream_addr, stream_ca.as_deref()).await {
+                Ok(mut client) => match client.stream_events(()).await {
+                    Ok(response) => {
+                        if !was_connected {
+                            let _ = log_tx
+                                .send(format!(
+                                    "{} [events] Connected to event stream",
+                                    chrono_timestamp()
+                                ))
+                                .await;
+                            was_connected = true;
+                        }
+                        let mut stream = response.into_inner();
+                        loop {
+                            match stream.message().await {
+                                Ok(Some(event)) => {
+                                    let line = format!(
+                                        "{} [{}] {}",
+                                        chrono_timestamp(),
+                                        event.source,
+                                        event.message
+                                    );
+                                    if log_tx.send(line).await.is_err() {
+                                        return; // receiver dropped
+                                    }
+                                }
+                                Ok(None) => {
+                                    // Stream ended (server closed it)
+                                    let _ = log_tx
+                                        .send(format!(
+                                            "{} [events] WARN Event stream ended — retrying in 5s...",
+                                            chrono_timestamp()
+                                        ))
+                                        .await;
+                                    was_connected = false;
+                                    break;
+                                }
+                                Err(e) => {
+                                    let _ = log_tx
+                                        .send(format!(
+                                            "{} [events] ERR Event stream error: {} — retrying in 5s...",
+                                            chrono_timestamp(),
+                                            e
+                                        ))
+                                        .await;
+                                    was_connected = false;
+                                    break;
+                                }
+                            }
                         }
                     }
+                    Err(e) => {
+                        let _ = log_tx
+                            .send(format!(
+                                "{} [events] ERR Failed to start event stream: {} — retrying in 5s...",
+                                chrono_timestamp(),
+                                e
+                            ))
+                            .await;
+                        was_connected = false;
+                    }
+                },
+                Err(e) => {
+                    let _ = log_tx
+                        .send(format!(
+                            "{} [events] ERR Disconnected: {} — retrying in 5s...",
+                            chrono_timestamp(),
+                            e
+                        ))
+                        .await;
+                    was_connected = false;
                 }
             }
             // Wait before reconnecting
