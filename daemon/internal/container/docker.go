@@ -181,7 +181,9 @@ func (d *dockerProvider) CreateAndStart(ctx context.Context, spec ContainerSpec)
 		hostCfg.NetworkMode = container.NetworkMode(spec.NetworkName)
 		networkingCfg = &network.NetworkingConfig{
 			EndpointsConfig: map[string]*network.EndpointSettings{
-				spec.NetworkName: {},
+				spec.NetworkName: {
+					Aliases: spec.NetworkAliases,
+				},
 			},
 		}
 	}

@@ -266,16 +266,26 @@ func (l *Loop) runChecks(ctx context.Context) {
 				networkName = string(netBytes)
 			}
 
+			// Build DNS aliases for Docker network resolution
+			var networkAliases []string
+			if networkName != "" {
+				networkAliases = []string{
+					svcName,                                        // "web" — resolves to any replica
+					fmt.Sprintf("%s-%d", svcName, replicaIdx),      // "web-0" — specific replica
+				}
+			}
+
 			spec := container.ContainerSpec{
-				Name:          fmt.Sprintf("hive-%s-%d", svcName, replicaIdx),
-				Image:         svcDef.Image,
-				Env:           svcDef.Env,
-				Ports:         ports,
-				Volumes:       volumes,
-				MemoryMB:      memMB,
-				CPUs:          svcDef.Resources.CPUs,
-				RestartPolicy: svcDef.RestartPolicy,
-				NetworkName:   networkName,
+				Name:           fmt.Sprintf("hive-%s-%d", svcName, replicaIdx),
+				Image:          svcDef.Image,
+				Env:            svcDef.Env,
+				Ports:          ports,
+				Volumes:        volumes,
+				MemoryMB:       memMB,
+				CPUs:           svcDef.Resources.CPUs,
+				RestartPolicy:  svcDef.RestartPolicy,
+				NetworkName:    networkName,
+				NetworkAliases: networkAliases,
 				Labels: map[string]string{
 					"hive.managed": "true",
 					"hive.service": svcName,

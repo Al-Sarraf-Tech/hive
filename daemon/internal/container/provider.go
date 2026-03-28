@@ -65,8 +65,9 @@ type ContainerSpec struct {
 	MemoryMB      int64
 	CPUs          float64
 	Command       []string
-	RestartPolicy string // "always", "on-failure", "no"
-	NetworkName   string // Docker network to attach to (empty = default bridge)
+	RestartPolicy  string   // "always", "on-failure", "no"
+	NetworkName    string   // Docker network to attach to (empty = default bridge)
+	NetworkAliases []string // DNS aliases on the Docker network
 }
 
 // VolumeSpec defines a volume mount.

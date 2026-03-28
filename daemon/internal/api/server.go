@@ -596,31 +596,46 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 
 			// Only set if user has not already defined these env vars
 			if _, exists := env[hostKey]; !exists {
-				host := "127.0.0.1"
-				if placement := s.store.GetPlacement(depName); placement != "" && placement != s.nodeName && s.mesh != nil {
-					for _, peer := range s.mesh.Peers() {
-						if peer.Info.Name == placement {
-							host = peer.Info.AdvertiseAddr
-							break
+				// When services share a Docker network, use the service name as host —
+				// Docker's built-in DNS resolves network aliases automatically.
+				// Fall back to IP-based discovery for cross-node or no-network cases.
+				if networkName != "" {
+					env[hostKey] = depName
+				} else {
+					host := "127.0.0.1"
+					if placement := s.store.GetPlacement(depName); placement != "" && placement != s.nodeName && s.mesh != nil {
+						for _, peer := range s.mesh.Peers() {
+							if peer.Info.Name == placement {
+								host = peer.Info.AdvertiseAddr
+								break
+							}
+						}
+					} else if s.mesh != nil {
+						local := s.mesh.LocalNode()
+						if local.AdvertiseAddr != "" {
+							host = local.AdvertiseAddr
 						}
 					}
-				} else if s.mesh != nil {
-					local := s.mesh.LocalNode()
-					if local.AdvertiseAddr != "" {
-						host = local.AdvertiseAddr
-					}
+					env[hostKey] = host
 				}
-				env[hostKey] = host
 			}
 
 			if _, exists := env[portKey]; !exists {
 				if depDef, ok := hf.Service[depName]; ok && len(depDef.Ports) > 0 {
-					portKeys := make([]string, 0, len(depDef.Ports))
+					// When using Docker network DNS, inject the CONTAINER port
+					// (traffic goes directly container-to-container on the network).
+					// When using IP-based discovery, inject the HOST port
+					// (traffic hits the host's port mapping).
+					hostPorts := make([]string, 0, len(depDef.Ports))
 					for k := range depDef.Ports {
-						portKeys = append(portKeys, k)
+						hostPorts = append(hostPorts, k)
 					}
-					sort.Strings(portKeys)
-					env[portKey] = portKeys[0]
+					sort.Strings(hostPorts)
+					if networkName != "" {
+						env[portKey] = depDef.Ports[hostPorts[0]] // container port
+					} else {
+						env[portKey] = hostPorts[0] // host port
+					}
 				}
 			}
 		}
@@ -784,6 +799,106 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 					}
 				}
 			}
+		} else if isUpdate && strategy == "blue-green" {
+			// Blue-green: deploy new (green) replicas first, health check, THEN stop old (blue).
+			// This avoids the downtime window that recreate has.
+			slog.Info("blue-green deployment", "service", name, "existing", len(existingContainers), "desired", replicas)
+
+			// Phase 1: Deploy green replicas with offset indices to avoid name/port conflicts with blue set.
+			greenOffset := replicas
+			var greenIDs []string
+			for i := 0; i < replicas; i++ {
+				greenIdx := greenOffset + i
+				replicaEnv := cloneEnv(env)
+				id, deployErr := s.deployLocalReplica(ctx, name, greenIdx, svcDef, replicaEnv, memBytes, networkName)
+				if deployErr != nil {
+					slog.Error("blue-green: failed to deploy green replica", "service", name, "replica", i, "error", deployErr)
+					continue
+				}
+				greenIDs = append(greenIDs, id)
+			}
+
+			// Phase 2: Health check the green set.
+			greenHealthy := len(greenIDs) == replicas
+			if greenHealthy && svcDef.Health.Type != "" && svcDef.Health.Port > 0 {
+				checkTimeout := 5 * time.Second
+				if d, parseErr := time.ParseDuration(svcDef.Health.Timeout); parseErr == nil && d > 0 {
+					checkTimeout = d
+				}
+				maxChecks := 10
+				for gi, gid := range greenIDs {
+					healthy := false
+					for check := 0; check < maxChecks; check++ {
+						select {
+						case <-ctx.Done():
+							greenHealthy = false
+							slog.Error("blue-green: context cancelled during health check", "service", name, "replica", gi)
+							break
+						case <-time.After(checkTimeout):
+						}
+						if !greenHealthy {
+							break
+						}
+						result := s.health.Check(ctx, health.Config{
+							Type:    health.CheckType(svcDef.Health.Type),
+							Host:    "127.0.0.1",
+							Port:    svcDef.Health.Port,
+							Path:    svcDef.Health.Path,
+							Timeout: checkTimeout,
+						})
+						if result.Healthy {
+							healthy = true
+							slog.Info("blue-green: green replica healthy", "service", name, "replica", gi, "check", check+1)
+							break
+						}
+						slog.Debug("blue-green: health check pending", "service", name, "replica", gi, "check", check+1, "message", result.Message)
+					}
+					if !healthy {
+						slog.Error("blue-green: green replica failed health check", "service", name, "replica", gi, "id", container.ShortID(gid))
+						greenHealthy = false
+						break
+					}
+				}
+			}
+
+			// Phase 3: Swap or rollback.
+			if greenHealthy {
+				// Green set is healthy — remove blue (old) containers.
+				slog.Info("blue-green: green set healthy, removing blue set", "service", name)
+				for _, old := range existingContainers {
+					_ = s.container.Stop(ctx, old.ID, 10)
+					_ = s.container.Remove(ctx, old.ID)
+				}
+				// Remove green offset containers and redeploy with correct indices 0..N-1.
+				for _, gid := range greenIDs {
+					_ = s.container.Stop(ctx, gid, 10)
+					_ = s.container.Remove(ctx, gid)
+				}
+				for i := 0; i < replicas; i++ {
+					replicaEnv := cloneEnv(env)
+					id, deployErr := s.deployLocalReplica(ctx, name, i, svcDef, replicaEnv, memBytes, networkName)
+					if deployErr != nil {
+						slog.Error("blue-green: final replica deploy failed", "service", name, "replica", i, "error", deployErr)
+						continue
+					}
+					containerIDs = append(containerIDs, id)
+					replicasRunning++
+					if replicasRunning == 1 {
+						primaryNode = s.nodeName
+					}
+				}
+			} else {
+				// Rollback: remove all green containers, keep blue (old) running.
+				slog.Warn("blue-green: health check failed, rolling back", "service", name)
+				for _, gid := range greenIDs {
+					_ = s.container.Stop(ctx, gid, 10)
+					_ = s.container.Remove(ctx, gid)
+				}
+				for _, old := range existingContainers {
+					containerIDs = append(containerIDs, old.ID)
+				}
+				replicasRunning = uint32(len(existingContainers))
+			}
 		} else {
 			// Recreate strategy (or fresh deploy): stop all existing containers first, then deploy
 			for _, c := range existingContainers {
@@ -906,6 +1021,10 @@ func (s *Server) deployLocalReplica(ctx context.Context, name string, replicaInd
 	}
 	if len(networkName) > 0 && networkName[0] != "" {
 		spec.NetworkName = networkName[0]
+		spec.NetworkAliases = []string{
+			name,                                          // "web" — any replica resolves by service name
+			fmt.Sprintf("%s-%d", name, replicaIndex),      // "web-0" — specific replica
+		}
 	}
 
 	// Add volumes
