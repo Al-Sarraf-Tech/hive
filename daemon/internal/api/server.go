@@ -44,6 +44,14 @@ import (
 // validServiceName restricts service names to safe characters for labels, store keys, and container names.
 var validServiceName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$`)
 
+// warnErr logs a warning if err is non-nil. Used for best-effort operations
+// (container cleanup, store metadata) where failure should be visible but not fatal.
+func warnErr(err error, msg string, args ...any) {
+	if err != nil {
+		slog.Warn(msg, append(args, "error", err)...)
+	}
+}
+
 type Server struct {
 	hivev1.UnimplementedHiveAPIServer
 	store     *store.Store
@@ -490,7 +498,9 @@ func (s *Server) DrainNode(ctx context.Context, req *hivev1.DrainNodeRequest) (*
 		if rmErr := s.container.Remove(ctx, c.ID); rmErr != nil {
 			slog.Warn("failed to remove old container during drain", "id", container.ShortID(c.ID), "error", rmErr)
 		}
-		_ = s.store.SetPlacement(svcName, candidate.NodeName)
+		if err := s.store.SetPlacement(svcName, candidate.NodeName); err != nil {
+			slog.Warn("failed to update placement after drain", "service", svcName, "error", err)
+		}
 		migrated++
 	}
 
@@ -586,7 +596,9 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 		slog.Info("deployment network created", "network", networkName)
 		// Persist network name for each service so StopService can clean it up
 		for _, svcName := range deployOrder {
-			_ = s.store.Put("meta", "network:"+svcName, []byte(networkName))
+			if err := s.store.Put("meta", "network:"+svcName, []byte(networkName)); err != nil {
+				slog.Warn("failed to persist network mapping", "service", svcName, "error", err)
+			}
 		}
 	}
 
@@ -674,8 +686,12 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 		}
 
 		// Archive previous version for rollback BEFORE deploying (ensures rollback is possible if deploy crashes)
-		if prev, _ := s.store.Get("services", name); prev != nil {
-			_ = s.store.Put("service_history", name, prev)
+		if prev, err := s.store.Get("services", name); err != nil {
+			slog.Warn("failed to read previous service definition for rollback history", "service", name, "error", err)
+		} else if prev != nil {
+			if err := s.store.Put("service_history", name, prev); err != nil {
+				slog.Warn("failed to archive service version for rollback", "service", name, "error", err)
+			}
 		}
 
 		// Check if this is an update to an existing service (for rolling strategy)
@@ -725,8 +741,8 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 					})
 					for _, old := range oldLocal {
 						slog.Info("rolling update: stopping old local container (replica moved remote)", "service", name, "replica", i, "id", container.ShortID(old.ID))
-						_ = s.container.Stop(ctx, old.ID, 10)
-						_ = s.container.Remove(ctx, old.ID)
+						warnErr(s.container.Stop(ctx, old.ID, 10), "failed to stop container")
+						warnErr(s.container.Remove(ctx, old.ID), "failed to remove container")
 					}
 				}
 
@@ -807,8 +823,8 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 						return ia < ib
 					})
 					for i := replicas; i < len(currentContainers); i++ {
-						_ = s.container.Stop(ctx, currentContainers[i].ID, 10)
-						_ = s.container.Remove(ctx, currentContainers[i].ID)
+						warnErr(s.container.Stop(ctx, currentContainers[i].ID, 10), "failed to stop container")
+						warnErr(s.container.Remove(ctx, currentContainers[i].ID), "failed to remove container")
 					}
 				}
 			}
@@ -901,8 +917,8 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 				// Order: stop blue (green still serves) → deploy final → stop green
 				// This ensures at least one set is running at all times.
 				for _, old := range existingContainers {
-					_ = s.container.Stop(ctx, old.ID, 10)
-					_ = s.container.Remove(ctx, old.ID)
+					warnErr(s.container.Stop(ctx, old.ID, 10), "failed to stop container")
+					warnErr(s.container.Remove(ctx, old.ID), "failed to remove container")
 				}
 				// Deploy final replicas with correct indices 0..N-1
 				for i := 0; i < replicas; i++ {
@@ -931,15 +947,15 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 				}
 				// Now stop green offset containers (final replicas are serving)
 				for _, gid := range greenIDs {
-					_ = s.container.Stop(ctx, gid, 10)
-					_ = s.container.Remove(ctx, gid)
+					warnErr(s.container.Stop(ctx, gid, 10), "failed to stop container")
+					warnErr(s.container.Remove(ctx, gid), "failed to remove container")
 				}
 			} else {
 				// Rollback: remove all green containers, keep blue (old) running.
 				slog.Warn("blue-green: health check failed, rolling back", "service", name)
 				for _, gid := range greenIDs {
-					_ = s.container.Stop(ctx, gid, 10)
-					_ = s.container.Remove(ctx, gid)
+					warnErr(s.container.Stop(ctx, gid, 10), "failed to stop container")
+					warnErr(s.container.Remove(ctx, gid), "failed to remove container")
 				}
 				for _, old := range existingContainers {
 					containerIDs = append(containerIDs, old.ID)
@@ -949,8 +965,8 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 		} else {
 			// Recreate strategy (or fresh deploy): stop all existing containers first, then deploy
 			for _, c := range existingContainers {
-				_ = s.container.Stop(ctx, c.ID, 10)
-				_ = s.container.Remove(ctx, c.ID)
+				warnErr(s.container.Stop(ctx, c.ID, 10), "failed to stop container")
+				warnErr(s.container.Remove(ctx, c.ID), "failed to remove container")
 			}
 
 			for i := 0; i < replicas; i++ {
@@ -1115,8 +1131,8 @@ func (s *Server) deployLocalReplica(ctx context.Context, name string, replicaInd
 		"hive.replica":  fmt.Sprintf("%d", replicaIndex),
 	})
 	for _, c := range existing {
-		_ = s.container.Stop(ctx, c.ID, 10)
-		_ = s.container.Remove(ctx, c.ID)
+		warnErr(s.container.Stop(ctx, c.ID, 10), "failed to stop container")
+		warnErr(s.container.Remove(ctx, c.ID), "failed to remove container")
 	}
 
 	id, err := s.container.CreateAndStart(ctx, spec)
@@ -1354,8 +1370,8 @@ func (s *Server) StopService(ctx context.Context, req *hivev1.StopServiceRequest
 		if err != nil {
 			// Remote node unreachable — clean up stale placement
 			slog.Warn("remote node unreachable, cleaning up stale placement", "service", req.Name, "node", placement, "error", err)
-			_ = s.store.Delete("services", req.Name)
-			_ = s.store.DeletePlacement(req.Name)
+			warnErr(s.store.Delete("services", req.Name), "failed to delete from store", "bucket", "services")
+			warnErr(s.store.DeletePlacement(req.Name), "failed to delete placement", "service", req.Name)
 			return &emptypb.Empty{}, nil
 		}
 
@@ -1380,8 +1396,8 @@ func (s *Server) StopService(ctx context.Context, req *hivev1.StopServiceRequest
 		if len(stopErrors) > 0 {
 			return nil, status.Errorf(codes.Internal, "failed to stop all containers on %q: %s", placement, strings.Join(stopErrors, "; "))
 		}
-		_ = s.store.Delete("services", req.Name)
-		_ = s.store.DeletePlacement(req.Name)
+		warnErr(s.store.Delete("services", req.Name), "failed to delete from store", "bucket", "services")
+		warnErr(s.store.DeletePlacement(req.Name), "failed to delete placement", "service", req.Name)
 
 		// Clean up cron jobs for this service
 		if s.cronSched != nil {
@@ -1407,19 +1423,19 @@ func (s *Server) StopService(ctx context.Context, req *hivev1.StopServiceRequest
 	allRemoved := true
 	for _, c := range containers {
 		slog.Info("stopping container", "service", req.Name, "id", c.ID)
-		_ = s.container.Stop(ctx, c.ID, 10) // graceful stop first
+		warnErr(s.container.Stop(ctx, c.ID, 10), "failed to stop container") // graceful stop first
 		if err := s.container.Remove(ctx, c.ID); err != nil {
 			slog.Error("failed to remove container", "id", c.ID, "error", err)
 			allRemoved = false
 		}
 	}
 	if allRemoved {
-		_ = s.store.Delete("services", req.Name)
-		_ = s.store.DeletePlacement(req.Name)
+		warnErr(s.store.Delete("services", req.Name), "failed to delete from store", "bucket", "services")
+		warnErr(s.store.DeletePlacement(req.Name), "failed to delete placement", "service", req.Name)
 
 		// Clean up Docker network if no other services use it
 		if netName, _ := s.store.Get("meta", "network:"+req.Name); netName != nil {
-			_ = s.store.Delete("meta", "network:"+req.Name)
+			warnErr(s.store.Delete("meta", "network:"+req.Name), "failed to delete from store", "bucket", "meta")
 			// Only remove the network if no other service references it
 			networkInUse := false
 			if keys, err := s.store.List("meta"); err == nil {
@@ -1560,7 +1576,7 @@ func (s *Server) ScaleService(ctx context.Context, req *hivev1.ScaleServiceReque
 		for i := currentCount - 1; i >= desired; i-- {
 			c := containers[i]
 			slog.Info("scaling down, stopping replica", "service", req.Name, "container", container.ShortID(c.ID))
-			_ = s.container.Stop(ctx, c.ID, 10)
+			warnErr(s.container.Stop(ctx, c.ID, 10), "failed to stop container")
 			if removeErr := s.container.Remove(ctx, c.ID); removeErr != nil {
 				slog.Error("failed to remove container during scale-down", "id", c.ID, "error", removeErr)
 			}
@@ -1570,7 +1586,7 @@ func (s *Server) ScaleService(ctx context.Context, req *hivev1.ScaleServiceReque
 	// Update stored service definition with new replica count
 	svcDef.Replicas = desired
 	if svcJSON, marshalErr := json.Marshal(svcDef); marshalErr == nil {
-		_ = s.store.Put("services", req.Name, svcJSON)
+		warnErr(s.store.Put("services", req.Name, svcJSON), "failed to persist to store", "bucket", "services")
 	}
 
 	slog.Info("service scaled", "name", req.Name, "replicas", desired)
@@ -1614,9 +1630,11 @@ func (s *Server) RollbackService(ctx context.Context, req *hivev1.RollbackServic
 			}
 			for _, c := range state.Containers {
 				if c.ServiceName == req.Name {
-					_, _ = peerConn.MeshClient().StopContainer(ctx, &hivev1.StopContainerRequest{
+					if _, stopErr := peerConn.MeshClient().StopContainer(ctx, &hivev1.StopContainerRequest{
 						ContainerId: c.Id, TimeoutSeconds: 10,
-					})
+					}); stopErr != nil {
+						slog.Warn("failed to stop remote container during rollback", "container", c.Id, "error", stopErr)
+					}
 				}
 			}
 		}
@@ -1631,8 +1649,8 @@ func (s *Server) RollbackService(ctx context.Context, req *hivev1.RollbackServic
 		return nil, status.Errorf(codes.Internal, "list containers: %v", err)
 	}
 	for _, c := range containers {
-		_ = s.container.Stop(ctx, c.ID, 10)
-		_ = s.container.Remove(ctx, c.ID)
+		warnErr(s.container.Stop(ctx, c.ID, 10), "failed to stop container")
+		warnErr(s.container.Remove(ctx, c.ID), "failed to remove container")
 	}
 
 	// Resolve secrets for the previous definition
@@ -1671,7 +1689,7 @@ func (s *Server) RollbackService(ctx context.Context, req *hivev1.RollbackServic
 
 	// Archive current version as history (swap)
 	if current, _ := s.store.Get("services", req.Name); current != nil {
-		_ = s.store.Put("service_history", req.Name, current)
+		warnErr(s.store.Put("service_history", req.Name, current), "failed to persist to store", "bucket", "service_history")
 	}
 
 	var networkName string
@@ -1708,7 +1726,7 @@ func (s *Server) RollbackService(ctx context.Context, req *hivev1.RollbackServic
 
 	// Persist the rolled-back definition as current
 	if svcJSON, marshalErr := json.Marshal(prevDef); marshalErr == nil {
-		_ = s.store.Put("services", req.Name, svcJSON)
+		warnErr(s.store.Put("services", req.Name, svcJSON), "failed to persist to store", "bucket", "services")
 	}
 
 	slog.Info("service rolled back", "name", req.Name, "image", prevDef.Image, "replicas", replicas)
@@ -1785,8 +1803,8 @@ func (s *Server) RestartService(ctx context.Context, req *hivev1.RestartServiceR
 			"hive.replica": fmt.Sprintf("%d", i),
 		})
 		for _, old := range existing {
-			_ = s.container.Stop(ctx, old.ID, 10)
-			_ = s.container.Remove(ctx, old.ID)
+			warnErr(s.container.Stop(ctx, old.ID, 10), "failed to stop container")
+			warnErr(s.container.Remove(ctx, old.ID), "failed to remove container")
 		}
 
 		targetNode := s.nodeName
@@ -2189,7 +2207,7 @@ func (s *Server) streamMultiContainerLogs(containers []container.ContainerInfo, 
 		wg.Add(1)
 		go func(cID string, reader io.ReadCloser) {
 			defer wg.Done()
-			_ = container.StreamDockerLogs(reader, func(line, streamType string) error {
+			if logErr := container.StreamDockerLogs(reader, func(line, streamType string) error {
 				entry := &hivev1.LogEntry{
 					ContainerId:   cID,
 					NodeName:      s.nodeName,
@@ -2204,7 +2222,9 @@ func (s *Server) streamMultiContainerLogs(containers []container.ContainerInfo, 
 				case <-cancelCtx.Done():
 					return cancelCtx.Err()
 				}
-			})
+			}); logErr != nil {
+				slog.Warn("log stream error", "container", cID, "error", logErr)
+			}
 		}(cID, reader)
 	}
 

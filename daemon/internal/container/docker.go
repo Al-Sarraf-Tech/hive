@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -134,6 +135,20 @@ func (d *dockerProvider) CreateAndStart(ctx context.Context, spec ContainerSpec)
 		if v.Name == "" && v.Source == "" {
 			continue // no source available (e.g., only Windows path on Linux)
 		}
+
+		// Validate bind mount source paths — block dangerous host paths
+		if v.Source != "" && v.Name == "" {
+			cleaned := filepath.Clean(v.Source)
+			for _, denied := range []string{
+				"/", "/etc", "/proc", "/sys", "/dev", "/boot", "/root",
+				"/var/run/docker.sock", "/run/docker.sock",
+			} {
+				if cleaned == denied || strings.HasPrefix(cleaned, denied+"/") {
+					return "", fmt.Errorf("volume source %q is a restricted host path", v.Source)
+				}
+			}
+		}
+
 		var bind string
 		if v.Name != "" && v.Source == "" {
 			bind = v.Name + ":" + v.Target
@@ -201,7 +216,9 @@ func (d *dockerProvider) CreateAndStart(ctx context.Context, spec ContainerSpec)
 
 	if _, err := d.cli.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{}); err != nil {
 		// Clean up the created-but-not-started container to avoid orphans
-		_, _ = d.cli.ContainerRemove(ctx, resp.ID, client.ContainerRemoveOptions{Force: true})
+		if _, rmErr := d.cli.ContainerRemove(ctx, resp.ID, client.ContainerRemoveOptions{Force: true}); rmErr != nil {
+			slog.Warn("failed to clean up container after start failure", "id", ShortID(resp.ID), "error", rmErr)
+		}
 		return "", fmt.Errorf("start container %q: %w", spec.Name, err)
 	}
 

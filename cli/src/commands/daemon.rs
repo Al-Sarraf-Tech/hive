@@ -178,7 +178,9 @@ fn install_windows() -> Result<()> {
 
     // Create data directory if it doesn't exist
     let data_dir = r"C:\ProgramData\Hive\data";
-    let _ = std::fs::create_dir_all(data_dir);
+    if let Err(e) = std::fs::create_dir_all(data_dir) {
+        eprintln!("  Warning: failed to create data directory {data_dir}: {e}");
+    }
 
     println!("  Installing hived as Windows service...");
     // Quote the executable path — it may contain spaces (e.g., C:\Program Files\...)

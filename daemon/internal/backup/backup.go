@@ -38,51 +38,76 @@ func Export(s *store.Store) (*ClusterBackup, error) {
 		Meta:       make(map[string]string),
 	}
 
+	var errs []error
+
 	// Export services
-	if keys, err := s.List("services"); err == nil {
+	if keys, err := s.List("services"); err != nil {
+		errs = append(errs, fmt.Errorf("list services: %w", err))
+	} else {
 		for _, k := range keys {
-			if v, err := s.Get("services", k); err == nil && v != nil {
+			if v, err := s.Get("services", k); err != nil {
+				errs = append(errs, fmt.Errorf("get service %q: %w", k, err))
+			} else if v != nil {
 				b.Services[k] = string(v)
 			}
 		}
 	}
 
 	// Export secrets (base64-encode because values are encrypted binary)
-	if keys, err := s.List("secrets"); err == nil {
+	if keys, err := s.List("secrets"); err != nil {
+		errs = append(errs, fmt.Errorf("list secrets: %w", err))
+	} else {
 		for _, k := range keys {
-			if v, err := s.Get("secrets", k); err == nil && v != nil {
+			if v, err := s.Get("secrets", k); err != nil {
+				errs = append(errs, fmt.Errorf("get secret %q: %w", k, err))
+			} else if v != nil {
 				b.Secrets[k] = base64.StdEncoding.EncodeToString(v)
 			}
 		}
 	}
 
 	// Export placements
-	if keys, err := s.List("service_placements"); err == nil {
+	if keys, err := s.List("service_placements"); err != nil {
+		errs = append(errs, fmt.Errorf("list placements: %w", err))
+	} else {
 		for _, k := range keys {
-			if v, err := s.Get("service_placements", k); err == nil && v != nil {
+			if v, err := s.Get("service_placements", k); err != nil {
+				errs = append(errs, fmt.Errorf("get placement %q: %w", k, err))
+			} else if v != nil {
 				b.Placements[k] = string(v)
 			}
 		}
 	}
 
 	// Export service history
-	if keys, err := s.List("service_history"); err == nil {
+	if keys, err := s.List("service_history"); err != nil {
+		errs = append(errs, fmt.Errorf("list history: %w", err))
+	} else {
 		for _, k := range keys {
-			if v, err := s.Get("service_history", k); err == nil && v != nil {
+			if v, err := s.Get("service_history", k); err != nil {
+				errs = append(errs, fmt.Errorf("get history %q: %w", k, err))
+			} else if v != nil {
 				b.History[k] = string(v)
 			}
 		}
 	}
 
 	// Export meta
-	if keys, err := s.List("meta"); err == nil {
+	if keys, err := s.List("meta"); err != nil {
+		errs = append(errs, fmt.Errorf("list meta: %w", err))
+	} else {
 		for _, k := range keys {
-			if v, err := s.Get("meta", k); err == nil && v != nil {
+			if v, err := s.Get("meta", k); err != nil {
+				errs = append(errs, fmt.Errorf("get meta %q: %w", k, err))
+			} else if v != nil {
 				b.Meta[k] = string(v)
 			}
 		}
 	}
 
+	if len(errs) > 0 {
+		return b, fmt.Errorf("export had %d errors (first: %w)", len(errs), errs[0])
+	}
 	return b, nil
 }
 

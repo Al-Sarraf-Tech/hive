@@ -118,11 +118,26 @@ func parseWithVisited(data []byte, basePath string, visited map[string]bool) (*H
 			incPath = filepath.Join(filepath.Dir(basePath), inc)
 		}
 
-		// Circular include detection
+		// Resolve absolute path and validate containment
 		absPath, err := filepath.Abs(incPath)
 		if err != nil {
 			return nil, fmt.Errorf("resolve include path %q: %w", incPath, err)
 		}
+
+		// Path traversal prevention: includes must stay within the base directory
+		if basePath != "" {
+			baseDir, _ := filepath.Abs(filepath.Dir(basePath))
+			if !strings.HasPrefix(absPath, baseDir+string(filepath.Separator)) && absPath != baseDir {
+				return nil, fmt.Errorf("include path %q escapes base directory %q", inc, baseDir)
+			}
+		}
+
+		// Reject absolute paths in the include directive itself (defense-in-depth)
+		if filepath.IsAbs(inc) {
+			return nil, fmt.Errorf("absolute include paths are not allowed: %q", inc)
+		}
+
+		// Circular include detection
 		if visited[absPath] {
 			return nil, fmt.Errorf("circular include detected: %s", incPath)
 		}

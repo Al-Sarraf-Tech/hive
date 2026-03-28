@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -169,6 +170,16 @@ func (w *WGMesh) ListenPort() int {
 // If the WireGuard device is active, the peer is also configured on the device
 // so tunnel traffic can flow immediately.
 func (w *WGMesh) AddPeer(name string, pubKeyBase64 string, endpoint string) error {
+	// Validate endpoint against IPC injection — gossip metadata is untrusted input.
+	// The WireGuard IPC protocol uses newlines as field delimiters, so a malicious
+	// endpoint containing \n could inject arbitrary peer configuration directives.
+	if strings.ContainsAny(endpoint, "\n\r=") {
+		return fmt.Errorf("invalid endpoint for peer %q: contains control characters", name)
+	}
+	if _, _, err := net.SplitHostPort(endpoint); err != nil {
+		return fmt.Errorf("invalid endpoint for peer %q: %w", name, err)
+	}
+
 	decoded, err := base64.StdEncoding.DecodeString(pubKeyBase64)
 	if err != nil {
 		return fmt.Errorf("decode peer %q public key: %w", name, err)
@@ -256,22 +267,6 @@ func (w *WGMesh) IsUp() bool {
 	return w.device != nil && w.deviceUp.Load()
 }
 
-// DialTCP dials a TCP address through the WireGuard tunnel using the userspace
-// network stack. This allows Hive daemon-to-daemon communication over encrypted
-// WireGuard links without touching the host network stack.
-func (w *WGMesh) DialTCP(ip string, port int) (net.Conn, error) {
-	w.mu.RLock()
-	tnet := w.tnet
-	w.mu.RUnlock()
-	if tnet == nil {
-		return nil, fmt.Errorf("wireguard tunnel not active")
-	}
-	// Use a 5s context timeout to prevent hangs when the remote
-	// WG endpoint is unreachable (firewall, network partition).
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	return tnet.DialContext(ctx, "tcp", fmt.Sprintf("%s:%d", ip, port))
-}
 
 // DialContext dials a TCP connection through the WireGuard tunnel with context support.
 // The network parameter should be "tcp", "tcp4", or "tcp6".

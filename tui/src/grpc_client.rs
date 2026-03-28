@@ -21,8 +21,8 @@ pub async fn connect(addr: &str, ca_cert: Option<&str>) -> Result<HiveApiClient<
     };
 
     let mut endpoint = Channel::builder(url.parse().context("invalid address format")?)
-        .connect_timeout(Duration::from_secs(3))
-        .timeout(Duration::from_secs(10));
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(30));
 
     if let Some(ca_path) = ca_cert {
         let pem = tokio::fs::read(ca_path)

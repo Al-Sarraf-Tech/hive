@@ -209,8 +209,12 @@ func (s *MeshServer) StartContainer(ctx context.Context, req *hivev1.StartContai
 		"hive.replica": replicaLabel,
 	})
 	for _, c := range existing {
-		_ = s.container.Stop(ctx, c.ID, 10)
-		_ = s.container.Remove(ctx, c.ID)
+		if stopErr := s.container.Stop(ctx, c.ID, 10); stopErr != nil {
+			slog.Warn("failed to stop existing container", "id", c.ID, "error", stopErr)
+		}
+		if rmErr := s.container.Remove(ctx, c.ID); rmErr != nil {
+			slog.Warn("failed to remove existing container", "id", c.ID, "error", rmErr)
+		}
 	}
 
 	id, err := s.container.CreateAndStart(ctx, spec)
@@ -225,7 +229,9 @@ func (s *MeshServer) StartContainer(ctx context.Context, req *hivev1.StartContai
 		RestartPolicy: "on-failure",
 	}
 	if svcJSON, err := json.Marshal(svcDef); err == nil {
-		_ = s.store.Put("services", baseName, svcJSON)
+		if putErr := s.store.Put("services", baseName, svcJSON); putErr != nil {
+			slog.Warn("failed to persist service definition", "service", baseName, "error", putErr)
+		}
 	}
 
 	slog.Info("container started via remote deploy", "service", baseName, "replica", replicaLabel, "id", id)

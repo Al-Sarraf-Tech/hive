@@ -252,8 +252,12 @@ func (l *Loop) runChecks(ctx context.Context) {
 				"consecutive_failures", l.failures[svcName])
 
 			// Stop and remove the failed container
-			_ = l.container.Stop(ctx, c.ID, 10)
-			_ = l.container.Remove(ctx, c.ID)
+			if stopErr := l.container.Stop(ctx, c.ID, 10); stopErr != nil {
+				slog.Warn("failed to stop unhealthy container", "id", container.ShortID(c.ID), "error", stopErr)
+			}
+			if rmErr := l.container.Remove(ctx, c.ID); rmErr != nil {
+				slog.Warn("failed to remove unhealthy container", "id", container.ShortID(c.ID), "error", rmErr)
+			}
 
 			// Rebuild container spec from stored service definition
 			replicaIdx := 0
