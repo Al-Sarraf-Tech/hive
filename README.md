@@ -49,18 +49,30 @@ hive CLI (Rust)          hivetop TUI (Rust)          Hive Console (Svelte)
 ## Quick Start
 
 ```bash
-# Download from GitHub releases
-curl -fsSL https://github.com/Al-Sarraf-Tech/hive/releases/latest/download/hived-linux-amd64 -o /usr/local/bin/hived
-curl -fsSL https://github.com/Al-Sarraf-Tech/hive/releases/latest/download/hive-linux-amd64 -o /usr/local/bin/hive
-chmod +x /usr/local/bin/hived /usr/local/bin/hive
+# Install (Linux)
+curl -fsSL https://get.hive.dev | sh
 
+# First node — interactive setup (installs Docker if needed, starts daemon)
+hive setup
+
+# Second node — join with the code shown by the first node
+hive setup --join HIVE-AB12-CD34
+
+# Deploy a service
+hive deploy postgres.toml
+```
+
+Or manually:
+
+```bash
 # Start the daemon (requires Docker or Podman running)
 hived --data-dir /var/lib/hive --log-level info
 
 # Initialize a cluster on your first node
 hive init --name my-cluster
 
-# Join additional nodes (from other machines)
+# Join additional nodes (with the short code or full token)
+hive join --code HIVE-AB12-CD34 <first-node-ip>
 hive join <first-node-ip>:7946 --token <join-token>
 
 # Deploy a service
@@ -267,6 +279,9 @@ Hive generates a self-signed ECDSA P-256 Certificate Authority on cluster init. 
 
 ### Encrypted Secrets
 Secrets are encrypted at rest using [age](https://age-encryption.org/) (X25519). They're stored in the local bbolt database and replicated across the cluster via the mesh. On deploy, `{{ secret:key }}` placeholders in environment variables are resolved and injected — plaintext values never touch disk.
+
+### WireGuard Mesh (Optional)
+Enable with `-wg` flag or `[wireguard] enabled = true` in config. Each node gets a deterministic `10.47.X.X` mesh address derived from its WireGuard public key. Keys are exchanged automatically via gossip. All daemon-to-daemon gRPC traffic routes through the encrypted tunnel using a userspace TCP/IP stack (no root or kernel modules required). Works across NAT with persistent keepalive.
 
 ### Scheduling & Placement
 The scheduler evaluates constraints (platform, node pinning, resource requirements) and scores nodes by fitness (CPU/memory headroom, container count) to place replicas. Services with `depends_on` are deployed in topological order.
