@@ -1,8 +1,25 @@
 <script>
   import '../app.css';
   import { page } from '$app/stores';
+  import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
 
   let { children } = $props();
+
+  // Auth guard: redirect to /login if no token (skip on login page itself)
+  onMount(() => {
+    if ($page.url.pathname !== '/login') {
+      const token = sessionStorage.getItem('hive_token');
+      if (!token) {
+        goto('/login');
+      }
+    }
+  });
+
+  function logout() {
+    sessionStorage.removeItem('hive_token');
+    goto('/login');
+  }
 
   const nav = [
     { href: '/', label: 'Overview', icon: '~' },
@@ -21,47 +38,55 @@
   }
 </script>
 
-<div class="app-layout">
-  <aside class="sidebar">
-    <div class="sidebar-logo">
-      <span class="mono">⬡</span>
-      <span>Hive</span>
-    </div>
-    <div class="nav-section">Cluster</div>
-    {#each nav.slice(0, 3) as item}
-      <a
-        href={item.href}
-        class="nav-link"
-        class:active={isActive(item.href, $page.url.pathname)}
-      >
-        <span class="mono muted" style="margin-right:0.5rem">{item.icon}</span>
-        {item.label}
-      </a>
-    {/each}
-    <div class="nav-section">Observe</div>
-    {#each nav.slice(3, 6) as item}
-      <a
-        href={item.href}
-        class="nav-link"
-        class:active={isActive(item.href, $page.url.pathname)}
-      >
-        <span class="mono muted" style="margin-right:0.5rem">{item.icon}</span>
-        {item.label}
-      </a>
-    {/each}
-    <div class="nav-section">Manage</div>
-    {#each nav.slice(6) as item}
-      <a
-        href={item.href}
-        class="nav-link"
-        class:active={isActive(item.href, $page.url.pathname)}
-      >
-        <span class="mono muted" style="margin-right:0.5rem">{item.icon}</span>
-        {item.label}
-      </a>
-    {/each}
-  </aside>
-  <main class="main-content">
-    {@render children()}
-  </main>
-</div>
+{#if $page.url.pathname === '/login'}
+  {@render children()}
+{:else}
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <span class="mono">⬡</span>
+        <span>Hive</span>
+      </div>
+      <div class="nav-section">Cluster</div>
+      {#each nav.slice(0, 3) as item}
+        <a
+          href={item.href}
+          class="nav-link"
+          class:active={isActive(item.href, $page.url.pathname)}
+        >
+          <span class="mono muted" style="margin-right:0.5rem">{item.icon}</span>
+          {item.label}
+        </a>
+      {/each}
+      <div class="nav-section">Observe</div>
+      {#each nav.slice(3, 6) as item}
+        <a
+          href={item.href}
+          class="nav-link"
+          class:active={isActive(item.href, $page.url.pathname)}
+        >
+          <span class="mono muted" style="margin-right:0.5rem">{item.icon}</span>
+          {item.label}
+        </a>
+      {/each}
+      <div class="nav-section">Manage</div>
+      {#each nav.slice(6) as item}
+        <a
+          href={item.href}
+          class="nav-link"
+          class:active={isActive(item.href, $page.url.pathname)}
+        >
+          <span class="mono muted" style="margin-right:0.5rem">{item.icon}</span>
+          {item.label}
+        </a>
+      {/each}
+      <button class="nav-link" style="margin-top:auto; color:var(--text-muted); border:none; background:none; cursor:pointer; width:100%; text-align:left;" onclick={logout}>
+        <span class="mono muted" style="margin-right:0.5rem">←</span>
+        Logout
+      </button>
+    </aside>
+    <main class="main-content">
+      {@render children()}
+    </main>
+  </div>
+{/if}

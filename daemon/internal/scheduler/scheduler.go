@@ -102,6 +102,17 @@ func (s *Scheduler) matchesConstraints(node mesh.NodeInfo, svc hivefile.ServiceD
 		}
 	}
 
+	// Memory constraint: reject nodes that don't have enough available memory
+	if svc.Resources.Memory != "" {
+		required, err := hivefile.ParseMemory(svc.Resources.Memory)
+		if err == nil && required > 0 {
+			// Only reject if we have resource info for this node
+			if node.MemAvail > 0 && node.MemAvail < uint64(required) {
+				return false
+			}
+		}
+	}
+
 	return true
 }
 
@@ -115,6 +126,21 @@ func (s *Scheduler) score(node mesh.NodeInfo, isLocal bool) float64 {
 		containerPenalty = 50
 	}
 	score -= containerPenalty
+
+	// Memory headroom bonus (0-10 points)
+	if node.MemTotal > 0 {
+		pct := float64(node.MemAvail) / float64(node.MemTotal) * 100
+		score += pct / 10 // up to +10 for nodes with more free memory
+	}
+
+	// CPU core bonus: prefer nodes with more cores (+1 per 4 cores, capped at +5)
+	if node.CPUCores > 0 {
+		cpuBonus := float64(node.CPUCores) / 4.0
+		if cpuBonus > 5 {
+			cpuBonus = 5
+		}
+		score += cpuBonus
+	}
 
 	// Local bonus: small preference for local to avoid unnecessary network hops
 	if isLocal {

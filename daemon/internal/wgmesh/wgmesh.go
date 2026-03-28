@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
@@ -265,11 +266,11 @@ func (w *WGMesh) DialTCP(ip string, port int) (net.Conn, error) {
 	if tnet == nil {
 		return nil, fmt.Errorf("wireguard tunnel not active")
 	}
-	addr, err := netip.ParseAddr(ip)
-	if err != nil {
-		return nil, fmt.Errorf("parse wireguard peer address %q: %w", ip, err)
-	}
-	return tnet.DialTCPAddrPort(netip.AddrPortFrom(addr, uint16(port)))
+	// Use a 5s context timeout to prevent hangs when the remote
+	// WG endpoint is unreachable (firewall, network partition).
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return tnet.DialContext(ctx, "tcp", fmt.Sprintf("%s:%d", ip, port))
 }
 
 // DialContext dials a TCP connection through the WireGuard tunnel with context support.
@@ -280,6 +281,13 @@ func (w *WGMesh) DialContext(ctx context.Context, network, address string) (net.
 	w.mu.RUnlock()
 	if tnet == nil {
 		return nil, fmt.Errorf("wireguard tunnel not active")
+	}
+	// Add a default 5s timeout if no deadline set, preventing hangs
+	// when the remote WG endpoint is unreachable.
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
 	}
 	return tnet.DialContext(ctx, network, address)
 }

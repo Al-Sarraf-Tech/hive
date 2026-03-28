@@ -1,9 +1,14 @@
 const BASE = '/api/v1';
 
 async function request(path, opts = {}) {
+  const token = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('hive_token') : null;
+  const headers = { 'Content-Type': 'application/json', ...opts.headers };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
   const res = await fetch(`${BASE}${path}`, {
     ...opts,
-    headers: { 'Content-Type': 'application/json', ...opts.headers },
+    headers,
   });
   if (res.status === 204) return {};
   const data = await res.json();
