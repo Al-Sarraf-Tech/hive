@@ -47,20 +47,17 @@ func New(api hivev1.HiveAPIServer, token string, logBuffer *logs.RingBuffer, s *
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// CORS headers for browser console.
-	// GET/OPTIONS: allow any origin (read-only, auth is token-based).
-	// Mutations (POST/DELETE): echo back the request Origin so only the console
-	// (same host) or explicitly-originated requests work; browsers enforce
-	// same-origin when no CORS header is present.
+	// CORS policy:
+	// - GET/OPTIONS: allow any origin (read-only, safe for public access)
+	// - POST/DELETE: NO Access-Control-Allow-Origin header = browser enforces same-origin
+	//   This blocks cross-site requests to mutation endpoints (deploy, exec, secrets, etc.)
+	//   The console is served from the same host:port so it works without CORS.
+	//   CLI/API tools (curl, gRPC) are unaffected since they don't enforce CORS.
 	if r.Method == http.MethodOptions || r.Method == http.MethodGet {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-	} else {
-		origin := r.Header.Get("Origin")
-		if origin != "" {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Vary", "Origin")
-		}
 	}
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+	// Only advertise safe methods in preflight; mutations require same-origin
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
 	if r.Method == http.MethodOptions {
