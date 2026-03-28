@@ -52,6 +52,7 @@ func main() {
 	flagMeshPort := flag.Int("mesh-port", 7948, "gRPC port for daemon-to-daemon mesh (mTLS)")
 	flagTLS := flag.Bool("tls", false, "Enable TLS for CLI/TUI connections")
 	flagHTTPPort := flag.Int("http-port", 7949, "HTTP API port for web console (0 to disable)")
+	flagHTTPTLS := flag.Bool("http-tls", false, "Enable TLS on HTTP API")
 	flagWG := flag.Bool("wg", false, "Enable WireGuard mesh overlay (opt-in)")
 	flagWGPort := flag.Int("wg-port", 39471, "WireGuard UDP listen port")
 	flag.Parse()
@@ -93,6 +94,8 @@ func main() {
 			overrides.TLS = flagTLS
 		case "http-port":
 			overrides.HTTPPort = flagHTTPPort
+		case "http-tls":
+			overrides.HTTPTLS = flagHTTPTLS
 		case "wg":
 			overrides.WG = flagWG
 		case "wg-port":
@@ -172,8 +175,8 @@ func main() {
 		"capabilities", containerProvider.DetectCapabilities(),
 	)
 
-	// Initialize health checker
-	healthChecker := health.NewChecker()
+	// Initialize health checker (pass container provider for exec-type health checks)
+	healthChecker := health.NewChecker(containerProvider)
 
 	// Initialize mesh (gossip layer)
 	// Parse gossip encryption key if provided
@@ -263,6 +266,11 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("secrets vault initialized", "public_key", vault.PublicKey())
+
+	if cfg.HTTP.Port > 0 && !cfg.HTTP.TLS {
+		slog.Warn("HTTP API serving without TLS — secrets transmitted in plaintext over the network",
+			"fix", "set [http] tls = true in config after running 'hive init'")
+	}
 
 	// ─── API server (CLI/TUI connections, optional TLS) ─────
 	var apiOpts []grpc.ServerOption

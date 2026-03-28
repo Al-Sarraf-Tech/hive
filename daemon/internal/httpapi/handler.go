@@ -113,6 +113,7 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("DELETE /api/v1/secrets/{key}", h.deleteSecret)
 	h.mux.HandleFunc("GET /api/v1/cron", h.listCronJobs)
 	h.mux.HandleFunc("POST /api/v1/validate", h.validateHivefile)
+	h.mux.HandleFunc("POST /api/v1/diff", h.diffDeploy)
 	h.mux.HandleFunc("GET /api/v1/services/{name}/health", h.getServiceHealth)
 }
 
@@ -400,6 +401,25 @@ func (h *Handler) validateHivefile(w http.ResponseWriter, r *http.Request) {
 	resp, err := h.api.ValidateHivefile(r.Context(), &hivev1.ValidateHivefileRequest{
 		HivefileToml: body.HivefileToml,
 		ServerChecks: body.ServerChecks,
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
+}
+
+func (h *Handler) diffDeploy(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10MB limit for hivefiles
+	var body struct {
+		HivefileToml string `json:"hivefile_toml"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	resp, err := h.api.DiffDeploy(r.Context(), &hivev1.DiffDeployRequest{
+		HivefileToml: body.HivefileToml,
 	})
 	if err != nil {
 		writeError(w, err)

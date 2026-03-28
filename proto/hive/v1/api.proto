@@ -53,6 +53,9 @@ service HiveAPI {
   // ─── Health Timeline ──────────────────────────────────────
   rpc GetServiceHealth(GetServiceHealthRequest) returns (GetServiceHealthResponse);
 
+  // ─── Deploy Preview ─────────────────────────────────────
+  rpc DiffDeploy(DiffDeployRequest) returns (DiffDeployResponse);
+
   // ─── Backup/Restore ─────────────────────────────────────
   rpc ExportCluster(google.protobuf.Empty) returns (ExportClusterResponse);
   rpc ImportCluster(ImportClusterRequest) returns (ImportClusterResponse);
@@ -290,4 +293,31 @@ message ImportClusterRequest {
 message ImportClusterResponse {
   uint32 services_imported = 1;
   uint32 secrets_imported = 2;
+}
+
+// ─── Deploy Preview (Diff) ──────────────────────────────────
+
+message DiffDeployRequest {
+  string hivefile_toml = 1;
+}
+
+message DiffDeployResponse {
+  repeated ServiceDiff diffs = 1;
+}
+
+message ServiceDiff {
+  string name = 1;
+  DiffAction action = 2;
+  string old_image = 3;
+  string new_image = 4;
+  uint32 old_replicas = 5;
+  uint32 new_replicas = 6;
+  repeated string changes = 7;
+}
+
+enum DiffAction {
+  DIFF_ACTION_UNSPECIFIED = 0;
+  DIFF_ACTION_CREATE = 1;
+  DIFF_ACTION_UPDATE = 2;
+  DIFF_ACTION_UNCHANGED = 3;
 }

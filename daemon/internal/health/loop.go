@@ -102,6 +102,23 @@ func (l *Loop) runChecks(ctx context.Context) {
 		l.onTickFunc()
 	}
 
+	// Collect per-container resource metrics
+	for _, c := range containers {
+		if c.Status != "running" {
+			continue
+		}
+		stats, err := l.container.Stats(ctx, c.ID)
+		if err != nil {
+			continue
+		}
+		svcName := c.Labels["hive.service"]
+		if svcName == "" {
+			continue
+		}
+		metrics.ContainerCPUPercent.WithLabelValues(svcName, container.ShortID(c.ID)).Set(stats.CPUPercent)
+		metrics.ContainerMemoryBytes.WithLabelValues(svcName, container.ShortID(c.ID)).Set(float64(stats.MemoryBytes))
+	}
+
 	for _, c := range containers {
 		if c.Status != "running" {
 			continue
@@ -123,8 +140,12 @@ func (l *Loop) runChecks(ctx context.Context) {
 			continue
 		}
 
-		if svcDef.Health.Type == "" || svcDef.Health.Port == 0 {
+		if svcDef.Health.Type == "" {
 			continue // no health check configured
+		}
+		// Exec checks don't require a port; HTTP/TCP checks do.
+		if svcDef.Health.Type != "exec" && svcDef.Health.Port == 0 {
+			continue // no port for non-exec health check
 		}
 
 		// Run the check
@@ -136,11 +157,13 @@ func (l *Loop) runChecks(ctx context.Context) {
 		}
 
 		cfg := Config{
-			Type:    CheckType(svcDef.Health.Type),
-			Host:    "127.0.0.1", // local container
-			Port:    svcDef.Health.Port,
-			Path:    svcDef.Health.Path,
-			Timeout: checkTimeout,
+			Type:        CheckType(svcDef.Health.Type),
+			Host:        "127.0.0.1", // local container
+			Port:        svcDef.Health.Port,
+			Path:        svcDef.Health.Path,
+			Timeout:     checkTimeout,
+			ContainerID: c.ID,
+			ExecCommand: svcDef.Health.ExecCommand,
 		}
 
 		result := l.checker.Check(ctx, cfg)

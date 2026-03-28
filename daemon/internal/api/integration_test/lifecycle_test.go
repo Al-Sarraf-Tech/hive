@@ -106,6 +106,10 @@ func (m *mockProvider) Exec(_ context.Context, _ string, _ []string) (container.
 	return container.ExecResult{ExitCode: 0, Stdout: "ok\n"}, nil
 }
 
+func (m *mockProvider) Stats(_ context.Context, _ string) (*container.ContainerStats, error) {
+	return &container.ContainerStats{CPUPercent: 1.5, MemoryBytes: 1024 * 1024}, nil
+}
+
 func (m *mockProvider) Inspect(_ context.Context, id string) (*container.ContainerInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -138,7 +142,7 @@ func setupServer(t *testing.T) (*api.Server, *mockProvider) {
 	t.Cleanup(func() { s.Close() })
 
 	mock := newMockProvider()
-	hc := health.NewChecker()
+	hc := health.NewChecker(mock)
 	vault, err := secrets.NewVault(dir)
 	if err != nil {
 		t.Fatalf("new vault: %v", err)

@@ -76,4 +76,18 @@ var (
 		Name:      "system_disk_available_bytes",
 		Help:      "Available disk space in bytes",
 	})
+
+	// ContainerCPUPercent tracks CPU usage percentage per container.
+	ContainerCPUPercent = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "hive",
+		Name:      "container_cpu_percent",
+		Help:      "CPU usage percentage per container",
+	}, []string{"service", "container_id"})
+
+	// ContainerMemoryBytes tracks memory usage in bytes per container.
+	ContainerMemoryBytes = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "hive",
+		Name:      "container_memory_bytes",
+		Help:      "Memory usage in bytes per container",
+	}, []string{"service", "container_id"})
 )

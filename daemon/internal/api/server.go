@@ -2550,6 +2550,85 @@ func (s *Server) ExportCluster(_ context.Context, _ *emptypb.Empty) (*hivev1.Exp
 }
 
 // ImportCluster restores cluster state from a JSON backup.
+// DiffDeploy compares a Hivefile against the currently deployed state and returns
+// a diff showing what would change if the Hivefile were deployed.
+func (s *Server) DiffDeploy(_ context.Context, req *hivev1.DiffDeployRequest) (*hivev1.DiffDeployResponse, error) {
+	if req.HivefileToml == "" {
+		return nil, status.Error(codes.InvalidArgument, "hivefile_toml is required")
+	}
+
+	hf, err := hivefile.ParseString(req.HivefileToml)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "parse hivefile: %v", err)
+	}
+
+	var diffs []*hivev1.ServiceDiff
+	for name, svcDef := range hf.Service {
+		diff := &hivev1.ServiceDiff{Name: name}
+
+		// Load existing service definition from store
+		existingJSON, err := s.store.Get("services", name)
+		if err != nil || existingJSON == nil {
+			// New service
+			diff.Action = hivev1.DiffAction_DIFF_ACTION_CREATE
+			diff.NewImage = svcDef.Image
+			diff.NewReplicas = uint32(svcDef.Replicas)
+			diff.Changes = append(diff.Changes, "new service")
+		} else {
+			// Existing service — compare
+			var oldDef hivefile.ServiceDef
+			if jsonErr := json.Unmarshal(existingJSON, &oldDef); jsonErr != nil {
+				diff.Action = hivev1.DiffAction_DIFF_ACTION_UPDATE
+				diff.NewImage = svcDef.Image
+				diff.NewReplicas = uint32(svcDef.Replicas)
+				diff.Changes = append(diff.Changes, "stored definition unreadable, treating as update")
+				diffs = append(diffs, diff)
+				continue
+			}
+
+			diff.OldImage = oldDef.Image
+			diff.NewImage = svcDef.Image
+			diff.OldReplicas = uint32(oldDef.Replicas)
+			diff.NewReplicas = uint32(svcDef.Replicas)
+
+			if oldDef.Image != svcDef.Image {
+				diff.Changes = append(diff.Changes, fmt.Sprintf("image: %s → %s", oldDef.Image, svcDef.Image))
+			}
+			if oldDef.Replicas != svcDef.Replicas {
+				diff.Changes = append(diff.Changes, fmt.Sprintf("replicas: %d → %d", oldDef.Replicas, svcDef.Replicas))
+			}
+			// Compare ports
+			for hp, cp := range svcDef.Ports {
+				if oldCp, ok := oldDef.Ports[hp]; !ok {
+					diff.Changes = append(diff.Changes, fmt.Sprintf("+ port %s → %s", hp, cp))
+				} else if oldCp != cp {
+					diff.Changes = append(diff.Changes, fmt.Sprintf("port %s: %s → %s", hp, oldCp, cp))
+				}
+			}
+			for hp := range oldDef.Ports {
+				if _, ok := svcDef.Ports[hp]; !ok {
+					diff.Changes = append(diff.Changes, fmt.Sprintf("- port %s", hp))
+				}
+			}
+			// Compare deploy strategy
+			if oldDef.Deploy.Strategy != svcDef.Deploy.Strategy {
+				diff.Changes = append(diff.Changes, fmt.Sprintf("strategy: %s → %s", oldDef.Deploy.Strategy, svcDef.Deploy.Strategy))
+			}
+
+			if len(diff.Changes) > 0 {
+				diff.Action = hivev1.DiffAction_DIFF_ACTION_UPDATE
+			} else {
+				diff.Action = hivev1.DiffAction_DIFF_ACTION_UNCHANGED
+			}
+		}
+		diffs = append(diffs, diff)
+	}
+
+	// Sort for deterministic output
+	sort.Slice(diffs, func(i, j int) bool { return diffs[i].Name < diffs[j].Name })
+	return &hivev1.DiffDeployResponse{Diffs: diffs}, nil
+}
+
 func (s *Server) ImportCluster(_ context.Context, req *hivev1.ImportClusterRequest) (*hivev1.ImportClusterResponse, error) {
 	b, err := backup.Unmarshal(req.Data)
 	if err != nil {

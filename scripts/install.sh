@@ -53,6 +53,20 @@ main() {
     download "$base_url/hive-linux-$arch" "$tmpdir/hive"
     download "$base_url/hivetop-linux-$arch" "$tmpdir/hivetop" || true  # optional
 
+    # After downloading binaries, verify checksums
+    info "Verifying checksums..."
+    if command -v sha256sum >/dev/null 2>&1; then
+        download "$base_url/checksums.sha256" "$tmpdir/checksums.sha256" || true
+        if [ -f "$tmpdir/checksums.sha256" ]; then
+            (cd "$tmpdir" && sha256sum -c checksums.sha256 2>/dev/null) || die "Checksum verification failed"
+            success "Checksums verified"
+        else
+            info "Checksums file not available, skipping verification"
+        fi
+    else
+        info "sha256sum not found, skipping verification"
+    fi
+
     # Install
     info "Installing to $INSTALL_DIR..."
     if [ -w "$INSTALL_DIR" ]; then

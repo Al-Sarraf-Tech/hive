@@ -43,6 +43,7 @@ const (
 	HiveAPI_StreamEvents_FullMethodName     = "/hive.v1.HiveAPI/StreamEvents"
 	HiveAPI_ListCronJobs_FullMethodName     = "/hive.v1.HiveAPI/ListCronJobs"
 	HiveAPI_GetServiceHealth_FullMethodName = "/hive.v1.HiveAPI/GetServiceHealth"
+	HiveAPI_DiffDeploy_FullMethodName       = "/hive.v1.HiveAPI/DiffDeploy"
 	HiveAPI_ExportCluster_FullMethodName    = "/hive.v1.HiveAPI/ExportCluster"
 	HiveAPI_ImportCluster_FullMethodName    = "/hive.v1.HiveAPI/ImportCluster"
 )
@@ -86,6 +87,8 @@ type HiveAPIClient interface {
 	ListCronJobs(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListCronJobsResponse, error)
 	// ─── Health Timeline ──────────────────────────────────────
 	GetServiceHealth(ctx context.Context, in *GetServiceHealthRequest, opts ...grpc.CallOption) (*GetServiceHealthResponse, error)
+	// ─── Deploy Preview ─────────────────────────────────────
+	DiffDeploy(ctx context.Context, in *DiffDeployRequest, opts ...grpc.CallOption) (*DiffDeployResponse, error)
 	// ─── Backup/Restore ─────────────────────────────────────
 	ExportCluster(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ExportClusterResponse, error)
 	ImportCluster(ctx context.Context, in *ImportClusterRequest, opts ...grpc.CallOption) (*ImportClusterResponse, error)
@@ -347,6 +350,16 @@ func (c *hiveAPIClient) GetServiceHealth(ctx context.Context, in *GetServiceHeal
 	return out, nil
 }
 
+func (c *hiveAPIClient) DiffDeploy(ctx context.Context, in *DiffDeployRequest, opts ...grpc.CallOption) (*DiffDeployResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DiffDeployResponse)
+	err := c.cc.Invoke(ctx, HiveAPI_DiffDeploy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *hiveAPIClient) ExportCluster(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ExportClusterResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ExportClusterResponse)
@@ -406,6 +419,8 @@ type HiveAPIServer interface {
 	ListCronJobs(context.Context, *emptypb.Empty) (*ListCronJobsResponse, error)
 	// ─── Health Timeline ──────────────────────────────────────
 	GetServiceHealth(context.Context, *GetServiceHealthRequest) (*GetServiceHealthResponse, error)
+	// ─── Deploy Preview ─────────────────────────────────────
+	DiffDeploy(context.Context, *DiffDeployRequest) (*DiffDeployResponse, error)
 	// ─── Backup/Restore ─────────────────────────────────────
 	ExportCluster(context.Context, *emptypb.Empty) (*ExportClusterResponse, error)
 	ImportCluster(context.Context, *ImportClusterRequest) (*ImportClusterResponse, error)
@@ -487,6 +502,9 @@ func (UnimplementedHiveAPIServer) ListCronJobs(context.Context, *emptypb.Empty) 
 }
 func (UnimplementedHiveAPIServer) GetServiceHealth(context.Context, *GetServiceHealthRequest) (*GetServiceHealthResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetServiceHealth not implemented")
+}
+func (UnimplementedHiveAPIServer) DiffDeploy(context.Context, *DiffDeployRequest) (*DiffDeployResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DiffDeploy not implemented")
 }
 func (UnimplementedHiveAPIServer) ExportCluster(context.Context, *emptypb.Empty) (*ExportClusterResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ExportCluster not implemented")
@@ -915,6 +933,24 @@ func _HiveAPI_GetServiceHealth_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HiveAPI_DiffDeploy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DiffDeployRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).DiffDeploy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_DiffDeploy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).DiffDeploy(ctx, req.(*DiffDeployRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _HiveAPI_ExportCluster_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -1041,6 +1077,10 @@ var HiveAPI_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetServiceHealth",
 			Handler:    _HiveAPI_GetServiceHealth_Handler,
+		},
+		{
+			MethodName: "DiffDeploy",
+			Handler:    _HiveAPI_DiffDeploy_Handler,
 		},
 		{
 			MethodName: "ExportCluster",

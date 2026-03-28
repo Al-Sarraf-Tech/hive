@@ -57,6 +57,12 @@ enum Commands {
         file: String,
     },
 
+    /// Preview what a deploy would change (dry-run diff)
+    Diff {
+        /// Path to Hivefile (TOML)
+        file: String,
+    },
+
     /// List running services
     Ps,
 
@@ -230,6 +236,9 @@ async fn main() -> Result<()> {
         Commands::Nodes => commands::nodes::run(&cli.addr, cli.ca_cert.as_deref()).await,
         Commands::Deploy { file } => {
             commands::deploy::run(&file, &cli.addr, cli.ca_cert.as_deref()).await
+        }
+        Commands::Diff { file } => {
+            commands::diff::run(&file, &cli.addr, cli.ca_cert.as_deref()).await
         }
         Commands::Ps => commands::ps::run(&cli.addr, cli.ca_cert.as_deref()).await,
         Commands::Logs {

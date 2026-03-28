@@ -57,6 +57,10 @@ export const api = {
   validate: (hivefileToml, serverChecks = false) =>
     request('/validate', { method: 'POST', body: JSON.stringify({ hivefile_toml: hivefileToml, server_checks: serverChecks }) }),
 
+  // Diff (deploy preview)
+  diff: (hivefileToml) =>
+    request('/diff', { method: 'POST', body: JSON.stringify({ hivefile_toml: hivefileToml }) }),
+
   // Health
   getServiceHealth: (name, limit = 100) =>
     request(`/services/${encodeURIComponent(name)}/health?limit=${limit}`),

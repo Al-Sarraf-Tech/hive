@@ -73,6 +73,8 @@ cpus = 0.5
   let selectedTemplate = $state('nginx');
   let validationResult = $state(null);
   let validating = $state(false);
+  let diffResult = $state(null);
+  let diffing = $state(false);
 
   function selectTemplate(name) {
     selectedTemplate = name;
@@ -92,6 +94,20 @@ cpus = 0.5
       error = e.message;
     } finally {
       validating = false;
+    }
+  }
+
+  async function preview() {
+    if (!toml.trim()) { error = 'Hivefile cannot be empty'; return; }
+    diffing = true;
+    diffResult = null;
+    error = null;
+    try {
+      diffResult = await api.diff(toml);
+    } catch (e) {
+      error = e.message;
+    } finally {
+      diffing = false;
     }
   }
 
@@ -150,11 +166,17 @@ cpus = 0.5
     <button class="btn btn-primary" onclick={deploy} disabled={deploying || validating}>
       {deploying ? 'Deploying...' : 'Deploy'}
     </button>
+    <button class="btn btn-sm" onclick={preview} disabled={diffing || deploying}>
+      {diffing ? 'Previewing...' : 'Preview'}
+    </button>
     <button class="btn btn-sm" onclick={validate} disabled={validating || deploying}>
       {validating ? 'Validating...' : 'Validate'}
     </button>
     {#if deploying}
       <span class="muted">Pulling images and starting containers...</span>
+    {/if}
+    {#if diffing}
+      <span class="muted">Computing deploy diff...</span>
     {/if}
     {#if validating}
       <span class="muted">Validating hivefile...</span>
@@ -194,6 +216,46 @@ cpus = 0.5
       </table>
     </div>
   {/if}
+{/if}
+
+{#if diffResult?.diffs?.length}
+  <div class="card" style="border-color: var(--blue); margin-bottom:1rem">
+    <div class="card-title">Deploy Preview</div>
+    <table style="margin-top:0.5rem">
+      <thead><tr><th>Service</th><th>Action</th><th>Image</th><th>Replicas</th><th>Changes</th></tr></thead>
+      <tbody>
+        {#each diffResult.diffs as d}
+          <tr>
+            <td>{d.name}</td>
+            <td>
+              {#if d.action === 'DIFF_ACTION_CREATE'}
+                <span class="badge badge-green">create</span>
+              {:else if d.action === 'DIFF_ACTION_UPDATE'}
+                <span class="badge badge-yellow">update</span>
+              {:else}
+                <span class="badge">unchanged</span>
+              {/if}
+            </td>
+            <td class="muted">
+              {#if d.oldImage && d.oldImage !== d.newImage}
+                {d.oldImage} &rarr; {d.newImage}
+              {:else}
+                {d.newImage}
+              {/if}
+            </td>
+            <td>
+              {#if d.oldReplicas && d.oldReplicas !== d.newReplicas}
+                {d.oldReplicas} &rarr; {d.newReplicas}
+              {:else}
+                {d.newReplicas ?? '-'}
+              {/if}
+            </td>
+            <td class="muted">{(d.changes ?? []).join('; ') || '-'}</td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  </div>
 {/if}
 
 {#if error}

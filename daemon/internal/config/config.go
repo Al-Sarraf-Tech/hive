@@ -120,6 +120,7 @@ type FlagOverrides struct {
 	GossipKey     *string
 	LogLevel      *string
 	HTTPPort      *int
+	HTTPTLS       *bool
 	WG            *bool
 	WGPort        *int
 }
@@ -159,6 +160,9 @@ func (c Config) Merge(o FlagOverrides) Config {
 	}
 	if o.HTTPPort != nil {
 		c.HTTP.Port = *o.HTTPPort
+	}
+	if o.HTTPTLS != nil {
+		c.HTTP.TLS = *o.HTTPTLS
 	}
 	if o.WG != nil {
 		c.WireGuard.Enabled = *o.WG

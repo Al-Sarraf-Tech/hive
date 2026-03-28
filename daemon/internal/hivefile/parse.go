@@ -47,12 +47,13 @@ type VolumeDef struct {
 
 // HealthDef configures health checking.
 type HealthDef struct {
-	Type     string `toml:"type"`
-	Path     string `toml:"path"`
-	Port     int    `toml:"port"`
-	Interval string `toml:"interval"`
-	Timeout  string `toml:"timeout"`
-	Retries  int    `toml:"retries"`
+	Type        string   `toml:"type"`
+	Path        string   `toml:"path"`
+	Port        int      `toml:"port"`
+	Interval    string   `toml:"interval"`
+	Timeout     string   `toml:"timeout"`
+	Retries     int      `toml:"retries"`
+	ExecCommand []string `toml:"exec_command"` // command to run for exec-type checks
 }
 
 // ResourceDef sets resource limits.

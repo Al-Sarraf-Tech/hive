@@ -2,8 +2,9 @@ package container
 
 import (
 	"context"
-	"fmt"
 	"encoding/binary"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"runtime"
@@ -315,6 +316,35 @@ func demuxDockerStream(r io.Reader, stdout, stderr io.Writer) error {
 			return err
 		}
 	}
+}
+
+func (d *dockerProvider) Stats(ctx context.Context, id string) (*ContainerStats, error) {
+	resp, err := d.cli.ContainerStats(ctx, id, client.ContainerStatsOptions{
+		Stream:                false, // one-shot
+		IncludePreviousSample: true,  // populate PreCPUStats for delta calculation
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get container stats: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var stats container.StatsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&stats); err != nil {
+		return nil, fmt.Errorf("decode container stats: %w", err)
+	}
+
+	// Calculate CPU percentage from the delta between current and previous sample
+	cpuDelta := float64(stats.CPUStats.CPUUsage.TotalUsage - stats.PreCPUStats.CPUUsage.TotalUsage)
+	systemDelta := float64(stats.CPUStats.SystemUsage - stats.PreCPUStats.SystemUsage)
+	cpuPercent := 0.0
+	if systemDelta > 0 && cpuDelta > 0 {
+		cpuPercent = (cpuDelta / systemDelta) * float64(stats.CPUStats.OnlineCPUs) * 100.0
+	}
+
+	return &ContainerStats{
+		CPUPercent:  cpuPercent,
+		MemoryBytes: stats.MemoryStats.Usage,
+	}, nil
 }
 
 func (d *dockerProvider) PullImage(ctx context.Context, ref string) error {

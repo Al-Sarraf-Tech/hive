@@ -50,8 +50,17 @@ type Provider interface {
 	// RemoveNetwork removes a network by name. Ignores "not found" errors.
 	RemoveNetwork(ctx context.Context, name string) error
 
+	// Stats returns live CPU and memory usage for a container (one-shot, non-streaming).
+	Stats(ctx context.Context, id string) (*ContainerStats, error)
+
 	// Close releases any resources held by the provider (e.g., HTTP client connections).
 	Close() error
+}
+
+// ContainerStats holds per-container resource usage metrics.
+type ContainerStats struct {
+	CPUPercent  float64
+	MemoryBytes uint64
 }
 
 // ContainerSpec defines what to create.

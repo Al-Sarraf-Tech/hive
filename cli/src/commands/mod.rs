@@ -2,6 +2,7 @@ pub mod backup;
 pub mod cron;
 pub mod daemon;
 pub mod deploy;
+pub mod diff;
 pub mod exec;
 pub mod init;
 pub mod join;
