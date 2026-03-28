@@ -22,6 +22,7 @@ import (
 	"github.com/jalsarraf0/hive/daemon/internal/cron"
 	"github.com/jalsarraf0/hive/daemon/internal/health"
 	"github.com/jalsarraf0/hive/daemon/internal/hivefile"
+	"github.com/jalsarraf0/hive/daemon/internal/joincode"
 	"github.com/jalsarraf0/hive/daemon/internal/mesh"
 	"github.com/jalsarraf0/hive/daemon/internal/metrics"
 	"github.com/jalsarraf0/hive/daemon/internal/pki"
@@ -183,12 +184,30 @@ func (s *Server) InitCluster(_ context.Context, req *hivev1.InitClusterRequest) 
 		return nil, status.Errorf(codes.Internal, "persist join token: %v", err)
 	}
 
+	// Generate short human-readable join code and persist it alongside the gossip address.
+	gossipAddr := fmt.Sprintf("%s:%d", local.AdvertiseAddr, s.mesh.GossipPort())
+	jc, err := joincode.Encode(joinToken)
+	if err != nil {
+		slog.Warn("failed to generate join code", "error", err)
+		jc = "" // non-fatal — cluster still works without a join code
+	} else {
+		if err := s.store.Put("meta", "join_code", []byte(jc)); err != nil {
+			slog.Error("failed to persist join code", "error", err)
+			jc = ""
+		}
+		if err := s.store.Put("meta", "join_code_addr", []byte(gossipAddr)); err != nil {
+			slog.Error("failed to persist join code address", "error", err)
+		}
+		slog.Info("join code generated")
+	}
+
 	return &hivev1.InitClusterResponse{
 		ClusterId:     clusterName,
 		NodeName:      local.Name,
-		GossipAddr:    fmt.Sprintf("%s:%d", local.AdvertiseAddr, s.mesh.GossipPort()),
+		GossipAddr:    gossipAddr,
 		CaFingerprint: pki.CACertFingerprint(caCert),
 		JoinToken:     joinToken,
+		JoinCode:      jc,
 	}, nil
 }
 

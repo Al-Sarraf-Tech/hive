@@ -7,6 +7,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tonic_build::configure()
         .build_server(false)
+        .type_attribute(".", "#[allow(dead_code)]") // suppress warnings on unused generated types
         .compile_protos(
             &["../proto/hive/v1/types.proto", "../proto/hive/v1/api.proto"],
             &["../proto"],

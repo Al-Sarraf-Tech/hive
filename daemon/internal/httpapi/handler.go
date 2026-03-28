@@ -5,15 +5,22 @@ package httpapi
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"log/slog"
+	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	hivev1 "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1"
+	"github.com/jalsarraf0/hive/daemon/internal/joincode"
 	"github.com/jalsarraf0/hive/daemon/internal/logs"
+	"github.com/jalsarraf0/hive/daemon/internal/store"
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -27,11 +34,13 @@ type Handler struct {
 	mux       *http.ServeMux
 	token     string           // bearer token for authentication (empty = no auth)
 	logBuffer *logs.RingBuffer // nil if log aggregation is disabled
+	store     *store.Store     // direct store access for bootstrap endpoint
+	dataDir   string           // data directory for reading CA cert
 }
 
 // New creates an HTTP handler that delegates to the given gRPC API server.
-func New(api hivev1.HiveAPIServer, token string, logBuffer *logs.RingBuffer) *Handler {
-	h := &Handler{api: api, mux: http.NewServeMux(), token: token, logBuffer: logBuffer}
+func New(api hivev1.HiveAPIServer, token string, logBuffer *logs.RingBuffer, s *store.Store, dataDir string) *Handler {
+	h := &Handler{api: api, mux: http.NewServeMux(), token: token, logBuffer: logBuffer, store: s, dataDir: dataDir}
 	h.registerRoutes()
 	return h
 }
@@ -60,8 +69,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Bearer token authentication (skip for OPTIONS already handled above)
-	// /metrics is unauthenticated — Prometheus scrapers should not need a token
-	if h.token != "" && !strings.HasPrefix(r.URL.Path, "/metrics") {
+	// /metrics and /api/v1/bootstrap/ are unauthenticated
+	if h.token != "" && !strings.HasPrefix(r.URL.Path, "/metrics") && !strings.HasPrefix(r.URL.Path, "/api/v1/bootstrap/") {
 		auth := r.Header.Get("Authorization")
 		expected := "Bearer " + h.token
 		if subtle.ConstantTimeCompare([]byte(auth), []byte(expected)) != 1 {
@@ -76,6 +85,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) registerRoutes() {
+	// Bootstrap endpoint is unauthenticated — must be registered before auth middleware applies.
+	h.mux.HandleFunc("GET /api/v1/bootstrap/{code}", h.bootstrap)
+
 	h.mux.Handle("GET /metrics", promhttp.Handler())
 	h.mux.HandleFunc("GET /api/v1/logs", h.getLogs)
 	h.mux.HandleFunc("GET /api/v1/logs/{service}", h.getServiceLogs)
@@ -429,9 +441,108 @@ func writeError(w http.ResponseWriter, err error) {
 	json.NewEncoder(w).Encode(map[string]string{"error": st.Message()})
 }
 
+// bootstrapLimiter tracks per-IP request counts for rate limiting the bootstrap endpoint.
+var bootstrapLimiter struct {
+	mu      sync.Mutex
+	counts  map[string]int
+	resetAt time.Time
+}
+
+func init() {
+	bootstrapLimiter.counts = make(map[string]int)
+	bootstrapLimiter.resetAt = time.Now().Add(time.Minute)
+}
+
+// checkBootstrapRate returns true if the request is allowed (under rate limit).
+func checkBootstrapRate(ip string) bool {
+	bootstrapLimiter.mu.Lock()
+	defer bootstrapLimiter.mu.Unlock()
+	if time.Now().After(bootstrapLimiter.resetAt) {
+		bootstrapLimiter.counts = make(map[string]int)
+		bootstrapLimiter.resetAt = time.Now().Add(time.Minute)
+	}
+	bootstrapLimiter.counts[ip]++
+	return bootstrapLimiter.counts[ip] <= 5 // 5 attempts per minute per IP
+}
+
+// bootstrap handles unauthenticated join-code exchange: given a valid short code,
+// it returns the full join token, gossip address, and CA certificate so a new node
+// can join with zero pre-shared secrets beyond the code itself.
+func (h *Handler) bootstrap(w http.ResponseWriter, r *http.Request) {
+	code := r.PathValue("code")
+
+	// Rate limit: 5 attempts per minute per IP
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	if ip == "" {
+		ip = r.RemoteAddr
+	}
+	if !checkBootstrapRate(ip) {
+		jsonError(w, "rate limit exceeded — try again in 1 minute", http.StatusTooManyRequests)
+		return
+	}
+
+	if h.store == nil {
+		jsonError(w, "store not available", http.StatusInternalServerError)
+		return
+	}
+
+	// Look up the stored join code.
+	storedCode, err := h.store.Get("meta", "join_code")
+	if err != nil || storedCode == nil {
+		jsonError(w, "no cluster initialized", http.StatusNotFound)
+		return
+	}
+
+	// Normalize and compare using constant-time comparison.
+	normalizedInput, err := joincode.Decode(code)
+	if err != nil {
+		// Add brief delay on invalid attempts to slow brute-force
+		time.Sleep(500 * time.Millisecond)
+		jsonError(w, "invalid join code format", http.StatusBadRequest)
+		return
+	}
+	normalizedStored, err := joincode.Decode(string(storedCode))
+	if err != nil {
+		jsonError(w, "internal error: stored join code is corrupt", http.StatusInternalServerError)
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(normalizedInput), []byte(normalizedStored)) != 1 {
+		time.Sleep(500 * time.Millisecond)
+		jsonError(w, "invalid join code", http.StatusUnauthorized)
+		return
+	}
+
+	// Retrieve the full token and gossip address — validate they exist.
+	token, err := h.store.Get("meta", "join_token")
+	if err != nil || token == nil {
+		jsonError(w, "join token not found", http.StatusInternalServerError)
+		return
+	}
+	addr, err := h.store.Get("meta", "join_code_addr")
+	if err != nil || addr == nil {
+		jsonError(w, "gossip address not found", http.StatusInternalServerError)
+		return
+	}
+	clusterName, _ := h.store.Get("meta", "cluster_name")
+
+	// Read CA certificate from disk.
+	caCertPEM, err := os.ReadFile(filepath.Join(h.dataDir, "pki", "ca.crt"))
+	if err != nil {
+		slog.Warn("bootstrap: CA cert not available", "error", err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"join_token":   string(token),
+		"gossip_addr":  string(addr),
+		"ca_cert_pem":  string(caCertPEM),
+		"cluster_name": string(clusterName),
+	})
+}
+
 // NewServer creates an *http.Server with timeouts, ready for graceful shutdown.
-func NewServer(addr string, api hivev1.HiveAPIServer, token string, logBuffer *logs.RingBuffer) *http.Server {
-	h := New(api, token, logBuffer)
+func NewServer(addr string, api hivev1.HiveAPIServer, token string, logBuffer *logs.RingBuffer, s *store.Store, dataDir string) *http.Server {
+	h := New(api, token, logBuffer, s, dataDir)
 	return &http.Server{
 		Addr:         addr,
 		Handler:      h,

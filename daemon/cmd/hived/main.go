@@ -453,7 +453,7 @@ func main() {
 	// Start HTTP API server for web console
 	if cfg.HTTP.Port > 0 {
 		addr := fmt.Sprintf(":%d", cfg.HTTP.Port)
-		srv := httpapi.NewServer(addr, apiServer, cfg.HTTP.Token, logCollector.Buffer())
+		srv := httpapi.NewServer(addr, apiServer, cfg.HTTP.Token, logCollector.Buffer(), stateStore, dataDir)
 		httpServer.Store(srv)
 		go func() {
 			slog.Info("http api server listening", "addr", addr)

@@ -36,13 +36,16 @@ enum Commands {
 
     /// Join an existing cluster
     Join {
-        /// Addresses of existing nodes (gossip host:port)
-        #[arg(required = true)]
+        /// Addresses of existing nodes (gossip host:port), or the IP of the init node when using --code
         addresses: Vec<String>,
 
         /// Cluster join token (from 'hive init' output)
         #[arg(long)]
-        token: String,
+        token: Option<String>,
+
+        /// Short join code (from 'hive init' output, e.g. HIVE-AB12-CD34)
+        #[arg(long)]
+        code: Option<String>,
     },
 
     /// List cluster nodes
@@ -176,8 +179,24 @@ async fn main() -> Result<()> {
         Commands::Init { name } => {
             commands::init::run(&name, &cli.addr, cli.ca_cert.as_deref()).await
         }
-        Commands::Join { addresses, token } => {
-            commands::join::run(&addresses, &token, &cli.addr, cli.ca_cert.as_deref()).await
+        Commands::Join {
+            addresses,
+            token,
+            code,
+        } => {
+            if let Some(code) = code {
+                // Join via short code: first address is the init node IP/host
+                let host = addresses.first().map(|s| s.as_str()).unwrap_or("127.0.0.1");
+                commands::join::run_with_code(&code, host, &cli.addr, cli.ca_cert.as_deref()).await
+            } else {
+                let token = token.ok_or_else(|| {
+                    anyhow::anyhow!("either --token or --code is required for join")
+                })?;
+                if addresses.is_empty() {
+                    anyhow::bail!("at least one seed address is required when using --token");
+                }
+                commands::join::run(&addresses, &token, &cli.addr, cli.ca_cert.as_deref()).await
+            }
         }
         Commands::Nodes => commands::nodes::run(&cli.addr, cli.ca_cert.as_deref()).await,
         Commands::Deploy { file } => {

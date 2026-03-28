@@ -16,16 +16,32 @@ pub async fn run(name: &str, addr: &str, ca_cert: Option<&str>) -> Result<()> {
         .into_inner();
 
     println!("{} Cluster initialized", "✓".green());
-    println!("  Cluster ID: {}", resp.cluster_id.cyan());
     println!("  Node:       {}", resp.node_name.bold());
+    if !resp.join_code.is_empty() {
+        println!("  Join Code:  {}", resp.join_code.yellow().bold());
+    }
     println!("  Gossip:     {}", resp.gossip_addr.cyan());
     if !resp.join_token.is_empty() {
-        println!("  Join Token: {}", resp.join_token.yellow());
+        println!("  Join Token: {}", resp.join_token.dimmed());
     }
     println!();
+    if !resp.join_code.is_empty() {
+        println!(
+            "  Join other nodes: {}",
+            format!(
+                "hive join --code {} {}",
+                resp.join_code,
+                resp.gossip_addr
+                    .split(':')
+                    .next()
+                    .unwrap_or(&resp.gossip_addr)
+            )
+            .yellow()
+        );
+    }
     println!(
-        "Join other nodes with: {}",
-        format!("hive join --token {} {}", resp.join_token, resp.gossip_addr).yellow()
+        "  Or with token:    {}",
+        format!("hive join --token {} {}", resp.join_token, resp.gossip_addr).dimmed()
     );
     if !resp.ca_fingerprint.is_empty() {
         println!("  CA:         {}", resp.ca_fingerprint.dimmed());

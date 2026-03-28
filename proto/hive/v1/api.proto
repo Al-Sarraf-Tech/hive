@@ -66,6 +66,7 @@ message InitClusterResponse {
   string gossip_addr = 3;
   string ca_fingerprint = 4;  // SHA-256 fingerprint of the generated cluster CA
   string join_token = 5;       // token required for new nodes to get certificates signed
+  string join_code = 6;        // short human-readable code: HIVE-XXXX-XXXX
 }
 
 message JoinClusterRequest {
@@ -240,6 +241,20 @@ enum ValidationSeverity {
   VALIDATION_SEVERITY_ERROR = 1;
   VALIDATION_SEVERITY_WARNING = 2;
   VALIDATION_SEVERITY_INFO = 3;
+}
+
+// ─── Bootstrap (join-code exchange) ─────────────────────────
+
+message BootstrapRequest {
+  string join_code = 1;   // short code from 'hive init' output
+}
+
+message BootstrapResponse {
+  string join_token = 1;     // full cluster join token
+  string gossip_addr = 2;   // gossip host:port of the init node
+  bytes ca_cert_pem = 3;    // PEM-encoded cluster CA certificate
+  string cluster_name = 4;  // cluster name
+  int32 gossip_port = 5;    // gossip port number
 }
 
 // ─── Service Health ───────────────────────────────────────
