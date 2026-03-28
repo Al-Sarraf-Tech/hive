@@ -130,6 +130,12 @@ func (h *Handler) registerRoutes() {
 	}
 	consoleFS := http.FileServer(http.FS(consoleBuild))
 	h.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// API paths that didn't match a registered route get a proper JSON 404
+		// instead of being caught by the SPA fallback and returning HTML.
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			jsonError(w, "not found", http.StatusNotFound)
+			return
+		}
 		// Try serving the exact file first
 		path := r.URL.Path
 		if path == "/" {
