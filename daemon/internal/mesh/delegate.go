@@ -2,6 +2,7 @@ package mesh
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 )
 
@@ -71,6 +72,16 @@ func (d *meshDelegate) MergeRemoteState(buf []byte, join bool) {
 		return
 	}
 	d.mesh.updatePeer(info)
+
+	// Add WireGuard peer if applicable (anti-entropy may discover peers
+	// that were missed by NotifyJoin during network partitions)
+	d.mesh.peersMu.RLock()
+	wg := d.mesh.wgMesh
+	d.mesh.peersMu.RUnlock()
+	if wg != nil && info.WGPubKey != "" && info.WGPort > 0 {
+		endpoint := fmt.Sprintf("%s:%d", info.AdvertiseAddr, info.WGPort)
+		_ = wg.AddPeer(info.Name, info.WGPubKey, endpoint) // idempotent
+	}
 }
 
 // DecodeNodeMeta deserializes NodeInfo from memberlist node metadata.

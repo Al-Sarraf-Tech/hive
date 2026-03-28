@@ -52,7 +52,7 @@ func main() {
 	flagTLS := flag.Bool("tls", false, "Enable TLS for CLI/TUI connections")
 	flagHTTPPort := flag.Int("http-port", 7949, "HTTP API port for web console (0 to disable)")
 	flagWG := flag.Bool("wg", false, "Enable WireGuard mesh overlay (opt-in)")
-	flagWGPort := flag.Int("wg-port", 51820, "WireGuard UDP listen port")
+	flagWGPort := flag.Int("wg-port", 39471, "WireGuard UDP listen port")
 	flag.Parse()
 
 	// Load config file (missing file = defaults, not an error)

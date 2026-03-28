@@ -179,6 +179,12 @@ func (w *WGMesh) AddPeer(name string, pubKeyBase64 string, endpoint string) erro
 	meshIP := MeshIPFromKey(pubKey)
 
 	w.mu.Lock()
+	// Check for IP collision with local node
+	if meshIP == w.meshIP {
+		w.mu.Unlock()
+		slog.Warn("wireguard mesh IP collision with local node", "peer", name, "ip", meshIP)
+		return fmt.Errorf("mesh IP collision: peer %q maps to %s (same as this node)", name, meshIP)
+	}
 	// Check for IP collision with existing peers
 	for existingName, existing := range w.peers {
 		if existing.meshIP == meshIP && existingName != name {
@@ -253,23 +259,29 @@ func (w *WGMesh) IsUp() bool {
 // network stack. This allows Hive daemon-to-daemon communication over encrypted
 // WireGuard links without touching the host network stack.
 func (w *WGMesh) DialTCP(ip string, port int) (net.Conn, error) {
-	if w.tnet == nil {
+	w.mu.RLock()
+	tnet := w.tnet
+	w.mu.RUnlock()
+	if tnet == nil {
 		return nil, fmt.Errorf("wireguard tunnel not active")
 	}
 	addr, err := netip.ParseAddr(ip)
 	if err != nil {
 		return nil, fmt.Errorf("parse wireguard peer address %q: %w", ip, err)
 	}
-	return w.tnet.DialTCPAddrPort(netip.AddrPortFrom(addr, uint16(port)))
+	return tnet.DialTCPAddrPort(netip.AddrPortFrom(addr, uint16(port)))
 }
 
 // DialContext dials a TCP connection through the WireGuard tunnel with context support.
 // The network parameter should be "tcp", "tcp4", or "tcp6".
 func (w *WGMesh) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
-	if w.tnet == nil {
+	w.mu.RLock()
+	tnet := w.tnet
+	w.mu.RUnlock()
+	if tnet == nil {
 		return nil, fmt.Errorf("wireguard tunnel not active")
 	}
-	return w.tnet.DialContext(ctx, network, address)
+	return tnet.DialContext(ctx, network, address)
 }
 
 // Close shuts down the WireGuard device and releases all resources.
