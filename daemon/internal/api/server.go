@@ -19,6 +19,7 @@ import (
 	"time"
 
 	hivev1 "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1"
+	"github.com/jalsarraf0/hive/daemon/internal/backup"
 	"github.com/jalsarraf0/hive/daemon/internal/container"
 	"github.com/jalsarraf0/hive/daemon/internal/cron"
 	"github.com/jalsarraf0/hive/daemon/internal/health"
@@ -809,8 +810,20 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 			var greenIDs []string
 			for i := 0; i < replicas; i++ {
 				greenIdx := greenOffset + i
+				targetNode := s.nodeName
+				if s.scheduler != nil {
+					if candidate, pickErr := s.scheduler.Pick(svcDef); pickErr == nil {
+						targetNode = candidate.NodeName
+					}
+				}
+				var id string
+				var deployErr error
 				replicaEnv := cloneEnv(env)
-				id, deployErr := s.deployLocalReplica(ctx, name, greenIdx, svcDef, replicaEnv, memBytes, networkName)
+				if targetNode == s.nodeName {
+					id, deployErr = s.deployLocalReplica(ctx, name, greenIdx, svcDef, replicaEnv, memBytes, networkName)
+				} else {
+					id, deployErr = s.deployRemoteReplica(ctx, name, greenIdx, svcDef, replicaEnv, targetNode)
+				}
 				if deployErr != nil {
 					slog.Error("blue-green: failed to deploy green replica", "service", name, "replica", i, "error", deployErr)
 					continue
@@ -881,10 +894,21 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 				}
 				// Deploy final replicas with correct indices 0..N-1
 				for i := 0; i < replicas; i++ {
+					targetNode := s.nodeName
+					if s.scheduler != nil {
+						if candidate, pickErr := s.scheduler.Pick(svcDef); pickErr == nil {
+							targetNode = candidate.NodeName
+						}
+					}
+					var id string
 					replicaEnv := cloneEnv(env)
-					id, deployErr := s.deployLocalReplica(ctx, name, i, svcDef, replicaEnv, memBytes, networkName)
-					if deployErr != nil {
-						slog.Error("blue-green: final replica deploy failed", "service", name, "replica", i, "error", deployErr)
+					if targetNode == s.nodeName {
+						id, err = s.deployLocalReplica(ctx, name, i, svcDef, replicaEnv, memBytes, networkName)
+					} else {
+						id, err = s.deployRemoteReplica(ctx, name, i, svcDef, replicaEnv, targetNode)
+					}
+					if err != nil {
+						slog.Error("blue-green: final replica deploy failed", "service", name, "replica", i, "error", err)
 						continue
 					}
 					containerIDs = append(containerIDs, id)
@@ -1465,6 +1489,11 @@ func (s *Server) ScaleService(ctx context.Context, req *hivev1.ScaleServiceReque
 			slog.Warn("image pull failed (may be local)", "image", svcDef.Image, "error", pullErr)
 		}
 
+		var networkName string
+		if netBytes, netErr := s.store.Get("meta", "network:"+req.Name); netErr == nil && netBytes != nil {
+			networkName = string(netBytes)
+		}
+
 		for i := currentCount; i < desired; i++ {
 			targetNode := s.nodeName
 			if s.scheduler != nil {
@@ -1473,7 +1502,7 @@ func (s *Server) ScaleService(ctx context.Context, req *hivev1.ScaleServiceReque
 				}
 			}
 			if targetNode == s.nodeName {
-				if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, svcDef, cloneEnv(env), memBytes); deployErr != nil {
+				if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, svcDef, cloneEnv(env), memBytes, networkName); deployErr != nil {
 					slog.Error("failed to scale up replica", "service", req.Name, "replica", i, "error", deployErr)
 				}
 			} else {
@@ -1612,6 +1641,11 @@ func (s *Server) RollbackService(ctx context.Context, req *hivev1.RollbackServic
 		_ = s.store.Put("service_history", req.Name, current)
 	}
 
+	var networkName string
+	if netBytes, netErr := s.store.Get("meta", "network:"+req.Name); netErr == nil && netBytes != nil {
+		networkName = string(netBytes)
+	}
+
 	replicasStarted := 0
 	for i := 0; i < replicas; i++ {
 		targetNode := s.nodeName
@@ -1621,7 +1655,7 @@ func (s *Server) RollbackService(ctx context.Context, req *hivev1.RollbackServic
 			}
 		}
 		if targetNode == s.nodeName {
-			if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, prevDef, cloneEnv(env), memBytes); deployErr != nil {
+			if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, prevDef, cloneEnv(env), memBytes, networkName); deployErr != nil {
 				slog.Error("failed to deploy rollback replica", "service", req.Name, "replica", i, "target", targetNode, "error", deployErr)
 			} else {
 				replicasStarted++
@@ -1700,6 +1734,11 @@ func (s *Server) RestartService(ctx context.Context, req *hivev1.RestartServiceR
 		replicas = 1
 	}
 
+	var networkName string
+	if netBytes, netErr := s.store.Get("meta", "network:"+req.Name); netErr == nil && netBytes != nil {
+		networkName = string(netBytes)
+	}
+
 	slog.Info("restarting service", "name", req.Name, "replicas", replicas)
 
 	// Rolling restart: replace each replica one at a time, using scheduler for placement
@@ -1724,7 +1763,7 @@ func (s *Server) RestartService(ctx context.Context, req *hivev1.RestartServiceR
 			}
 		}
 		if targetNode == s.nodeName {
-			if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, svcDef, cloneEnv(env), memBytes); deployErr != nil {
+			if _, deployErr := s.deployLocalReplica(ctx, req.Name, i, svcDef, cloneEnv(env), memBytes, networkName); deployErr != nil {
 				slog.Error("failed to restart replica", "service", req.Name, "replica", i, "target", targetNode, "error", deployErr)
 			} else {
 				restarted++
@@ -2226,7 +2265,7 @@ func (s *Server) StreamEvents(_ *emptypb.Empty, stream hivev1.HiveAPI_StreamEven
 				case mesh.EventNodeFailed:
 					evType = hivev1.EventType_EVENT_TYPE_NODE_FAILED
 				case mesh.EventNodeUpdated:
-					evType = hivev1.EventType_EVENT_TYPE_NODE_JOINED // node metadata refreshed
+					evType = hivev1.EventType_EVENT_TYPE_NODE_UPDATED
 				}
 				if err := stream.Send(&hivev1.Event{
 					Id:        fmt.Sprintf("evt-%d", time.Now().UnixNano()),
@@ -2494,5 +2533,35 @@ func (s *Server) GetServiceHealth(_ context.Context, req *hivev1.GetServiceHealt
 		Events:              protoEvents,
 		CurrentlyHealthy:    healthy,
 		ConsecutiveFailures: int32(consecutiveFailures),
+	}, nil
+}
+
+// ExportCluster exports all persistent cluster state as a JSON backup.
+func (s *Server) ExportCluster(_ context.Context, _ *emptypb.Empty) (*hivev1.ExportClusterResponse, error) {
+	b, err := backup.Export(s.store)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "export failed: %v", err)
+	}
+	data, err := backup.Marshal(b)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "marshal failed: %v", err)
+	}
+	return &hivev1.ExportClusterResponse{Data: data, Version: b.Version}, nil
+}
+
+// ImportCluster restores cluster state from a JSON backup.
+func (s *Server) ImportCluster(_ context.Context, req *hivev1.ImportClusterRequest) (*hivev1.ImportClusterResponse, error) {
+	b, err := backup.Unmarshal(req.Data)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid backup data: %v", err)
+	}
+	svc, sec, err := backup.Import(s.store, b, req.Overwrite)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "import failed: %v", err)
+	}
+	slog.Info("cluster state imported", "services", svc, "secrets", sec, "overwrite", req.Overwrite)
+	return &hivev1.ImportClusterResponse{
+		ServicesImported: uint32(svc),
+		SecretsImported:  uint32(sec),
 	}, nil
 }

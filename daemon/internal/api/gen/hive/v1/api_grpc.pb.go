@@ -43,6 +43,8 @@ const (
 	HiveAPI_StreamEvents_FullMethodName     = "/hive.v1.HiveAPI/StreamEvents"
 	HiveAPI_ListCronJobs_FullMethodName     = "/hive.v1.HiveAPI/ListCronJobs"
 	HiveAPI_GetServiceHealth_FullMethodName = "/hive.v1.HiveAPI/GetServiceHealth"
+	HiveAPI_ExportCluster_FullMethodName    = "/hive.v1.HiveAPI/ExportCluster"
+	HiveAPI_ImportCluster_FullMethodName    = "/hive.v1.HiveAPI/ImportCluster"
 )
 
 // HiveAPIClient is the client API for HiveAPI service.
@@ -84,6 +86,9 @@ type HiveAPIClient interface {
 	ListCronJobs(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListCronJobsResponse, error)
 	// ─── Health Timeline ──────────────────────────────────────
 	GetServiceHealth(ctx context.Context, in *GetServiceHealthRequest, opts ...grpc.CallOption) (*GetServiceHealthResponse, error)
+	// ─── Backup/Restore ─────────────────────────────────────
+	ExportCluster(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ExportClusterResponse, error)
+	ImportCluster(ctx context.Context, in *ImportClusterRequest, opts ...grpc.CallOption) (*ImportClusterResponse, error)
 }
 
 type hiveAPIClient struct {
@@ -342,6 +347,26 @@ func (c *hiveAPIClient) GetServiceHealth(ctx context.Context, in *GetServiceHeal
 	return out, nil
 }
 
+func (c *hiveAPIClient) ExportCluster(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ExportClusterResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExportClusterResponse)
+	err := c.cc.Invoke(ctx, HiveAPI_ExportCluster_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hiveAPIClient) ImportCluster(ctx context.Context, in *ImportClusterRequest, opts ...grpc.CallOption) (*ImportClusterResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ImportClusterResponse)
+	err := c.cc.Invoke(ctx, HiveAPI_ImportCluster_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // HiveAPIServer is the server API for HiveAPI service.
 // All implementations must embed UnimplementedHiveAPIServer
 // for forward compatibility.
@@ -381,6 +406,9 @@ type HiveAPIServer interface {
 	ListCronJobs(context.Context, *emptypb.Empty) (*ListCronJobsResponse, error)
 	// ─── Health Timeline ──────────────────────────────────────
 	GetServiceHealth(context.Context, *GetServiceHealthRequest) (*GetServiceHealthResponse, error)
+	// ─── Backup/Restore ─────────────────────────────────────
+	ExportCluster(context.Context, *emptypb.Empty) (*ExportClusterResponse, error)
+	ImportCluster(context.Context, *ImportClusterRequest) (*ImportClusterResponse, error)
 	mustEmbedUnimplementedHiveAPIServer()
 }
 
@@ -459,6 +487,12 @@ func (UnimplementedHiveAPIServer) ListCronJobs(context.Context, *emptypb.Empty) 
 }
 func (UnimplementedHiveAPIServer) GetServiceHealth(context.Context, *GetServiceHealthRequest) (*GetServiceHealthResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetServiceHealth not implemented")
+}
+func (UnimplementedHiveAPIServer) ExportCluster(context.Context, *emptypb.Empty) (*ExportClusterResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExportCluster not implemented")
+}
+func (UnimplementedHiveAPIServer) ImportCluster(context.Context, *ImportClusterRequest) (*ImportClusterResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ImportCluster not implemented")
 }
 func (UnimplementedHiveAPIServer) mustEmbedUnimplementedHiveAPIServer() {}
 func (UnimplementedHiveAPIServer) testEmbeddedByValue()                 {}
@@ -881,6 +915,42 @@ func _HiveAPI_GetServiceHealth_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HiveAPI_ExportCluster_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).ExportCluster(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_ExportCluster_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).ExportCluster(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HiveAPI_ImportCluster_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ImportClusterRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).ImportCluster(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_ImportCluster_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).ImportCluster(ctx, req.(*ImportClusterRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // HiveAPI_ServiceDesc is the grpc.ServiceDesc for HiveAPI service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -971,6 +1041,14 @@ var HiveAPI_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetServiceHealth",
 			Handler:    _HiveAPI_GetServiceHealth_Handler,
+		},
+		{
+			MethodName: "ExportCluster",
+			Handler:    _HiveAPI_ExportCluster_Handler,
+		},
+		{
+			MethodName: "ImportCluster",
+			Handler:    _HiveAPI_ImportCluster_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

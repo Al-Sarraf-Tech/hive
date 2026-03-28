@@ -52,6 +52,10 @@ service HiveAPI {
 
   // ─── Health Timeline ──────────────────────────────────────
   rpc GetServiceHealth(GetServiceHealthRequest) returns (GetServiceHealthResponse);
+
+  // ─── Backup/Restore ─────────────────────────────────────
+  rpc ExportCluster(google.protobuf.Empty) returns (ExportClusterResponse);
+  rpc ImportCluster(ImportClusterRequest) returns (ImportClusterResponse);
 }
 
 // ─── Cluster Management ───────────────────────────────────────
@@ -269,4 +273,21 @@ message GetServiceHealthResponse {
   repeated HealthEvent events = 2;
   bool currently_healthy = 3;
   int32 consecutive_failures = 4;
+}
+
+// ─── Backup/Restore ──────────────────────────────────────────
+
+message ExportClusterResponse {
+  bytes data = 1;
+  string version = 2;
+}
+
+message ImportClusterRequest {
+  bytes data = 1;
+  bool overwrite = 2;
+}
+
+message ImportClusterResponse {
+  uint32 services_imported = 1;
+  uint32 secrets_imported = 2;
 }

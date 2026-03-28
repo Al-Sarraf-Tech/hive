@@ -140,6 +140,22 @@ enum Commands {
         server: bool,
     },
 
+    /// Export cluster state to a backup file
+    Backup {
+        /// Output file path (default: hive-backup.json)
+        #[arg(short, long, default_value = "hive-backup.json")]
+        output: String,
+    },
+
+    /// Restore cluster state from a backup file
+    Restore {
+        /// Path to backup file
+        file: String,
+        /// Overwrite existing keys (default: skip existing)
+        #[arg(long)]
+        overwrite: bool,
+    },
+
     /// Set up Hive on this machine (install Docker, init/join cluster, start daemon)
     Setup {
         /// Join an existing cluster with this code (e.g., HIVE-AB12-CD34)
@@ -257,6 +273,12 @@ async fn main() -> Result<()> {
         Commands::Top => commands::top::run(&cli.addr, cli.ca_cert.as_deref()),
         Commands::Validate { file, server } => {
             commands::validate::run(&file, server, &cli.addr, cli.ca_cert.as_deref()).await
+        }
+        Commands::Backup { output } => {
+            commands::backup::backup(&output, &cli.addr, cli.ca_cert.as_deref()).await
+        }
+        Commands::Restore { file, overwrite } => {
+            commands::backup::restore(&file, overwrite, &cli.addr, cli.ca_cert.as_deref()).await
         }
         Commands::Setup { join, name, yes } => {
             commands::setup::run(

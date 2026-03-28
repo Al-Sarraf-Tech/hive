@@ -8,6 +8,7 @@ import (
 
 // Entry is a single log line from a container.
 type Entry struct {
+	ID          int       `json:"id"` // monotonic sequence number
 	ServiceName string    `json:"service_name"`
 	ContainerID string    `json:"container_id"`
 	NodeName    string    `json:"node_name"`
@@ -23,6 +24,7 @@ type RingBuffer struct {
 	head    int
 	count   int
 	cap     int
+	nextID  int // monotonic counter for entry IDs
 }
 
 // NewRingBuffer creates a ring buffer with the given capacity.
@@ -39,6 +41,8 @@ func NewRingBuffer(capacity int) *RingBuffer {
 // Push adds an entry to the ring buffer, evicting the oldest if full.
 func (rb *RingBuffer) Push(e Entry) {
 	rb.mu.Lock()
+	rb.nextID++
+	e.ID = rb.nextID
 	rb.entries[rb.head] = e
 	rb.head = (rb.head + 1) % rb.cap
 	if rb.count < rb.cap {
@@ -86,4 +90,25 @@ func (rb *RingBuffer) ForService(name string, n int) []Entry {
 		matches[i], matches[j] = matches[j], matches[i]
 	}
 	return matches
+}
+
+// Since returns all entries with ID > lastID, optionally filtered by service name.
+// Results are returned in oldest-first order.
+func (rb *RingBuffer) Since(lastID int, service string) []Entry {
+	rb.mu.RLock()
+	defer rb.mu.RUnlock()
+
+	var result []Entry
+	for i := 0; i < rb.count; i++ {
+		idx := (rb.head - rb.count + i + rb.cap) % rb.cap
+		e := rb.entries[idx]
+		if e.ID <= lastID {
+			continue
+		}
+		if service != "" && e.ServiceName != service {
+			continue
+		}
+		result = append(result, e)
+	}
+	return result
 }

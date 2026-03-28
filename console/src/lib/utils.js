@@ -52,6 +52,7 @@ export function eventIcon(type) {
     case 'EVENT_TYPE_CONTAINER_FAILED': return { icon: '!', cls: 'text-red' };
     case 'EVENT_TYPE_HEALTH_CHECK_FAILED': return { icon: '!', cls: 'text-red' };
     case 'EVENT_TYPE_SECRET_UPDATED': return { icon: '*', cls: 'text-cyan' };
+    case 'EVENT_TYPE_NODE_UPDATED': return { icon: '~', cls: 'text-cyan' };
     default: return { icon: '?', cls: 'muted' };
   }
 }

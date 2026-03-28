@@ -313,6 +313,7 @@ const (
 	EventType_EVENT_TYPE_CONTAINER_FAILED    EventType = 10
 	EventType_EVENT_TYPE_HEALTH_CHECK_FAILED EventType = 11
 	EventType_EVENT_TYPE_SECRET_UPDATED      EventType = 12
+	EventType_EVENT_TYPE_NODE_UPDATED        EventType = 13
 )
 
 // Enum value maps for EventType.
@@ -331,6 +332,7 @@ var (
 		10: "EVENT_TYPE_CONTAINER_FAILED",
 		11: "EVENT_TYPE_HEALTH_CHECK_FAILED",
 		12: "EVENT_TYPE_SECRET_UPDATED",
+		13: "EVENT_TYPE_NODE_UPDATED",
 	}
 	EventType_value = map[string]int32{
 		"EVENT_TYPE_UNSPECIFIED":         0,
@@ -346,6 +348,7 @@ var (
 		"EVENT_TYPE_CONTAINER_FAILED":    10,
 		"EVENT_TYPE_HEALTH_CHECK_FAILED": 11,
 		"EVENT_TYPE_SECRET_UPDATED":      12,
+		"EVENT_TYPE_NODE_UPDATED":        13,
 	}
 )
 
@@ -1455,7 +1458,7 @@ const file_hive_v1_types_proto_rawDesc = "" +
 	"\x18CONTAINER_STATUS_RUNNING\x10\x01\x12\x1c\n" +
 	"\x18CONTAINER_STATUS_STOPPED\x10\x02\x12\x1f\n" +
 	"\x1bCONTAINER_STATUS_RESTARTING\x10\x03\x12\x1b\n" +
-	"\x17CONTAINER_STATUS_FAILED\x10\x04*\xa5\x03\n" +
+	"\x17CONTAINER_STATUS_FAILED\x10\x04*\xc2\x03\n" +
 	"\tEventType\x12\x1a\n" +
 	"\x16EVENT_TYPE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16EVENT_TYPE_NODE_JOINED\x10\x01\x12\x18\n" +
@@ -1470,7 +1473,8 @@ const file_hive_v1_types_proto_rawDesc = "" +
 	"\x1bEVENT_TYPE_CONTAINER_FAILED\x10\n" +
 	"\x12\"\n" +
 	"\x1eEVENT_TYPE_HEALTH_CHECK_FAILED\x10\v\x12\x1d\n" +
-	"\x19EVENT_TYPE_SECRET_UPDATED\x10\fBCZAgithub.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1;hivev1b\x06proto3"
+	"\x19EVENT_TYPE_SECRET_UPDATED\x10\f\x12\x1b\n" +
+	"\x17EVENT_TYPE_NODE_UPDATED\x10\rBCZAgithub.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1;hivev1b\x06proto3"
 
 var (
 	file_hive_v1_types_proto_rawDescOnce sync.Once

@@ -9,6 +9,7 @@
   let autoRefresh = $state(true);
   let error = $state(null);
   let logEl;
+  let evtSource = null;
 
   async function refresh() {
     try {
@@ -21,6 +22,35 @@
         requestAnimationFrame(() => { logEl.scrollTop = logEl.scrollHeight; });
       }
     } catch (e) { error = e.message; }
+  }
+
+  function startStream() {
+    if (evtSource) evtSource.close();
+    const token = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('hive_token') : '';
+    const params = new URLSearchParams();
+    if (filterService) params.set('service', filterService);
+    if (token) params.set('token', token);
+    evtSource = new EventSource(`/api/v1/logs/stream?${params}`);
+    evtSource.onmessage = (e) => {
+      const entry = JSON.parse(e.data);
+      logs = [...logs, entry];
+      if (logs.length > lineCount) logs = logs.slice(-lineCount);
+      error = null;
+      if (autoRefresh && logEl) {
+        requestAnimationFrame(() => { logEl.scrollTop = logEl.scrollHeight; });
+      }
+    };
+    evtSource.onerror = () => {
+      // EventSource reconnects automatically; surface a transient error
+      error = 'Stream disconnected — reconnecting...';
+    };
+  }
+
+  function stopStream() {
+    if (evtSource) {
+      evtSource.close();
+      evtSource = null;
+    }
   }
 
   async function loadServices() {
@@ -37,18 +67,25 @@
     return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
+  function onFilterChange() {
+    refresh().then(() => {
+      if (autoRefresh) startStream();
+    });
+  }
+
   onMount(() => {
     loadServices();
-    refresh();
-    const i = setInterval(() => { if (autoRefresh) refresh(); }, 2000);
-    return () => clearInterval(i);
+    refresh().then(() => {
+      if (autoRefresh) startStream();
+    });
+    return () => stopStream();
   });
 </script>
 
 <div class="page-header">
   <h1 class="page-title">Logs</h1>
   <div class="btn-group">
-    <button class="btn btn-sm" class:btn-primary={autoRefresh} onclick={() => autoRefresh = !autoRefresh}>
+    <button class="btn btn-sm" class:btn-primary={autoRefresh} onclick={() => { autoRefresh = !autoRefresh; if (autoRefresh) startStream(); else stopStream(); }}>
       {autoRefresh ? 'Live' : 'Paused'}
     </button>
     <button class="btn btn-sm" onclick={refresh}>Refresh</button>
@@ -56,13 +93,13 @@
 </div>
 
 <div class="log-toolbar">
-  <select bind:value={filterService} onchange={refresh} style="width:auto; min-width:150px">
+  <select bind:value={filterService} onchange={onFilterChange} style="width:auto; min-width:150px">
     <option value="">All services</option>
     {#each services as svc}
       <option value={svc.name}>{svc.name}</option>
     {/each}
   </select>
-  <select value={lineCount} onchange={(e) => { lineCount = parseInt(e.target.value, 10); refresh(); }} style="width:auto; min-width:100px">
+  <select value={lineCount} onchange={(e) => { lineCount = parseInt(e.target.value, 10); onFilterChange(); }} style="width:auto; min-width:100px">
     <option value={100}>100 lines</option>
     <option value={200}>200 lines</option>
     <option value={500}>500 lines</option>

@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -70,6 +71,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// /metrics and /api/v1/bootstrap/ are unauthenticated
 	if h.token != "" && !strings.HasPrefix(r.URL.Path, "/metrics") && !strings.HasPrefix(r.URL.Path, "/api/v1/bootstrap/") {
 		auth := r.Header.Get("Authorization")
+		// Also accept token as query parameter (needed for SSE — EventSource cannot set headers)
+		if auth == "" {
+			if qToken := r.URL.Query().Get("token"); qToken != "" {
+				auth = "Bearer " + qToken
+			}
+		}
 		expected := "Bearer " + h.token
 		if subtle.ConstantTimeCompare([]byte(auth), []byte(expected)) != 1 {
 			w.Header().Set("Content-Type", "application/json")
@@ -87,6 +94,7 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("GET /api/v1/bootstrap/{code}", h.bootstrap)
 
 	h.mux.Handle("GET /metrics", promhttp.Handler())
+	h.mux.HandleFunc("GET /api/v1/logs/stream", h.streamLogs)
 	h.mux.HandleFunc("GET /api/v1/logs", h.getLogs)
 	h.mux.HandleFunc("GET /api/v1/logs/{service}", h.getServiceLogs)
 	h.mux.HandleFunc("GET /api/v1/status", h.getStatus)
@@ -141,6 +149,47 @@ func (h *Handler) getServiceLogs(w http.ResponseWriter, r *http.Request) {
 		n = 10000
 	}
 	writeJSON(w, h.logBuffer.ForService(service, n))
+}
+
+func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		jsonError(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+	if h.logBuffer == nil {
+		jsonError(w, "log aggregation disabled", http.StatusNotFound)
+		return
+	}
+
+	// Disable the server's WriteTimeout for this long-lived SSE connection.
+	rc := http.NewResponseController(w)
+	_ = rc.SetWriteDeadline(time.Time{})
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	service := r.URL.Query().Get("service")
+	lastID := 0
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-time.After(500 * time.Millisecond):
+			entries := h.logBuffer.Since(lastID, service)
+			for _, e := range entries {
+				data, _ := json.Marshal(e)
+				fmt.Fprintf(w, "data: %s\n\n", data)
+				lastID = e.ID
+			}
+			if len(entries) > 0 {
+				flusher.Flush()
+			}
+		}
+	}
 }
 
 func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
@@ -370,6 +419,36 @@ func (h *Handler) getServiceHealth(w http.ResponseWriter, r *http.Request) {
 	resp, err := h.api.GetServiceHealth(r.Context(), &hivev1.GetServiceHealthRequest{
 		Name:  name,
 		Limit: limit,
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
+}
+
+func (h *Handler) exportCluster(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.api.ExportCluster(r.Context(), &emptypb.Empty{})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
+}
+
+func (h *Handler) importCluster(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 50<<20) // 50MB limit for backups
+	var body struct {
+		Data      []byte `json:"data"`
+		Overwrite bool   `json:"overwrite"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	resp, err := h.api.ImportCluster(r.Context(), &hivev1.ImportClusterRequest{
+		Data:      body.Data,
+		Overwrite: body.Overwrite,
 	})
 	if err != nil {
 		writeError(w, err)
