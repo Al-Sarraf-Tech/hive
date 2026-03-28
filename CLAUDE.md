@@ -80,6 +80,7 @@ cd tui && cargo run -- --addr 127.0.0.1:7947
 
 ## Key conventions
 - No macOS targets. Linux + Windows only.
+- No ARM64/aarch64 builds or releases. x86_64 (amd64) only. Do not add ARM targets, cross-compilation, or `cross` tooling.
 - Go daemon uses `go:build` tags for platform-specific code (paths_linux.go, paths_windows.go).
 - All containers managed by Hive are labeled `hive.managed=true` and `hive.service=<name>`.
 - Hivefile format is TOML (not YAML).
