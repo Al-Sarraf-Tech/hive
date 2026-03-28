@@ -122,34 +122,39 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("POST /api/v1/diff", h.diffDeploy)
 	h.mux.HandleFunc("GET /api/v1/services/{name}/health", h.getServiceHealth)
 
-	// Serve embedded web console at / — SPA fallback to index.html for client-side routing
+	// Serve embedded web console at / — SPA fallback to index.html for client-side routing.
+	// Uses fs.Sub to strip the "build" prefix so files are served at their natural paths.
 	consoleBuild, err := fs.Sub(console.Files, "build")
 	if err != nil {
 		slog.Error("failed to load embedded console", "error", err)
 		return
 	}
-	consoleFS := http.FileServer(http.FS(consoleBuild))
+	indexHTML, _ := fs.ReadFile(consoleBuild, "index.html")
 	h.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// API paths that didn't match a registered route get a proper JSON 404
-		// instead of being caught by the SPA fallback and returning HTML.
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			jsonError(w, "not found", http.StatusNotFound)
 			return
 		}
-		// Try serving the exact file first
-		path := r.URL.Path
-		if path == "/" {
-			path = "/index.html"
+
+		// Try serving the exact file from the embedded FS
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" {
+			path = "index.html"
 		}
-		// Check if the file exists in the embedded FS
-		if f, err := consoleBuild.Open(strings.TrimPrefix(path, "/")); err == nil {
+		if f, err := consoleBuild.Open(path); err == nil {
+			stat, _ := f.Stat()
+			if stat != nil && !stat.IsDir() {
+				http.ServeFileFS(w, r, consoleBuild, path)
+				f.Close()
+				return
+			}
 			f.Close()
-			consoleFS.ServeHTTP(w, r)
-			return
 		}
-		// SPA fallback: serve index.html for unmatched paths (client-side routing)
-		r.URL.Path = "/"
-		consoleFS.ServeHTTP(w, r)
+
+		// SPA fallback: serve index.html for unknown paths (client-side routing)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(indexHTML)
 	})
 }
 

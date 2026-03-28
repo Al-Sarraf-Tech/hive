@@ -5,5 +5,5 @@ package console
 
 import "embed"
 
-//go:embed build
+//go:embed all:build
 var Files embed.FS
