@@ -44,6 +44,9 @@ const (
 	HiveAPI_ListCronJobs_FullMethodName     = "/hive.v1.HiveAPI/ListCronJobs"
 	HiveAPI_GetServiceHealth_FullMethodName = "/hive.v1.HiveAPI/GetServiceHealth"
 	HiveAPI_DiffDeploy_FullMethodName       = "/hive.v1.HiveAPI/DiffDeploy"
+	HiveAPI_ListVolumes_FullMethodName      = "/hive.v1.HiveAPI/ListVolumes"
+	HiveAPI_CreateVolume_FullMethodName     = "/hive.v1.HiveAPI/CreateVolume"
+	HiveAPI_DeleteVolume_FullMethodName     = "/hive.v1.HiveAPI/DeleteVolume"
 	HiveAPI_ExportCluster_FullMethodName    = "/hive.v1.HiveAPI/ExportCluster"
 	HiveAPI_ImportCluster_FullMethodName    = "/hive.v1.HiveAPI/ImportCluster"
 )
@@ -89,6 +92,10 @@ type HiveAPIClient interface {
 	GetServiceHealth(ctx context.Context, in *GetServiceHealthRequest, opts ...grpc.CallOption) (*GetServiceHealthResponse, error)
 	// ─── Deploy Preview ─────────────────────────────────────
 	DiffDeploy(ctx context.Context, in *DiffDeployRequest, opts ...grpc.CallOption) (*DiffDeployResponse, error)
+	// ─── Volumes ───────────────────────────────────────────
+	ListVolumes(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListVolumesResponse, error)
+	CreateVolume(ctx context.Context, in *CreateVolumeRequest, opts ...grpc.CallOption) (*CreateVolumeResponse, error)
+	DeleteVolume(ctx context.Context, in *DeleteVolumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// ─── Backup/Restore ─────────────────────────────────────
 	ExportCluster(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ExportClusterResponse, error)
 	ImportCluster(ctx context.Context, in *ImportClusterRequest, opts ...grpc.CallOption) (*ImportClusterResponse, error)
@@ -360,6 +367,36 @@ func (c *hiveAPIClient) DiffDeploy(ctx context.Context, in *DiffDeployRequest, o
 	return out, nil
 }
 
+func (c *hiveAPIClient) ListVolumes(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListVolumesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListVolumesResponse)
+	err := c.cc.Invoke(ctx, HiveAPI_ListVolumes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hiveAPIClient) CreateVolume(ctx context.Context, in *CreateVolumeRequest, opts ...grpc.CallOption) (*CreateVolumeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateVolumeResponse)
+	err := c.cc.Invoke(ctx, HiveAPI_CreateVolume_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hiveAPIClient) DeleteVolume(ctx context.Context, in *DeleteVolumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, HiveAPI_DeleteVolume_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *hiveAPIClient) ExportCluster(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ExportClusterResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ExportClusterResponse)
@@ -421,6 +458,10 @@ type HiveAPIServer interface {
 	GetServiceHealth(context.Context, *GetServiceHealthRequest) (*GetServiceHealthResponse, error)
 	// ─── Deploy Preview ─────────────────────────────────────
 	DiffDeploy(context.Context, *DiffDeployRequest) (*DiffDeployResponse, error)
+	// ─── Volumes ───────────────────────────────────────────
+	ListVolumes(context.Context, *emptypb.Empty) (*ListVolumesResponse, error)
+	CreateVolume(context.Context, *CreateVolumeRequest) (*CreateVolumeResponse, error)
+	DeleteVolume(context.Context, *DeleteVolumeRequest) (*emptypb.Empty, error)
 	// ─── Backup/Restore ─────────────────────────────────────
 	ExportCluster(context.Context, *emptypb.Empty) (*ExportClusterResponse, error)
 	ImportCluster(context.Context, *ImportClusterRequest) (*ImportClusterResponse, error)
@@ -505,6 +546,15 @@ func (UnimplementedHiveAPIServer) GetServiceHealth(context.Context, *GetServiceH
 }
 func (UnimplementedHiveAPIServer) DiffDeploy(context.Context, *DiffDeployRequest) (*DiffDeployResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DiffDeploy not implemented")
+}
+func (UnimplementedHiveAPIServer) ListVolumes(context.Context, *emptypb.Empty) (*ListVolumesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListVolumes not implemented")
+}
+func (UnimplementedHiveAPIServer) CreateVolume(context.Context, *CreateVolumeRequest) (*CreateVolumeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateVolume not implemented")
+}
+func (UnimplementedHiveAPIServer) DeleteVolume(context.Context, *DeleteVolumeRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteVolume not implemented")
 }
 func (UnimplementedHiveAPIServer) ExportCluster(context.Context, *emptypb.Empty) (*ExportClusterResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ExportCluster not implemented")
@@ -951,6 +1001,60 @@ func _HiveAPI_DiffDeploy_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HiveAPI_ListVolumes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).ListVolumes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_ListVolumes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).ListVolumes(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HiveAPI_CreateVolume_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateVolumeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).CreateVolume(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_CreateVolume_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).CreateVolume(ctx, req.(*CreateVolumeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HiveAPI_DeleteVolume_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteVolumeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).DeleteVolume(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_DeleteVolume_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).DeleteVolume(ctx, req.(*DeleteVolumeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _HiveAPI_ExportCluster_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -1081,6 +1185,18 @@ var HiveAPI_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DiffDeploy",
 			Handler:    _HiveAPI_DiffDeploy_Handler,
+		},
+		{
+			MethodName: "ListVolumes",
+			Handler:    _HiveAPI_ListVolumes_Handler,
+		},
+		{
+			MethodName: "CreateVolume",
+			Handler:    _HiveAPI_CreateVolume_Handler,
+		},
+		{
+			MethodName: "DeleteVolume",
+			Handler:    _HiveAPI_DeleteVolume_Handler,
 		},
 		{
 			MethodName: "ExportCluster",

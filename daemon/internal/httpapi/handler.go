@@ -112,6 +112,9 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("POST /api/v1/secrets/{key}", h.setSecret)
 	h.mux.HandleFunc("DELETE /api/v1/secrets/{key}", h.deleteSecret)
 	h.mux.HandleFunc("GET /api/v1/cron", h.listCronJobs)
+	h.mux.HandleFunc("GET /api/v1/volumes", h.listVolumes)
+	h.mux.HandleFunc("POST /api/v1/volumes", h.createVolume)
+	h.mux.HandleFunc("DELETE /api/v1/volumes/{name}", h.deleteVolume)
 	h.mux.HandleFunc("POST /api/v1/validate", h.validateHivefile)
 	h.mux.HandleFunc("POST /api/v1/diff", h.diffDeploy)
 	h.mux.HandleFunc("GET /api/v1/services/{name}/health", h.getServiceHealth)
@@ -386,6 +389,46 @@ func (h *Handler) listCronJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeProto(w, resp)
+}
+
+func (h *Handler) listVolumes(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.api.ListVolumes(r.Context(), &emptypb.Empty{})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
+}
+
+func (h *Handler) createVolume(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB limit
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if body.Name == "" {
+		jsonError(w, "volume name is required", http.StatusBadRequest)
+		return
+	}
+	resp, err := h.api.CreateVolume(r.Context(), &hivev1.CreateVolumeRequest{Name: body.Name})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
+}
+
+func (h *Handler) deleteVolume(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	_, err := h.api.DeleteVolume(r.Context(), &hivev1.DeleteVolumeRequest{Name: name})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, map[string]string{"status": "deleted", "volume": name})
 }
 
 func (h *Handler) validateHivefile(w http.ResponseWriter, r *http.Request) {

@@ -110,6 +110,18 @@ func (m *mockProvider) Stats(_ context.Context, _ string) (*container.ContainerS
 	return &container.ContainerStats{CPUPercent: 1.5, MemoryBytes: 1024 * 1024}, nil
 }
 
+func (m *mockProvider) ListVolumes(_ context.Context) ([]container.VolumeInfo, error) {
+	return nil, nil
+}
+
+func (m *mockProvider) CreateVolume(_ context.Context, name string) (string, error) {
+	return "/var/lib/mock/volumes/" + name, nil
+}
+
+func (m *mockProvider) DeleteVolume(_ context.Context, _ string) error {
+	return nil
+}
+
 func (m *mockProvider) Inspect(_ context.Context, id string) (*container.ContainerInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

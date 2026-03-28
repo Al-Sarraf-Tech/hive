@@ -3,6 +3,8 @@ package hivefile
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -14,6 +16,7 @@ var secretRefPattern = regexp.MustCompile(`\{\{\s*secret:([a-zA-Z0-9_-]+)\s*\}\}
 
 // Hivefile is the top-level structure of a hive.toml file.
 type Hivefile struct {
+	Include []string              `toml:"include"`
 	Service map[string]ServiceDef `toml:"service"`
 }
 
@@ -80,10 +83,71 @@ type CronDef struct {
 }
 
 // Parse reads a Hivefile from TOML content.
+// Include directives are ignored when parsing from raw bytes since there is
+// no base path to resolve relative includes against.
 func Parse(data []byte) (*Hivefile, error) {
+	return parseWithVisited(data, "", make(map[string]bool))
+}
+
+// ParseFile reads and parses a Hivefile from the given path, resolving any
+// include directives relative to the file's directory.
+func ParseFile(path string) (*Hivefile, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read hivefile %q: %w", path, err)
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve hivefile path %q: %w", path, err)
+	}
+	visited := map[string]bool{absPath: true}
+	return parseWithVisited(data, path, visited)
+}
+
+func parseWithVisited(data []byte, basePath string, visited map[string]bool) (*Hivefile, error) {
 	var hf Hivefile
 	if err := toml.Unmarshal(data, &hf); err != nil {
 		return nil, fmt.Errorf("parse hivefile: %w", err)
+	}
+
+	// Process includes
+	for _, inc := range hf.Include {
+		// Resolve relative to the base path
+		incPath := inc
+		if basePath != "" && !filepath.IsAbs(inc) {
+			incPath = filepath.Join(filepath.Dir(basePath), inc)
+		}
+
+		// Circular include detection
+		absPath, err := filepath.Abs(incPath)
+		if err != nil {
+			return nil, fmt.Errorf("resolve include path %q: %w", incPath, err)
+		}
+		if visited[absPath] {
+			return nil, fmt.Errorf("circular include detected: %s", incPath)
+		}
+		visited[absPath] = true
+
+		// Read and parse the included file
+		incData, err := os.ReadFile(incPath)
+		if err != nil {
+			return nil, fmt.Errorf("read include %q: %w", incPath, err)
+		}
+
+		incHF, err := parseWithVisited(incData, incPath, visited)
+		if err != nil {
+			return nil, fmt.Errorf("parse include %q: %w", incPath, err)
+		}
+
+		// Merge included services (included services don't override main file)
+		for name, svc := range incHF.Service {
+			if _, exists := hf.Service[name]; !exists {
+				if hf.Service == nil {
+					hf.Service = make(map[string]ServiceDef)
+				}
+				hf.Service[name] = svc
+			}
+		}
 	}
 
 	if len(hf.Service) == 0 {

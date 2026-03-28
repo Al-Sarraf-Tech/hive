@@ -53,6 +53,15 @@ type Provider interface {
 	// Stats returns live CPU and memory usage for a container (one-shot, non-streaming).
 	Stats(ctx context.Context, id string) (*ContainerStats, error)
 
+	// ListVolumes returns all named volumes on the host.
+	ListVolumes(ctx context.Context) ([]VolumeInfo, error)
+
+	// CreateVolume creates a named volume. Returns the mountpoint.
+	CreateVolume(ctx context.Context, name string) (string, error)
+
+	// DeleteVolume removes a named volume.
+	DeleteVolume(ctx context.Context, name string) error
+
 	// Close releases any resources held by the provider (e.g., HTTP client connections).
 	Close() error
 }
@@ -61,6 +70,14 @@ type Provider interface {
 type ContainerStats struct {
 	CPUPercent  float64
 	MemoryBytes uint64
+}
+
+// VolumeInfo holds metadata about a named volume.
+type VolumeInfo struct {
+	Name       string
+	Driver     string
+	Mountpoint string
+	CreatedAt  string
 }
 
 // ContainerSpec defines what to create.

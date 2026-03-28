@@ -166,6 +166,12 @@ enum Commands {
         overwrite: bool,
     },
 
+    /// Manage persistent volumes
+    Volume {
+        #[command(subcommand)]
+        action: VolumeAction,
+    },
+
     /// Set up Hive on this machine (install Docker, init/join cluster, start daemon)
     Setup {
         /// Join an existing cluster with this code (e.g., HIVE-AB12-CD34)
@@ -208,6 +214,22 @@ enum DaemonAction {
     Stop,
     /// Show hived service status
     Status,
+}
+
+#[derive(Subcommand)]
+enum VolumeAction {
+    /// List all volumes
+    Ls,
+    /// Create a named volume
+    Create {
+        /// Volume name
+        name: String,
+    },
+    /// Remove a named volume
+    Rm {
+        /// Volume name
+        name: String,
+    },
 }
 
 #[tokio::main]
@@ -307,6 +329,17 @@ async fn main() -> Result<()> {
         Commands::Restore { file, overwrite } => {
             commands::backup::restore(&file, overwrite, &cli.addr, cli.ca_cert.as_deref()).await
         }
+        Commands::Volume { action } => match action {
+            VolumeAction::Ls => {
+                commands::volume::list(&cli.addr, cli.ca_cert.as_deref()).await
+            }
+            VolumeAction::Create { name } => {
+                commands::volume::create(&name, &cli.addr, cli.ca_cert.as_deref()).await
+            }
+            VolumeAction::Rm { name } => {
+                commands::volume::remove(&name, &cli.addr, cli.ca_cert.as_deref()).await
+            }
+        },
         Commands::Setup { join, name, yes } => {
             commands::setup::run(
                 join.as_deref(),

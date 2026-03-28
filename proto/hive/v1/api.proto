@@ -56,6 +56,11 @@ service HiveAPI {
   // ─── Deploy Preview ─────────────────────────────────────
   rpc DiffDeploy(DiffDeployRequest) returns (DiffDeployResponse);
 
+  // ─── Volumes ───────────────────────────────────────────
+  rpc ListVolumes(google.protobuf.Empty) returns (ListVolumesResponse);
+  rpc CreateVolume(CreateVolumeRequest) returns (CreateVolumeResponse);
+  rpc DeleteVolume(DeleteVolumeRequest) returns (google.protobuf.Empty);
+
   // ─── Backup/Restore ─────────────────────────────────────
   rpc ExportCluster(google.protobuf.Empty) returns (ExportClusterResponse);
   rpc ImportCluster(ImportClusterRequest) returns (ImportClusterResponse);
@@ -320,4 +325,30 @@ enum DiffAction {
   DIFF_ACTION_CREATE = 1;
   DIFF_ACTION_UPDATE = 2;
   DIFF_ACTION_UNCHANGED = 3;
+}
+
+// ─── Volumes ────────────────────────────────────────────────
+
+message ListVolumesResponse {
+  repeated VolumeInfo volumes = 1;
+}
+
+message VolumeInfo {
+  string name = 1;
+  string driver = 2;
+  string mountpoint = 3;
+  string created_at = 4;
+}
+
+message CreateVolumeRequest {
+  string name = 1;
+}
+
+message CreateVolumeResponse {
+  string name = 1;
+  string mountpoint = 2;
+}
+
+message DeleteVolumeRequest {
+  string name = 1;
 }

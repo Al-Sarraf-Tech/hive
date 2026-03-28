@@ -411,6 +411,39 @@ func (d *dockerProvider) RemoveNetwork(ctx context.Context, name string) error {
 	return err
 }
 
+func (d *dockerProvider) ListVolumes(ctx context.Context) ([]VolumeInfo, error) {
+	resp, err := d.cli.VolumeList(ctx, client.VolumeListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("list volumes: %w", err)
+	}
+	var out []VolumeInfo
+	for _, v := range resp.Items {
+		out = append(out, VolumeInfo{
+			Name:       v.Name,
+			Driver:     v.Driver,
+			Mountpoint: v.Mountpoint,
+			CreatedAt:  v.CreatedAt,
+		})
+	}
+	return out, nil
+}
+
+func (d *dockerProvider) CreateVolume(ctx context.Context, name string) (string, error) {
+	resp, err := d.cli.VolumeCreate(ctx, client.VolumeCreateOptions{Name: name})
+	if err != nil {
+		return "", fmt.Errorf("create volume %q: %w", name, err)
+	}
+	return resp.Volume.Mountpoint, nil
+}
+
+func (d *dockerProvider) DeleteVolume(ctx context.Context, name string) error {
+	_, err := d.cli.VolumeRemove(ctx, name, client.VolumeRemoveOptions{})
+	if err != nil {
+		return fmt.Errorf("remove volume %q: %w", name, err)
+	}
+	return nil
+}
+
 func (d *dockerProvider) Close() error {
 	return d.cli.Close()
 }

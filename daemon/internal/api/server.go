@@ -2231,6 +2231,51 @@ func (s *Server) DeleteSecret(_ context.Context, req *hivev1.DeleteSecretRequest
 	return &emptypb.Empty{}, nil
 }
 
+// ─── Volumes ────────────────────────────────────────────────
+
+// ListVolumes returns all named volumes from the container runtime.
+func (s *Server) ListVolumes(ctx context.Context, _ *emptypb.Empty) (*hivev1.ListVolumesResponse, error) {
+	vols, err := s.container.ListVolumes(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "list volumes: %v", err)
+	}
+	var out []*hivev1.VolumeInfo
+	for _, v := range vols {
+		out = append(out, &hivev1.VolumeInfo{
+			Name:       v.Name,
+			Driver:     v.Driver,
+			Mountpoint: v.Mountpoint,
+			CreatedAt:  v.CreatedAt,
+		})
+	}
+	return &hivev1.ListVolumesResponse{Volumes: out}, nil
+}
+
+// CreateVolume creates a named volume on the container runtime.
+func (s *Server) CreateVolume(ctx context.Context, req *hivev1.CreateVolumeRequest) (*hivev1.CreateVolumeResponse, error) {
+	if req.Name == "" {
+		return nil, status.Error(codes.InvalidArgument, "volume name is required")
+	}
+	mountpoint, err := s.container.CreateVolume(ctx, req.Name)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "create volume: %v", err)
+	}
+	slog.Info("volume created", "name", req.Name, "mountpoint", mountpoint)
+	return &hivev1.CreateVolumeResponse{Name: req.Name, Mountpoint: mountpoint}, nil
+}
+
+// DeleteVolume removes a named volume from the container runtime.
+func (s *Server) DeleteVolume(ctx context.Context, req *hivev1.DeleteVolumeRequest) (*emptypb.Empty, error) {
+	if req.Name == "" {
+		return nil, status.Error(codes.InvalidArgument, "volume name is required")
+	}
+	if err := s.container.DeleteVolume(ctx, req.Name); err != nil {
+		return nil, status.Errorf(codes.Internal, "delete volume: %v", err)
+	}
+	slog.Info("volume deleted", "name", req.Name)
+	return &emptypb.Empty{}, nil
+}
+
 // StreamEvents streams cluster events.
 func (s *Server) StreamEvents(_ *emptypb.Empty, stream hivev1.HiveAPI_StreamEventsServer) error {
 	err := stream.Send(&hivev1.Event{
