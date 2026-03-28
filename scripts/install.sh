@@ -1,100 +1,97 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Hive installer — downloads and installs hived, hive CLI, and hivetop
+# Hive installer — downloads and installs hive binaries
 # Usage: curl -fsSL https://get.hive.dev | sh
+#    or: curl -fsSL https://get.hive.dev | sh -s -- --version v0.2.0
 
 REPO="Al-Sarraf-Tech/hive"
 INSTALL_DIR="/usr/local/bin"
 
-# Detect platform
-OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
-ARCH="$(uname -m)"
+main() {
+    # Parse args
+    local version="latest"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --version) version="$2"; shift 2 ;;
+            *) die "Unknown flag: $1" ;;
+        esac
+    done
 
-case "$ARCH" in
-    x86_64|amd64) ARCH="amd64" ;;
-    aarch64|arm64) ARCH="arm64" ;;
-    *)
-        echo "Error: unsupported architecture: $ARCH"
-        exit 1
-        ;;
-esac
+    # Detect OS and arch
+    local os arch
+    os=$(uname -s | tr '[:upper:]' '[:lower:]')
+    arch=$(uname -m)
+    case "$arch" in
+        x86_64|amd64) arch="amd64" ;;
+        aarch64|arm64) arch="arm64" ;;
+        *) die "Unsupported architecture: $arch" ;;
+    esac
+    case "$os" in
+        linux) ;;
+        *) die "This installer supports Linux only. For Windows, use install.ps1" ;;
+    esac
 
-case "$OS" in
-    linux) ;;
-    *)
-        echo "Error: unsupported OS: $OS (only Linux is supported via this installer)"
-        echo "For Windows, download binaries from GitHub Releases."
-        exit 1
-        ;;
-esac
+    info "Hive installer"
+    info "OS: $os / $arch"
 
-echo "Hive installer"
-echo "  OS:   $OS"
-echo "  Arch: $ARCH"
-echo "  Installing to: $INSTALL_DIR"
-echo ""
+    # Resolve version
+    if [ "$version" = "latest" ]; then
+        version=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | cut -d'"' -f4)
+        [ -z "$version" ] && die "Failed to determine latest version"
+    fi
+    info "Version: $version"
 
-# Get latest release
-RELEASE_JSON=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest")
-if command -v jq >/dev/null 2>&1; then
-    LATEST=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
-else
-    LATEST=$(echo "$RELEASE_JSON" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
-fi
-if [ -z "$LATEST" ]; then
-    echo "Error: could not determine latest release"
-    exit 1
-fi
-echo "Latest release: $LATEST"
+    # Download binaries
+    local base_url="https://github.com/$REPO/releases/download/$version"
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    trap 'rm -rf "$tmpdir"' EXIT
 
-BASE_URL="https://github.com/$REPO/releases/download/$LATEST"
+    info "Downloading binaries..."
+    download "$base_url/hived-linux-$arch" "$tmpdir/hived"
+    download "$base_url/hive-linux-$arch" "$tmpdir/hive"
+    download "$base_url/hivetop-linux-$arch" "$tmpdir/hivetop" || true  # optional
 
-# Use a secure temp directory to avoid symlink attacks on multi-user systems
-WORK_DIR=$(mktemp -d)
-trap 'rm -rf "$WORK_DIR"' EXIT
+    # Install
+    info "Installing to $INSTALL_DIR..."
+    if [ -w "$INSTALL_DIR" ]; then
+        install_bins "$tmpdir"
+    else
+        info "(requires sudo)"
+        sudo install -m 755 "$tmpdir/hived" "$INSTALL_DIR/hived"
+        sudo install -m 755 "$tmpdir/hive" "$INSTALL_DIR/hive"
+        [ -f "$tmpdir/hivetop" ] && sudo install -m 755 "$tmpdir/hivetop" "$INSTALL_DIR/hivetop"
+    fi
 
-# Download binaries
-echo "Downloading hived..."
-curl -fsSL "$BASE_URL/hived-$OS-$ARCH" -o "$WORK_DIR/hived"
-chmod +x "$WORK_DIR/hived"
+    success "Installed: hived, hive$([ -f "$tmpdir/hivetop" ] && echo ', hivetop')"
+    info ""
+    info "Get started:"
+    info "  hive setup              # interactive first-run wizard"
+    info "  hive setup --join CODE  # join an existing cluster"
+}
 
-echo "Downloading hive..."
-curl -fsSL "$BASE_URL/hive-$OS-$ARCH" -o "$WORK_DIR/hive"
-chmod +x "$WORK_DIR/hive"
+download() {
+    local url="$1" dest="$2"
+    if command -v curl >/dev/null; then
+        curl -fsSL "$url" -o "$dest"
+    elif command -v wget >/dev/null; then
+        wget -qO "$dest" "$url"
+    else
+        die "curl or wget required"
+    fi
+    chmod +x "$dest"
+}
 
-echo "Downloading hivetop..."
-curl -fsSL "$BASE_URL/hivetop-$OS-$ARCH" -o "$WORK_DIR/hivetop"
-chmod +x "$WORK_DIR/hivetop"
+install_bins() {
+    local dir="$1"
+    install -m 755 "$dir/hived" "$INSTALL_DIR/hived"
+    install -m 755 "$dir/hive" "$INSTALL_DIR/hive"
+    [ -f "$dir/hivetop" ] && install -m 755 "$dir/hivetop" "$INSTALL_DIR/hivetop"
+}
 
-# Download and verify checksums if available
-if curl -fsSL "$BASE_URL/checksums.sha256" -o "$WORK_DIR/checksums.sha256" 2>/dev/null; then
-    echo "Verifying checksums..."
-    (cd "$WORK_DIR" && sha256sum -c checksums.sha256 --ignore-missing) || {
-        echo "Error: checksum verification failed"
-        exit 1
-    }
-else
-    echo "Warning: checksums.sha256 not available — skipping integrity verification"
-fi
+info()    { echo "  $*"; }
+success() { echo "  $*"; }
+die()     { echo "  $*" >&2; exit 1; }
 
-# Install
-if [ -w "$INSTALL_DIR" ]; then
-    mv "$WORK_DIR/hived" "$WORK_DIR/hive" "$WORK_DIR/hivetop" "$INSTALL_DIR/"
-else
-    echo "Installing to $INSTALL_DIR requires sudo..."
-    sudo mv "$WORK_DIR/hived" "$WORK_DIR/hive" "$WORK_DIR/hivetop" "$INSTALL_DIR/"
-fi
-
-echo ""
-echo "Hive installed successfully!"
-echo ""
-echo "  hived   $(hived --help 2>/dev/null | head -1 || echo '(daemon)')"
-echo "  hive    $(hive --version 2>/dev/null || echo '(cli)')"
-echo "  hivetop $(hivetop --version 2>/dev/null || echo '(tui)')"
-echo ""
-echo "Quick start:"
-echo "  hive daemon install   # Install as system service"
-echo "  hive daemon start     # Start the daemon"
-echo "  hive init             # Initialize cluster"
-echo "  hive status           # Check cluster status"
+main "$@"

@@ -11,6 +11,7 @@ pub mod restart;
 pub mod rollback;
 pub mod scale;
 pub mod secret;
+pub mod setup;
 pub mod status;
 pub mod stop;
 pub mod top;

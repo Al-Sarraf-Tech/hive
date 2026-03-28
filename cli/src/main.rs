@@ -139,6 +139,19 @@ enum Commands {
         #[arg(long)]
         server: bool,
     },
+
+    /// Set up Hive on this machine (install Docker, init/join cluster, start daemon)
+    Setup {
+        /// Join an existing cluster with this code (e.g., HIVE-AB12-CD34)
+        #[arg(long)]
+        join: Option<String>,
+        /// Cluster name (for init mode)
+        #[arg(long)]
+        name: Option<String>,
+        /// Accept all defaults without prompting
+        #[arg(long, short)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -244,6 +257,16 @@ async fn main() -> Result<()> {
         Commands::Top => commands::top::run(&cli.addr, cli.ca_cert.as_deref()),
         Commands::Validate { file, server } => {
             commands::validate::run(&file, server, &cli.addr, cli.ca_cert.as_deref()).await
+        }
+        Commands::Setup { join, name, yes } => {
+            commands::setup::run(
+                join.as_deref(),
+                name.as_deref(),
+                yes,
+                &cli.addr,
+                cli.ca_cert.as_deref(),
+            )
+            .await
         }
     }
 }
