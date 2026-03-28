@@ -1,4 +1,4 @@
-# Hive
+# Hive v1.0
 
 **Deploy and manage Docker containers across multiple computers from one place.**
 
