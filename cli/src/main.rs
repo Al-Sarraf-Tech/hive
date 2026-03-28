@@ -111,6 +111,20 @@ enum Commands {
         service: String,
     },
 
+    /// Update a running service (image, replicas) without a full Hivefile redeploy
+    Update {
+        /// Service name
+        service: String,
+
+        /// New container image
+        #[arg(long)]
+        image: Option<String>,
+
+        /// New replica count
+        #[arg(long)]
+        replicas: Option<u32>,
+    },
+
     /// Execute a command in a service container
     Exec {
         /// Service name
@@ -298,6 +312,20 @@ async fn main() -> Result<()> {
         Commands::Restart { service } => {
             commands::restart::run(&service, &cli.addr, cli.ca_cert.as_deref()).await
         }
+        Commands::Update {
+            service,
+            image,
+            replicas,
+        } => {
+            commands::update::run(
+                &service,
+                image.as_deref(),
+                replicas,
+                &cli.addr,
+                cli.ca_cert.as_deref(),
+            )
+            .await
+        }
         Commands::Exec { service, command } => {
             commands::exec::run(&service, &command, &cli.addr, cli.ca_cert.as_deref()).await
         }
@@ -330,9 +358,7 @@ async fn main() -> Result<()> {
             commands::backup::restore(&file, overwrite, &cli.addr, cli.ca_cert.as_deref()).await
         }
         Commands::Volume { action } => match action {
-            VolumeAction::Ls => {
-                commands::volume::list(&cli.addr, cli.ca_cert.as_deref()).await
-            }
+            VolumeAction::Ls => commands::volume::list(&cli.addr, cli.ca_cert.as_deref()).await,
             VolumeAction::Create { name } => {
                 commands::volume::create(&name, &cli.addr, cli.ca_cert.as_deref()).await
             }

@@ -20,6 +20,13 @@ type Config struct {
 	Logging   LoggingConfig   `toml:"logging"`
 	HTTP      HTTPConfig      `toml:"http"`
 	WireGuard WireGuardConfig `toml:"wireguard"`
+	Hooks     []HookConfig    `toml:"hooks"`
+}
+
+// HookConfig defines a webhook to fire on lifecycle events.
+type HookConfig struct {
+	Type string `toml:"type"` // "pre-deploy", "post-deploy", "pre-stop", "health-fail", or "*"
+	URL  string `toml:"url"`  // webhook URL
 }
 
 // NodeConfig holds node identity and cluster membership settings.

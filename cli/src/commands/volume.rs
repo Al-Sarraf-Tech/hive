@@ -38,9 +38,7 @@ pub async fn list(addr: &str, ca_cert: Option<&str>) -> Result<()> {
 pub async fn create(name: &str, addr: &str, ca_cert: Option<&str>) -> Result<()> {
     let mut client = grpc_client::connect(addr, ca_cert).await?;
     let resp = client
-        .create_volume(CreateVolumeRequest {
-            name: name.into(),
-        })
+        .create_volume(CreateVolumeRequest { name: name.into() })
         .await
         .map_err(grpc_client::map_grpc_error)?
         .into_inner();
@@ -57,9 +55,7 @@ pub async fn create(name: &str, addr: &str, ca_cert: Option<&str>) -> Result<()>
 pub async fn remove(name: &str, addr: &str, ca_cert: Option<&str>) -> Result<()> {
     let mut client = grpc_client::connect(addr, ca_cert).await?;
     client
-        .delete_volume(DeleteVolumeRequest {
-            name: name.into(),
-        })
+        .delete_volume(DeleteVolumeRequest { name: name.into() })
         .await
         .map_err(grpc_client::map_grpc_error)?;
 

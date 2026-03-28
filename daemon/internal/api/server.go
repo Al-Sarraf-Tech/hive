@@ -24,6 +24,7 @@ import (
 	"github.com/jalsarraf0/hive/daemon/internal/cron"
 	"github.com/jalsarraf0/hive/daemon/internal/health"
 	"github.com/jalsarraf0/hive/daemon/internal/hivefile"
+	"github.com/jalsarraf0/hive/daemon/internal/hooks"
 	"github.com/jalsarraf0/hive/daemon/internal/joincode"
 	"github.com/jalsarraf0/hive/daemon/internal/mesh"
 	"github.com/jalsarraf0/hive/daemon/internal/metrics"
@@ -56,6 +57,7 @@ type Server struct {
 	startedAt time.Time
 	cronSched       *cron.Scheduler // nil if no cron jobs
 	healthHistory   *health.History // nil if health timeline disabled
+	hookMgr         *hooks.Manager  // nil if no hooks configured
 	deployMu        sync.Mutex      // serializes DeployService to prevent concurrent races
 	certBootstrapMu sync.Mutex      // serializes bootstrapNodeCert to prevent concurrent CSR signing
 }
@@ -84,6 +86,16 @@ func (s *Server) SetCronScheduler(cs *cron.Scheduler) {
 // SetHealthHistory sets the health event history for the timeline API.
 func (s *Server) SetHealthHistory(h *health.History) {
 	s.healthHistory = h
+}
+
+// SetHookManager sets the webhook hook manager for lifecycle event delivery.
+func (s *Server) SetHookManager(m *hooks.Manager) {
+	s.hookMgr = m
+}
+
+// HookManager returns the hook manager (used by health loop for health-fail events).
+func (s *Server) HookManager() *hooks.Manager {
+	return s.hookMgr
 }
 
 // Register registers the gRPC services on the given server.
@@ -1021,6 +1033,18 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 	}
 
 	metrics.DeployTotal.WithLabelValues("success").Inc()
+
+	// Fire post-deploy webhooks for each deployed service
+	if s.hookMgr != nil {
+		for _, svc := range deployed {
+			s.hookMgr.Fire("post-deploy", hooks.Event{
+				Service: svc.Name,
+				Node:    s.nodeName,
+				Message: fmt.Sprintf("deployed %s (%d/%d replicas)", svc.Image, svc.ReplicasRunning, svc.ReplicasDesired),
+			})
+		}
+	}
+
 	return &hivev1.DeployServiceResponse{Services: deployed}, nil
 }
 
@@ -1306,6 +1330,15 @@ func (s *Server) GetService(ctx context.Context, req *hivev1.GetServiceRequest) 
 func (s *Server) StopService(ctx context.Context, req *hivev1.StopServiceRequest) (*emptypb.Empty, error) {
 	if req.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "service name is required")
+	}
+
+	// Fire pre-stop webhook before doing any work
+	if s.hookMgr != nil {
+		s.hookMgr.Fire("pre-stop", hooks.Event{
+			Service: req.Name,
+			Node:    s.nodeName,
+			Message: "stopping service",
+		})
 	}
 
 	s.deployMu.Lock()
@@ -1782,6 +1815,66 @@ func (s *Server) RestartService(ctx context.Context, req *hivev1.RestartServiceR
 	}
 
 	slog.Info("service restarted", "name", req.Name, "restarted", restarted, "total", replicas)
+	return &emptypb.Empty{}, nil
+}
+
+// UpdateService applies partial updates (image, replicas) to an existing service without a full Hivefile redeploy.
+func (s *Server) UpdateService(ctx context.Context, req *hivev1.UpdateServiceRequest) (*emptypb.Empty, error) {
+	if req.Name == "" {
+		return nil, status.Error(codes.InvalidArgument, "service name is required")
+	}
+
+	s.deployMu.Lock()
+	defer s.deployMu.Unlock()
+
+	// Load existing service definition from store
+	svcJSON, err := s.store.Get("services", req.Name)
+	if err != nil || svcJSON == nil {
+		return nil, status.Errorf(codes.NotFound, "service %q not found", req.Name)
+	}
+	var svcDef hivefile.ServiceDef
+	if err := json.Unmarshal(svcJSON, &svcDef); err != nil {
+		return nil, status.Errorf(codes.Internal, "corrupt service definition for %q: %v", req.Name, err)
+	}
+
+	// Apply requested updates
+	changed := false
+	if req.Image != "" && req.Image != svcDef.Image {
+		svcDef.Image = req.Image
+		changed = true
+	}
+	if req.Replicas > 0 && int(req.Replicas) != svcDef.Replicas {
+		svcDef.Replicas = int(req.Replicas)
+		changed = true
+	}
+	if !changed {
+		return &emptypb.Empty{}, nil
+	}
+
+	// Persist updated definition
+	updatedJSON, err := json.Marshal(svcDef)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to marshal updated service definition: %v", err)
+	}
+	if err := s.store.Put("services", req.Name, updatedJSON); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to persist updated service definition: %v", err)
+	}
+
+	slog.Info("service definition updated, triggering restart",
+		"service", req.Name,
+		"image", svcDef.Image,
+		"replicas", svcDef.Replicas,
+	)
+
+	// Release the deploy lock before calling RestartService (which acquires it)
+	s.deployMu.Unlock()
+	_, err = s.RestartService(ctx, &hivev1.RestartServiceRequest{Name: req.Name})
+	s.deployMu.Lock() // re-acquire so the deferred Unlock is balanced
+
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "update succeeded but restart failed for %q: %v", req.Name, err)
+	}
+
 	return &emptypb.Empty{}, nil
 }
 

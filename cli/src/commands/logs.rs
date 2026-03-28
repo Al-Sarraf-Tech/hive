@@ -91,12 +91,7 @@ async fn run_single(
     Ok(())
 }
 
-async fn run_all(
-    follow: bool,
-    tail: u32,
-    addr: &str,
-    ca_cert: Option<&str>,
-) -> Result<()> {
+async fn run_all(follow: bool, tail: u32, addr: &str, ca_cert: Option<&str>) -> Result<()> {
     let mut client = grpc_client::connect(addr, ca_cert).await?;
 
     // List all containers (empty service_name = all services)

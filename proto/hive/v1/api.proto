@@ -33,6 +33,7 @@ service HiveAPI {
   rpc ScaleService(ScaleServiceRequest) returns (google.protobuf.Empty);
   rpc RollbackService(RollbackServiceRequest) returns (google.protobuf.Empty);
   rpc RestartService(RestartServiceRequest) returns (google.protobuf.Empty);
+  rpc UpdateService(UpdateServiceRequest) returns (google.protobuf.Empty);
 
   // ─── Containers ────────────────────────────────────────────
   rpc ListContainers(ListContainersRequest) returns (ListContainersResponse);
@@ -151,6 +152,12 @@ message RollbackServiceRequest {
 
 message RestartServiceRequest {
   string name = 1;
+}
+
+message UpdateServiceRequest {
+  string name = 1;
+  string image = 2;       // new image (empty = no change)
+  uint32 replicas = 3;    // new replica count (0 = no change)
 }
 
 // ─── Containers ──────────────────────────────────────────────

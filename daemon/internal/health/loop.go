@@ -25,9 +25,10 @@ type Loop struct {
 	restartTimes         map[string][]time.Time
 	stopCh               chan struct{}
 	stopOnce             sync.Once
-	onContainerCountFunc func(int) // callback to update container count in gossip metadata
-	onTickFunc           func()   // callback after each health tick (update resources in gossip, etc.)
-	history              *History // health event history (may be nil)
+	onContainerCountFunc func(int)    // callback to update container count in gossip metadata
+	onTickFunc           func()       // callback after each health tick (update resources in gossip, etc.)
+	onHealthFailFunc     func(string) // callback when a service exceeds health check retries (service name)
+	history              *History     // health event history (may be nil)
 }
 
 // NewLoop creates a health check loop.
@@ -46,6 +47,11 @@ func NewLoop(checker *Checker, c container.Provider, s *store.Store, interval ti
 		onTickFunc:           onTick,
 		history:              history,
 	}
+}
+
+// SetOnHealthFail registers a callback invoked when a service exceeds its health check retry threshold.
+func (l *Loop) SetOnHealthFail(fn func(serviceName string)) {
+	l.onHealthFailFunc = fn
 }
 
 // Start begins the health check loop. Blocks until Stop is called or ctx is cancelled.
@@ -207,6 +213,11 @@ func (l *Loop) runChecks(ctx context.Context) {
 			retries = 3
 		}
 		if l.failures[svcName] >= retries {
+			// Notify webhook hooks about health failure
+			if l.onHealthFailFunc != nil {
+				l.onHealthFailFunc(svcName)
+			}
+
 			if svcDef.RestartPolicy == "no" {
 				slog.Warn("container unhealthy but restart_policy=no, skipping restart",
 					"service", svcName,

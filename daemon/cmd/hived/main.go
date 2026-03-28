@@ -22,6 +22,7 @@ import (
 	"github.com/jalsarraf0/hive/daemon/internal/container"
 	"github.com/jalsarraf0/hive/daemon/internal/cron"
 	"github.com/jalsarraf0/hive/daemon/internal/health"
+	"github.com/jalsarraf0/hive/daemon/internal/hooks"
 	"github.com/jalsarraf0/hive/daemon/internal/httpapi"
 	"github.com/jalsarraf0/hive/daemon/internal/logs"
 	"github.com/jalsarraf0/hive/daemon/internal/mesh"
@@ -289,6 +290,17 @@ func main() {
 	}
 	apiGRPC := grpc.NewServer(apiOpts...)
 	apiServer := api.NewServer(stateStore, containerProvider, healthChecker, nodeName, hiveMesh, sched, vault, dataDir)
+
+	// Initialize webhook hook manager from config
+	if len(cfg.Hooks) > 0 {
+		var hks []hooks.Hook
+		for _, h := range cfg.Hooks {
+			hks = append(hks, hooks.Hook{Type: h.Type, URL: h.URL})
+		}
+		apiServer.SetHookManager(hooks.NewManager(hks))
+		slog.Info("webhook hooks configured", "count", len(hks))
+	}
+
 	api.Register(apiGRPC, apiServer)
 	reflection.Register(apiGRPC)
 
@@ -354,6 +366,15 @@ func main() {
 	}
 	onHealthTick() // run once at startup so gossip has initial values
 	healthLoop := health.NewLoop(healthChecker, containerProvider, stateStore, 30*time.Second, hiveMesh.UpdateContainerCount, onHealthTick, healthHistory)
+	if hookMgr := apiServer.HookManager(); hookMgr != nil {
+		healthLoop.SetOnHealthFail(func(svcName string) {
+			hookMgr.Fire("health-fail", hooks.Event{
+				Service: svcName,
+				Node:    nodeName,
+				Message: "health check failed, exceeded retry threshold",
+			})
+		})
+	}
 	go healthLoop.Start(ctx)
 
 	// Start certificate renewal checker with automatic CSR-based renewal.

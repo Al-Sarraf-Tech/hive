@@ -108,6 +108,7 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("POST /api/v1/services/{name}/rollback", h.rollbackService)
 	h.mux.HandleFunc("POST /api/v1/services/{name}/exec", h.execContainer)
 	h.mux.HandleFunc("POST /api/v1/services/{name}/restart", h.restartService)
+	h.mux.HandleFunc("PATCH /api/v1/services/{name}", h.updateService)
 	h.mux.HandleFunc("POST /api/v1/nodes/{name}/drain", h.drainNode)
 	h.mux.HandleFunc("POST /api/v1/secrets/{key}", h.setSecret)
 	h.mux.HandleFunc("DELETE /api/v1/secrets/{key}", h.deleteSecret)
@@ -339,6 +340,29 @@ func (h *Handler) restartService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]string{"status": "restarted", "service": name})
+}
+
+func (h *Handler) updateService(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB limit
+	name := r.PathValue("name")
+	var body struct {
+		Image    string `json:"image"`
+		Replicas uint32 `json:"replicas"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	_, err := h.api.UpdateService(r.Context(), &hivev1.UpdateServiceRequest{
+		Name:     name,
+		Image:    body.Image,
+		Replicas: body.Replicas,
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"status": "updated", "service": name, "image": body.Image, "replicas": body.Replicas})
 }
 
 func (h *Handler) drainNode(w http.ResponseWriter, r *http.Request) {

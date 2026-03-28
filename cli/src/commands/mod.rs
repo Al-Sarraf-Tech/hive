@@ -17,5 +17,6 @@ pub mod setup;
 pub mod status;
 pub mod stop;
 pub mod top;
+pub mod update;
 pub mod validate;
 pub mod volume;
