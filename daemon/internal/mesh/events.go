@@ -98,13 +98,18 @@ func (d *meshEventDelegate) NotifyUpdate(node *memberlist.Node) {
 		return
 	}
 
-	// Close stale gRPC connection and update peer atomically to avoid TOCTOU race
+	// Close stale gRPC connection and update peer atomically to avoid TOCTOU race.
+	// Capture old info BEFORE overwriting for WireGuard change detection.
 	d.mesh.peersMu.Lock()
 	existing, ok := d.mesh.peers[node.Name]
-	if ok && (existing.Info.AdvertiseAddr != info.AdvertiseAddr || existing.Info.GRPCPort != info.GRPCPort || existing.Info.MeshPort != info.MeshPort) {
+	var oldInfo NodeInfo
+	if ok {
+		oldInfo = existing.Info
+	}
+	if ok && (oldInfo.AdvertiseAddr != info.AdvertiseAddr || oldInfo.GRPCPort != info.GRPCPort || oldInfo.MeshPort != info.MeshPort) {
 		slog.Info("peer endpoint changed, resetting connection",
 			"node", node.Name,
-			"old", fmt.Sprintf("%s:%d", existing.Info.AdvertiseAddr, existing.Info.GRPCPort),
+			"old", fmt.Sprintf("%s:%d", oldInfo.AdvertiseAddr, oldInfo.GRPCPort),
 			"new", fmt.Sprintf("%s:%d", info.AdvertiseAddr, info.GRPCPort),
 		)
 		if existing.grpcConn != nil {
@@ -113,7 +118,6 @@ func (d *meshEventDelegate) NotifyUpdate(node *memberlist.Node) {
 		existing.grpcConn = nil
 		existing.client = nil
 	}
-	// Update peer info within the same critical section to prevent TOCTOU race
 	if existing != nil {
 		existing.Info = info
 		existing.LastSeen = time.Now()
@@ -123,9 +127,9 @@ func (d *meshEventDelegate) NotifyUpdate(node *memberlist.Node) {
 	wg := d.mesh.wgMesh
 	d.mesh.peersMu.Unlock()
 
-	// Sync WireGuard peer if WG fields changed
+	// Sync WireGuard peer if WG fields changed (compare against OLD info)
 	if wg != nil && info.WGPubKey != "" && info.WGPort > 0 {
-		if ok && (existing.Info.WGPubKey != info.WGPubKey || existing.Info.WGPort != info.WGPort || existing.Info.AdvertiseAddr != info.AdvertiseAddr) {
+		if ok && (oldInfo.WGPubKey != info.WGPubKey || oldInfo.WGPort != info.WGPort || oldInfo.AdvertiseAddr != info.AdvertiseAddr) {
 			_ = wg.RemovePeer(info.Name)
 			endpoint := fmt.Sprintf("%s:%d", info.AdvertiseAddr, info.WGPort)
 			if err := wg.AddPeer(info.Name, info.WGPubKey, endpoint); err != nil {

@@ -12,5 +12,13 @@ import (
 // This provides ~65K unique addresses which is more than sufficient for a Hive cluster.
 func MeshIPFromKey(pubKey wgtypes.Key) string {
 	hash := sha256.Sum256(pubKey[:])
-	return fmt.Sprintf("10.47.%d.%d", hash[0], hash[1])
+	a, b := hash[0], hash[1]
+	// Avoid reserved addresses: .0.0 (network) and .255.255 (broadcast)
+	if a == 0 && b == 0 {
+		b = 1
+	}
+	if a == 255 && b == 255 {
+		b = 254
+	}
+	return fmt.Sprintf("10.47.%d.%d", a, b)
 }

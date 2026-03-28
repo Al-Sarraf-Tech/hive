@@ -92,6 +92,8 @@ type Mesh struct {
 type wgMeshInterface interface {
 	AddPeer(name string, pubKeyBase64 string, endpoint string) error
 	RemovePeer(name string) error
+	IsUp() bool
+	DialContext(ctx context.Context, network, address string) (net.Conn, error)
 }
 
 // SetWGMesh sets the WireGuard mesh instance for automatic peer management.
@@ -342,10 +344,15 @@ func (m *Mesh) dialPeer(info NodeInfo) (*grpc.ClientConn, error) {
 		return nil, fmt.Errorf("peer %s has no gRPC/mesh port", info.Name)
 	}
 
-	// NOTE: WireGuard mesh address routing is deferred until the WG device
-	// is fully operational (Phase 2). Until then, always use AdvertiseAddr.
-	// Future: if m.config.WireGuardEnabled && info.WGAddr != "" && m.wgDeviceUp { use WGAddr }
-	addr := fmt.Sprintf("%s:%d", info.AdvertiseAddr, port)
+	// Use the WireGuard mesh address if the tunnel is operational, falling
+	// back to the node's advertise address otherwise. This routes gRPC
+	// traffic through the encrypted WireGuard tunnel when available.
+	var addr string
+	if m.config.WireGuardEnabled && info.WGAddr != "" && m.isWGUp() {
+		addr = fmt.Sprintf("%s:%d", info.WGAddr, port)
+	} else {
+		addr = fmt.Sprintf("%s:%d", info.AdvertiseAddr, port)
+	}
 
 	var creds grpc.DialOption
 	if m.config.TLSEnabled && m.config.DataDir != "" {
@@ -360,11 +367,35 @@ func (m *Mesh) dialPeer(info NodeInfo) (*grpc.ClientConn, error) {
 		creds = grpc.WithTransportCredentials(insecure.NewCredentials())
 	}
 
-	conn, err := grpc.NewClient(addr, creds)
+	// Build dial options. When WireGuard is active, use a custom dialer that
+	// routes through the userspace netstack (OS network stack has no route to 10.47.X.X).
+	var opts []grpc.DialOption
+	opts = append(opts, creds)
+	useWG := m.config.WireGuardEnabled && info.WGAddr != "" && m.isWGUp()
+	if useWG {
+		m.peersMu.RLock()
+		wg := m.wgMesh
+		m.peersMu.RUnlock()
+		if wg != nil {
+			opts = append(opts, grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
+				return wg.DialContext(ctx, "tcp", addr)
+			}))
+		}
+	}
+
+	conn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", addr, err)
 	}
 	return conn, nil
+}
+
+// isWGUp returns whether the WireGuard mesh tunnel is operational.
+func (m *Mesh) isWGUp() bool {
+	if m.wgMesh == nil {
+		return false
+	}
+	return m.wgMesh.IsUp()
 }
 
 // closePeerConns closes all cached gRPC connections.
