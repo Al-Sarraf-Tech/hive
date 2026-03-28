@@ -45,6 +45,7 @@ hive CLI (Rust)          hivetop TUI (Rust)          Hive Console (Svelte)
 | 7947 | gRPC | Client API — CLI, TUI, integrations (optional TLS) |
 | 7948 | gRPC | Mesh API — daemon-to-daemon communication (mTLS) |
 | 7949 | HTTP | Web console, Prometheus metrics at `/metrics` |
+| 39471 | UDP | WireGuard mesh (optional — encrypted overlay network) |
 
 ## Quick Start
 
@@ -149,8 +150,10 @@ Environment variables support `{{ secret:key-name }}` syntax. Secrets are decryp
 ## CLI Reference
 
 ```
+hive setup [--join <code>] [--yes]      Interactive first-run wizard
 hive init [--name <cluster>]            Initialize a new cluster
 hive join <addrs> --token <token>       Join an existing cluster
+hive join --code <HIVE-XXXX-XXXX> <ip>  Join with a short code
 hive nodes                              List cluster nodes
 hive status                             Show cluster health summary
 hive deploy <hivefile.toml>             Deploy services from a Hivefile
@@ -238,6 +241,10 @@ level = "info"   # debug, info, warn, error
 [http]
 port = 7949
 token = "bearer-token-for-console"      # optional, protects HTTP API
+
+[wireguard]
+enabled = true                          # encrypted mesh overlay (optional)
+port = 39471                            # UDP port for WireGuard tunnel
 ```
 
 **CLI flags** (override config file):
@@ -255,6 +262,8 @@ hived [options]
   -log-level <level>       Log level
   -gossip-key <hex>        AES-256 gossip encryption key
   -tls <bool>              Enable TLS on gRPC API
+  -wg                      Enable WireGuard mesh overlay
+  -wg-port <port>          WireGuard UDP port (default: 39471)
 ```
 
 ## Recipes
@@ -362,7 +371,9 @@ hive/
       secrets/        age-encrypted secret vault
       store/          bbolt persistent key-value store
       sysinfo/        System resource queries
-  cli/              Rust CLI (hive) — 18 commands via gRPC
+      joincode/       Short join code encoding (HIVE-XXXX-XXXX)
+      wgmesh/         WireGuard mesh overlay (userspace netstack)
+  cli/              Rust CLI (hive) — 19 commands via gRPC
   tui/              Rust TUI (hivetop) — 4-tab ratatui dashboard with health column
   console/          Svelte 5 web console — 10 pages with dark theme
   proto/            Protobuf definitions (api.proto, mesh.proto, types.proto)
@@ -427,7 +438,9 @@ The Dockerfile produces a minimal distroless image running as nonroot.
 - **Secrets at rest** — age encryption (X25519) in bbolt; plaintext never written to disk
 - **Certificate renewal** — automatic CSR-based renewal prevents certificate expiry
 - **HTTP auth** — optional bearer token protects the web console and HTTP API
+- **WireGuard overlay** — optional encrypted mesh with userspace WireGuard (no root required)
 - **Key file permissions** — 0600 enforced on private keys with symlink attack checks
+- **CORS protection** — mutation endpoints enforce same-origin policy; read-only allows any origin
 - **Container labeling** — all managed containers tagged `hive.managed=true` for audit
 
 ## CI/CD
