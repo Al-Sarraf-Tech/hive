@@ -176,10 +176,15 @@ fn install_windows() -> Result<()> {
     let hived_path =
         which_hived().unwrap_or_else(|| r"C:\Program Files\Hive\hived.exe".to_string());
 
+    // Create data directory if it doesn't exist
+    let data_dir = r"C:\ProgramData\Hive\data";
+    let _ = std::fs::create_dir_all(data_dir);
+
     println!("  Installing hived as Windows service...");
+    // Quote the executable path — it may contain spaces (e.g., C:\Program Files\...)
     let bin_path = format!(
-        "{} --data-dir C:\\ProgramData\\Hive\\data --log-level info",
-        hived_path
+        "\"{}\" --data-dir {} --log-level info",
+        hived_path, data_dir
     );
     let status = Command::new("sc.exe")
         .args([
