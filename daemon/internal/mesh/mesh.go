@@ -371,16 +371,15 @@ func (m *Mesh) dialPeer(info NodeInfo) (*grpc.ClientConn, error) {
 	// routes through the userspace netstack (OS network stack has no route to 10.47.X.X).
 	var opts []grpc.DialOption
 	opts = append(opts, creds)
-	useWG := m.config.WireGuardEnabled && info.WGAddr != "" && m.isWGUp()
+	// NOTE: wgMesh is read WITHOUT acquiring peersMu because dialPeer is called
+	// from PeerByName which already holds the write lock. Re-locking would deadlock.
+	// This is safe because wgMesh is only set once during startup (SetWGMesh).
+	useWG := m.config.WireGuardEnabled && info.WGAddr != "" && m.wgMesh != nil && m.wgMesh.IsUp()
 	if useWG {
-		m.peersMu.RLock()
 		wg := m.wgMesh
-		m.peersMu.RUnlock()
-		if wg != nil {
-			opts = append(opts, grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
-				return wg.DialContext(ctx, "tcp", addr)
-			}))
-		}
+		opts = append(opts, grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
+			return wg.DialContext(ctx, "tcp", addr)
+		}))
 	}
 
 	conn, err := grpc.NewClient(addr, opts...)
