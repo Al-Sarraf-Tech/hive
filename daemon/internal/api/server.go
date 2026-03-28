@@ -839,10 +839,18 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 						if !greenHealthy {
 							break
 						}
+						// Offset health port for green replicas (they use offset host ports)
+						greenHealthPort := svcDef.Health.Port
+						for hostPort := range svcDef.Ports {
+							if hp, pErr := strconv.Atoi(hostPort); pErr == nil && hp == svcDef.Health.Port {
+								greenHealthPort = hp + greenOffset + gi
+								break
+							}
+						}
 						result := s.health.Check(ctx, health.Config{
 							Type:    health.CheckType(svcDef.Health.Type),
 							Host:    "127.0.0.1",
-							Port:    svcDef.Health.Port,
+							Port:    greenHealthPort,
 							Path:    svcDef.Health.Path,
 							Timeout: checkTimeout,
 						})
@@ -864,16 +872,14 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 			// Phase 3: Swap or rollback.
 			if greenHealthy {
 				// Green set is healthy — remove blue (old) containers.
-				slog.Info("blue-green: green set healthy, removing blue set", "service", name)
+				slog.Info("blue-green: green set healthy, swapping to final replicas", "service", name)
+				// Order: stop blue (green still serves) → deploy final → stop green
+				// This ensures at least one set is running at all times.
 				for _, old := range existingContainers {
 					_ = s.container.Stop(ctx, old.ID, 10)
 					_ = s.container.Remove(ctx, old.ID)
 				}
-				// Remove green offset containers and redeploy with correct indices 0..N-1.
-				for _, gid := range greenIDs {
-					_ = s.container.Stop(ctx, gid, 10)
-					_ = s.container.Remove(ctx, gid)
-				}
+				// Deploy final replicas with correct indices 0..N-1
 				for i := 0; i < replicas; i++ {
 					replicaEnv := cloneEnv(env)
 					id, deployErr := s.deployLocalReplica(ctx, name, i, svcDef, replicaEnv, memBytes, networkName)
@@ -886,6 +892,11 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 					if replicasRunning == 1 {
 						primaryNode = s.nodeName
 					}
+				}
+				// Now stop green offset containers (final replicas are serving)
+				for _, gid := range greenIDs {
+					_ = s.container.Stop(ctx, gid, 10)
+					_ = s.container.Remove(ctx, gid)
 				}
 			} else {
 				// Rollback: remove all green containers, keep blue (old) running.
