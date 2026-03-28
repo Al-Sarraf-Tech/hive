@@ -2095,6 +2095,8 @@ func (s *Server) StreamEvents(_ *emptypb.Empty, stream hivev1.HiveAPI_StreamEven
 					evType = hivev1.EventType_EVENT_TYPE_NODE_LEFT
 				case mesh.EventNodeFailed:
 					evType = hivev1.EventType_EVENT_TYPE_NODE_FAILED
+				case mesh.EventNodeUpdated:
+					evType = hivev1.EventType_EVENT_TYPE_NODE_JOINED // node metadata refreshed
 				}
 				if err := stream.Send(&hivev1.Event{
 					Id:        fmt.Sprintf("evt-%d", time.Now().UnixNano()),

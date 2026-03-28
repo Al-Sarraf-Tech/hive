@@ -309,4 +309,9 @@ func (l *Loop) runChecks(ctx context.Context) {
 			delete(l.failures, svc)
 		}
 	}
+	for svc := range l.restartTimes {
+		if !activeSvcs[svc] {
+			delete(l.restartTimes, svc)
+		}
+	}
 }
