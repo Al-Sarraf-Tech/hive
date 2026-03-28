@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -877,11 +878,23 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 func (s *Server) deployLocalReplica(ctx context.Context, name string, replicaIndex int, svcDef hivefile.ServiceDef, env map[string]string, memBytes int64, networkName ...string) (string, error) {
 	memMB := memBytes / (1024 * 1024)
 	containerName := fmt.Sprintf("hive-%s-%d", name, replicaIndex)
+	// Offset host ports for replicas > 0 to avoid "port already in use" conflicts.
+	ports := make(map[string]string, len(svcDef.Ports))
+	for hostPort, containerPort := range svcDef.Ports {
+		if replicaIndex > 0 {
+			hp, err := strconv.Atoi(hostPort)
+			if err == nil {
+				hostPort = strconv.Itoa(hp + replicaIndex)
+			}
+		}
+		ports[hostPort] = containerPort
+	}
+
 	spec := container.ContainerSpec{
 		Name:  containerName,
 		Image: svcDef.Image,
 		Env:   env,
-		Ports: svcDef.Ports,
+		Ports: ports,
 		Labels: map[string]string{
 			"hive.managed": "true",
 			"hive.service": name,

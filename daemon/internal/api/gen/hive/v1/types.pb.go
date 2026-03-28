@@ -29,6 +29,7 @@ const (
 	NodeStatus_NODE_STATUS_READY       NodeStatus = 1
 	NodeStatus_NODE_STATUS_DRAINING    NodeStatus = 2
 	NodeStatus_NODE_STATUS_DOWN        NodeStatus = 3
+	NodeStatus_NODE_STATUS_PENDING     NodeStatus = 4
 )
 
 // Enum value maps for NodeStatus.
@@ -38,12 +39,14 @@ var (
 		1: "NODE_STATUS_READY",
 		2: "NODE_STATUS_DRAINING",
 		3: "NODE_STATUS_DOWN",
+		4: "NODE_STATUS_PENDING",
 	}
 	NodeStatus_value = map[string]int32{
 		"NODE_STATUS_UNSPECIFIED": 0,
 		"NODE_STATUS_READY":       1,
 		"NODE_STATUS_DRAINING":    2,
 		"NODE_STATUS_DOWN":        3,
+		"NODE_STATUS_PENDING":     4,
 	}
 )
 
@@ -1421,13 +1424,14 @@ const file_hive_v1_types_proto_rawDesc = "" +
 	"\x04type\x18\x02 \x01(\x0e2\x12.hive.v1.EventTypeR\x04type\x12\x16\n" +
 	"\x06source\x18\x03 \x01(\tR\x06source\x12\x18\n" +
 	"\amessage\x18\x04 \x01(\tR\amessage\x128\n" +
-	"\ttimestamp\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp*p\n" +
+	"\ttimestamp\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp*\x89\x01\n" +
 	"\n" +
 	"NodeStatus\x12\x1b\n" +
 	"\x17NODE_STATUS_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11NODE_STATUS_READY\x10\x01\x12\x18\n" +
 	"\x14NODE_STATUS_DRAINING\x10\x02\x12\x14\n" +
-	"\x10NODE_STATUS_DOWN\x10\x03*\xc3\x01\n" +
+	"\x10NODE_STATUS_DOWN\x10\x03\x12\x17\n" +
+	"\x13NODE_STATUS_PENDING\x10\x04*\xc3\x01\n" +
 	"\rServiceStatus\x12\x1e\n" +
 	"\x1aSERVICE_STATUS_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16SERVICE_STATUS_RUNNING\x10\x01\x12\x1b\n" +
