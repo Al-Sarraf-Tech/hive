@@ -52,6 +52,7 @@ type LoggingConfig struct {
 type HTTPConfig struct {
 	Port  int    `toml:"port"`
 	Token string `toml:"token"`
+	TLS   bool   `toml:"tls"`
 }
 
 // WireGuardConfig holds WireGuard mesh overlay settings.

@@ -2077,7 +2077,8 @@ func (s *Server) StreamEvents(_ *emptypb.Empty, stream hivev1.HiveAPI_StreamEven
 
 	// Forward mesh events to the stream until the client disconnects
 	if s.mesh != nil {
-		eventCh := s.mesh.Events()
+		subID, eventCh := s.mesh.Subscribe(64)
+		defer s.mesh.Unsubscribe(subID)
 		for {
 			select {
 			case <-stream.Context().Done():

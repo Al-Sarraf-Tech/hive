@@ -4,6 +4,7 @@ package httpapi
 
 import (
 	"crypto/subtle"
+	"crypto/tls"
 	"encoding/json"
 	"log/slog"
 	"net"
@@ -538,13 +539,19 @@ func (h *Handler) bootstrap(w http.ResponseWriter, r *http.Request) {
 }
 
 // NewServer creates an *http.Server with timeouts, ready for graceful shutdown.
-func NewServer(addr string, api hivev1.HiveAPIServer, token string, logBuffer *logs.RingBuffer, s *store.Store, dataDir string) *http.Server {
+// If tlsConfig is non-nil, the server's TLSConfig is set so the caller can use
+// ListenAndServeTLS("", "") with certificates provided via GetCertificate.
+func NewServer(addr string, api hivev1.HiveAPIServer, token string, logBuffer *logs.RingBuffer, s *store.Store, dataDir string, tlsConfig *tls.Config) *http.Server {
 	h := New(api, token, logBuffer, s, dataDir)
-	return &http.Server{
+	srv := &http.Server{
 		Addr:         addr,
 		Handler:      h,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
+	if tlsConfig != nil {
+		srv.TLSConfig = tlsConfig
+	}
+	return srv
 }

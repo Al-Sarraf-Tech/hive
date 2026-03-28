@@ -51,6 +51,7 @@ func (d *meshEventDelegate) NotifyJoin(node *memberlist.Node) {
 		default:
 			slog.Warn("event channel full, dropped node join event", "node", node.Name)
 		}
+		d.mesh.broadcaster.Broadcast(MeshEvent{Type: EventNodeJoined, Node: node.Name, Info: info})
 	}
 }
 
@@ -81,6 +82,7 @@ func (d *meshEventDelegate) NotifyLeave(node *memberlist.Node) {
 		default:
 			slog.Warn("event channel full, dropped node leave event", "node", node.Name)
 		}
+		d.mesh.broadcaster.Broadcast(MeshEvent{Type: EventNodeLeft, Node: node.Name})
 	}
 }
 
@@ -144,6 +146,7 @@ func (d *meshEventDelegate) NotifyUpdate(node *memberlist.Node) {
 		default:
 			slog.Warn("event channel full, dropped node update event", "node", node.Name)
 		}
+		d.mesh.broadcaster.Broadcast(MeshEvent{Type: EventNodeUpdated, Node: node.Name, Info: info})
 	}
 }
 

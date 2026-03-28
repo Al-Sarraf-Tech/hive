@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -483,12 +484,30 @@ func main() {
 	// Start HTTP API server for web console
 	if cfg.HTTP.Port > 0 {
 		addr := fmt.Sprintf(":%d", cfg.HTTP.Port)
-		srv := httpapi.NewServer(addr, apiServer, cfg.HTTP.Token, logCollector.Buffer(), stateStore, dataDir)
+
+		// Enable TLS for HTTP API when PKI certs are available
+		var httpTLSConfig *tls.Config
+		if cfg.HTTP.TLS && pki.HasNodeCert(dataDir) {
+			var tlsErr error
+			httpTLSConfig, tlsErr = pki.APIServerTLSConfig(dataDir)
+			if tlsErr != nil {
+				slog.Warn("HTTP TLS disabled: failed to load certs", "error", tlsErr)
+			}
+		}
+
+		srv := httpapi.NewServer(addr, apiServer, cfg.HTTP.Token, logCollector.Buffer(), stateStore, dataDir, httpTLSConfig)
 		httpServer.Store(srv)
 		go func() {
-			slog.Info("http api server listening", "addr", addr)
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				slog.Error("http api server failed", "error", err)
+			if httpTLSConfig != nil {
+				slog.Info("https api server listening", "addr", addr, "tls", true)
+				if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+					slog.Error("https api server failed", "error", err)
+				}
+			} else {
+				slog.Info("http api server listening", "addr", addr, "tls", false)
+				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					slog.Error("http api server failed", "error", err)
+				}
 			}
 		}()
 	}

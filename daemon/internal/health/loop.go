@@ -3,7 +3,9 @@ package health
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
 
@@ -20,6 +22,7 @@ type Loop struct {
 	store                *store.Store
 	interval             time.Duration
 	failures             map[string]int
+	restartTimes         map[string][]time.Time
 	stopCh               chan struct{}
 	stopOnce             sync.Once
 	onContainerCountFunc func(int) // callback to update container count in gossip metadata
@@ -37,6 +40,7 @@ func NewLoop(checker *Checker, c container.Provider, s *store.Store, interval ti
 		store:                s,
 		interval:             interval,
 		failures:             make(map[string]int),
+		restartTimes:         make(map[string][]time.Time),
 		stopCh:               make(chan struct{}),
 		onContainerCountFunc: onContainerCount,
 		onTickFunc:           onTick,
@@ -187,14 +191,107 @@ func (l *Loop) runChecks(ctx context.Context) {
 				continue
 			}
 
-			// Don't destroy the container if we can't recreate it.
-			// Phase 1: log the persistent failure for operator attention.
-			// Phase 2 will reconstruct the ContainerSpec from store and auto-restart.
-			slog.Error("container persistently unhealthy, manual intervention required",
+			// Crash-loop protection: max 3 restarts per 10 minutes
+			now := time.Now()
+			key := svcName
+			l.restartTimes[key] = append(l.restartTimes[key], now)
+			// Trim old entries outside the 10-minute window
+			cutoff := now.Add(-10 * time.Minute)
+			times := l.restartTimes[key]
+			i := 0
+			for i < len(times) && times[i].Before(cutoff) {
+				i++
+			}
+			l.restartTimes[key] = times[i:]
+
+			if len(l.restartTimes[key]) > 3 {
+				slog.Error("crash loop detected, backing off",
+					"service", svcName,
+					"restarts_in_10m", len(l.restartTimes[key]))
+				l.failures[svcName] = 0
+				continue
+			}
+
+			slog.Warn("auto-restarting unhealthy container",
 				"service", svcName,
-				"container", c.ID,
-				"consecutive_failures", l.failures[svcName],
-			)
+				"container", container.ShortID(c.ID),
+				"consecutive_failures", l.failures[svcName])
+
+			// Stop and remove the failed container
+			_ = l.container.Stop(ctx, c.ID, 10)
+			_ = l.container.Remove(ctx, c.ID)
+
+			// Rebuild container spec from stored service definition
+			replicaIdx := 0
+			if label, ok := c.Labels["hive.replica"]; ok {
+				fmt.Sscanf(label, "%d", &replicaIdx)
+			}
+
+			// Build ports with replica offset
+			ports := make(map[string]string)
+			for hp, cp := range svcDef.Ports {
+				if replicaIdx > 0 {
+					if p, err := strconv.Atoi(hp); err == nil {
+						hp = strconv.Itoa(p + replicaIdx)
+					}
+				}
+				ports[hp] = cp
+			}
+
+			// Parse memory limit from service definition
+			var memMB int64
+			if svcDef.Resources.Memory != "" {
+				if memBytes, parseErr := hivefile.ParseMemory(svcDef.Resources.Memory); parseErr == nil {
+					memMB = memBytes / (1024 * 1024)
+				}
+			}
+
+			// Build volume specs
+			var volumes []container.VolumeSpec
+			for _, v := range svcDef.Volumes {
+				src := v.Linux
+				if src == "" {
+					src = v.Name
+				}
+				volumes = append(volumes, container.VolumeSpec{
+					Source:   src,
+					Target:   v.Target,
+					ReadOnly: v.ReadOnly,
+				})
+			}
+
+			// Look up the network name from store
+			var networkName string
+			if netBytes, netErr := l.store.Get("meta", "network:"+svcName); netErr == nil && netBytes != nil {
+				networkName = string(netBytes)
+			}
+
+			spec := container.ContainerSpec{
+				Name:          fmt.Sprintf("hive-%s-%d", svcName, replicaIdx),
+				Image:         svcDef.Image,
+				Env:           svcDef.Env,
+				Ports:         ports,
+				Volumes:       volumes,
+				MemoryMB:      memMB,
+				CPUs:          svcDef.Resources.CPUs,
+				RestartPolicy: svcDef.RestartPolicy,
+				NetworkName:   networkName,
+				Labels: map[string]string{
+					"hive.managed": "true",
+					"hive.service": svcName,
+					"hive.replica": fmt.Sprintf("%d", replicaIdx),
+				},
+			}
+
+			newID, createErr := l.container.CreateAndStart(ctx, spec)
+			if createErr != nil {
+				slog.Error("auto-restart failed", "service", svcName, "error", createErr)
+			} else {
+				slog.Info("container auto-restarted",
+					"service", svcName,
+					"old_id", container.ShortID(c.ID),
+					"new_id", container.ShortID(newID))
+			}
 			l.failures[svcName] = 0
 		}
 	}

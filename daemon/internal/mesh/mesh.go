@@ -76,15 +76,16 @@ type MeshEvent struct {
 
 // Mesh manages the gossip membership layer and peer gRPC connections.
 type Mesh struct {
-	mlist     *memberlist.Memberlist
-	local     NodeInfo
-	peers     map[string]*Peer // keyed by node name
-	peersMu   sync.RWMutex
-	eventCh   chan MeshEvent
-	stopped   atomic.Bool // set during shutdown to prevent sends on closed eventCh
-	config    Config
-	delegate  *meshDelegate
-	wgMesh    wgMeshInterface // optional WireGuard mesh (nil when disabled)
+	mlist       *memberlist.Memberlist
+	local       NodeInfo
+	peers       map[string]*Peer // keyed by node name
+	peersMu     sync.RWMutex
+	eventCh     chan MeshEvent
+	broadcaster *EventBroadcaster
+	stopped     atomic.Bool // set during shutdown to prevent sends on closed eventCh
+	config      Config
+	delegate    *meshDelegate
+	wgMesh      wgMeshInterface // optional WireGuard mesh (nil when disabled)
 }
 
 // wgMeshInterface is the subset of wgmesh.WGMesh methods used by the mesh layer.
@@ -156,10 +157,11 @@ func New(cfg Config, containerRuntime string, platforms []string) (*Mesh, error)
 	}
 
 	m := &Mesh{
-		local:   local,
-		peers:   make(map[string]*Peer),
-		eventCh: make(chan MeshEvent, 64),
-		config:  cfg,
+		local:       local,
+		peers:       make(map[string]*Peer),
+		eventCh:     make(chan MeshEvent, 64),
+		broadcaster: NewEventBroadcaster(),
+		config:      cfg,
 	}
 
 	m.delegate = &meshDelegate{mesh: m}
@@ -325,6 +327,17 @@ func (m *Mesh) PeerCount() int {
 // Events returns the channel for mesh events.
 func (m *Mesh) Events() <-chan MeshEvent {
 	return m.eventCh
+}
+
+// Subscribe creates a per-subscriber buffered channel for mesh events.
+// Returns a unique ID for unsubscription and a read-only channel.
+func (m *Mesh) Subscribe(bufSize int) (uint64, <-chan MeshEvent) {
+	return m.broadcaster.Subscribe(bufSize)
+}
+
+// Unsubscribe removes a subscriber and closes its channel.
+func (m *Mesh) Unsubscribe(id uint64) {
+	m.broadcaster.Unsubscribe(id)
 }
 
 // Members returns the total member count including self.
