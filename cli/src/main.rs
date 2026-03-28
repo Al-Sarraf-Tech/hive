@@ -68,8 +68,12 @@ enum Commands {
 
     /// Stream logs from a service
     Logs {
-        /// Service name
-        service: String,
+        /// Service name (required unless --all)
+        service: Option<String>,
+
+        /// Show logs from all services
+        #[arg(long)]
+        all: bool,
 
         /// Follow log output
         #[arg(short, long)]
@@ -243,9 +247,23 @@ async fn main() -> Result<()> {
         Commands::Ps => commands::ps::run(&cli.addr, cli.ca_cert.as_deref()).await,
         Commands::Logs {
             service,
+            all,
             follow,
             tail,
-        } => commands::logs::run(&service, follow, tail, &cli.addr, cli.ca_cert.as_deref()).await,
+        } => {
+            if !all && service.is_none() {
+                anyhow::bail!("either a service name or --all is required");
+            }
+            commands::logs::run(
+                service.as_deref(),
+                all,
+                follow,
+                tail,
+                &cli.addr,
+                cli.ca_cert.as_deref(),
+            )
+            .await
+        }
         Commands::Stop { service } => {
             commands::stop::run(&service, &cli.addr, cli.ca_cert.as_deref()).await
         }

@@ -67,10 +67,22 @@ jobs:
             binary: hive
             target: linux-amd64
             rust_target: x86_64-unknown-linux-gnu
+            use_cross: false
+          - crate: cli
+            binary: hive
+            target: linux-arm64
+            rust_target: aarch64-unknown-linux-gnu
+            use_cross: true
           - crate: tui
             binary: hivetop
             target: linux-amd64
             rust_target: x86_64-unknown-linux-gnu
+            use_cross: false
+          - crate: tui
+            binary: hivetop
+            target: linux-arm64
+            rust_target: aarch64-unknown-linux-gnu
+            use_cross: true
     steps:
       - uses: actions/checkout@v4
 
@@ -80,8 +92,17 @@ jobs:
           version: ${{ env.PROTOC_VERSION }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build release
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build release (native)
+        if: ${{ !matrix.use_cross }}
         run: cd ${{ matrix.crate }} && cargo build --release --target ${{ matrix.rust_target }}
+
+      - name: Build release (cross)
+        if: matrix.use_cross
+        run: cd ${{ matrix.crate }} && cross build --release --target ${{ matrix.rust_target }}
 
       - name: Package
         run: |
