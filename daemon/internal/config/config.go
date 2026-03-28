@@ -14,11 +14,12 @@ import (
 
 // Config holds all daemon configuration. Every field maps to a CLI flag.
 type Config struct {
-	Node     NodeConfig     `toml:"node"`
-	Ports    PortsConfig    `toml:"ports"`
-	Security SecurityConfig `toml:"security"`
-	Logging  LoggingConfig  `toml:"logging"`
-	HTTP     HTTPConfig     `toml:"http"`
+	Node      NodeConfig      `toml:"node"`
+	Ports     PortsConfig     `toml:"ports"`
+	Security  SecurityConfig  `toml:"security"`
+	Logging   LoggingConfig   `toml:"logging"`
+	HTTP      HTTPConfig      `toml:"http"`
+	WireGuard WireGuardConfig `toml:"wireguard"`
 }
 
 // NodeConfig holds node identity and cluster membership settings.
@@ -53,6 +54,12 @@ type HTTPConfig struct {
 	Token string `toml:"token"`
 }
 
+// WireGuardConfig holds WireGuard mesh overlay settings.
+type WireGuardConfig struct {
+	Enabled bool `toml:"enabled"`
+	Port    int  `toml:"port"`
+}
+
 // Default returns a Config with the same defaults as the CLI flags.
 func Default() Config {
 	return Config{
@@ -66,6 +73,9 @@ func Default() Config {
 		},
 		HTTP: HTTPConfig{
 			Port: 7949,
+		},
+		WireGuard: WireGuardConfig{
+			Port: 51820,
 		},
 	}
 }
@@ -109,6 +119,8 @@ type FlagOverrides struct {
 	GossipKey     *string
 	LogLevel      *string
 	HTTPPort      *int
+	WG            *bool
+	WGPort        *int
 }
 
 // Merge applies explicit flag overrides on top of the config. Only non-nil
@@ -147,6 +159,12 @@ func (c Config) Merge(o FlagOverrides) Config {
 	if o.HTTPPort != nil {
 		c.HTTP.Port = *o.HTTPPort
 	}
+	if o.WG != nil {
+		c.WireGuard.Enabled = *o.WG
+	}
+	if o.WGPort != nil {
+		c.WireGuard.Port = *o.WGPort
+	}
 	return c
 }
 
@@ -157,6 +175,9 @@ func (c *Config) Validate() error {
 		"mesh_port":   c.Ports.Mesh,
 		"gossip_port": c.Ports.Gossip,
 		"http_port":   c.HTTP.Port,
+	}
+	if c.WireGuard.Enabled {
+		ports["wg_port"] = c.WireGuard.Port
 	}
 	for name, port := range ports {
 		if port < 0 || port > 65535 {

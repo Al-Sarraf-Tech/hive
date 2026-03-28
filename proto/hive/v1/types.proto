@@ -19,6 +19,8 @@ message Node {
   map<string, string> labels = 8;
   google.protobuf.Timestamp joined_at = 9;
   google.protobuf.Timestamp last_seen = 10;
+  string wg_pub_key = 11;  // WireGuard public key (base64), empty if WG disabled
+  string wg_addr = 12;     // WireGuard mesh IP (e.g. 10.47.X.X), empty if WG disabled
 }
 
 enum NodeStatus {

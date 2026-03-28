@@ -13,6 +13,7 @@ pub fn draw(frame: &mut Frame, area: Rect, data: &Option<ClusterData>) {
     let header = Row::new(vec![
         Cell::from("STATUS"),
         Cell::from("NAME"),
+        Cell::from("MESH IP"),
         Cell::from("OS"),
         Cell::from("ARCH"),
         Cell::from("RUNTIME"),
@@ -50,6 +51,11 @@ pub fn draw(frame: &mut Frame, area: Rect, data: &Option<ClusterData>) {
                 .iter()
                 .map(|node| {
                     let caps = node.capabilities.as_ref();
+                    let mesh_ip = if node.wg_addr.is_empty() {
+                        "-".to_string()
+                    } else {
+                        node.wg_addr.clone()
+                    };
                     Row::new(vec![
                         Cell::from(match NodeStatus::try_from(node.status) {
                             Ok(NodeStatus::Ready) => "● ready",
@@ -58,6 +64,7 @@ pub fn draw(frame: &mut Frame, area: Rect, data: &Option<ClusterData>) {
                             _ => "? unknown",
                         }),
                         Cell::from(node.name.as_str()),
+                        Cell::from(mesh_ip),
                         Cell::from(caps.map(|c| c.os.as_str()).unwrap_or("-")),
                         Cell::from(caps.map(|c| c.arch.as_str()).unwrap_or("-")),
                         Cell::from(caps.map(|c| c.container_runtime.as_str()).unwrap_or("-")),
@@ -73,6 +80,7 @@ pub fn draw(frame: &mut Frame, area: Rect, data: &Option<ClusterData>) {
         [
             Constraint::Length(12),
             Constraint::Min(15),
+            Constraint::Length(16),
             Constraint::Length(10),
             Constraint::Length(7),
             Constraint::Length(12),

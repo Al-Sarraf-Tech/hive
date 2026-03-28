@@ -33,6 +33,17 @@ func (d *meshEventDelegate) NotifyJoin(node *memberlist.Node) {
 
 	d.mesh.updatePeer(info)
 
+	// Add WireGuard peer if the joining node advertises a WG public key
+	d.mesh.peersMu.RLock()
+	wg := d.mesh.wgMesh
+	d.mesh.peersMu.RUnlock()
+	if wg != nil && info.WGPubKey != "" && info.WGPort > 0 {
+		endpoint := fmt.Sprintf("%s:%d", info.AdvertiseAddr, info.WGPort)
+		if err := wg.AddPeer(info.Name, info.WGPubKey, endpoint); err != nil {
+			slog.Warn("failed to add wireguard peer on join", "node", info.Name, "error", err)
+		}
+	}
+
 	slog.Info("node joined cluster", "node", node.Name, "addr", node.Addr)
 	if !d.mesh.stopped.Load() {
 		select {
@@ -52,6 +63,16 @@ func (d *meshEventDelegate) NotifyLeave(node *memberlist.Node) {
 	}
 
 	d.mesh.removePeer(node.Name)
+
+	// Remove WireGuard peer when node leaves
+	d.mesh.peersMu.RLock()
+	wg := d.mesh.wgMesh
+	d.mesh.peersMu.RUnlock()
+	if wg != nil {
+		if err := wg.RemovePeer(node.Name); err != nil {
+			slog.Warn("failed to remove wireguard peer on leave", "node", node.Name, "error", err)
+		}
+	}
 
 	slog.Info("node left cluster", "node", node.Name)
 	if !d.mesh.stopped.Load() {
@@ -99,7 +120,19 @@ func (d *meshEventDelegate) NotifyUpdate(node *memberlist.Node) {
 	} else {
 		d.mesh.peers[node.Name] = &Peer{Info: info, LastSeen: time.Now()}
 	}
+	wg := d.mesh.wgMesh
 	d.mesh.peersMu.Unlock()
+
+	// Sync WireGuard peer if WG fields changed
+	if wg != nil && info.WGPubKey != "" && info.WGPort > 0 {
+		if ok && (existing.Info.WGPubKey != info.WGPubKey || existing.Info.WGPort != info.WGPort || existing.Info.AdvertiseAddr != info.AdvertiseAddr) {
+			_ = wg.RemovePeer(info.Name)
+			endpoint := fmt.Sprintf("%s:%d", info.AdvertiseAddr, info.WGPort)
+			if err := wg.AddPeer(info.Name, info.WGPubKey, endpoint); err != nil {
+				slog.Warn("failed to update wireguard peer", "node", info.Name, "error", err)
+			}
+		}
+	}
 
 	if !d.mesh.stopped.Load() {
 		select {

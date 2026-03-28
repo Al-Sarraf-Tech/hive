@@ -385,6 +385,8 @@ type Node struct {
 	Labels        map[string]string      `protobuf:"bytes,8,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	JoinedAt      *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=joined_at,json=joinedAt,proto3" json:"joined_at,omitempty"`
 	LastSeen      *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=last_seen,json=lastSeen,proto3" json:"last_seen,omitempty"`
+	WgPubKey      string                 `protobuf:"bytes,11,opt,name=wg_pub_key,json=wgPubKey,proto3" json:"wg_pub_key,omitempty"` // WireGuard public key (base64), empty if WG disabled
+	WgAddr        string                 `protobuf:"bytes,12,opt,name=wg_addr,json=wgAddr,proto3" json:"wg_addr,omitempty"`         // WireGuard mesh IP (e.g. 10.47.X.X), empty if WG disabled
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -487,6 +489,20 @@ func (x *Node) GetLastSeen() *timestamppb.Timestamp {
 		return x.LastSeen
 	}
 	return nil
+}
+
+func (x *Node) GetWgPubKey() string {
+	if x != nil {
+		return x.WgPubKey
+	}
+	return ""
+}
+
+func (x *Node) GetWgAddr() string {
+	if x != nil {
+		return x.WgAddr
+	}
+	return ""
 }
 
 type NodeCapabilities struct {
@@ -1297,7 +1313,7 @@ var File_hive_v1_types_proto protoreflect.FileDescriptor
 
 const file_hive_v1_types_proto_rawDesc = "" +
 	"\n" +
-	"\x13hive/v1/types.proto\x12\ahive.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf0\x03\n" +
+	"\x13hive/v1/types.proto\x12\ahive.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa7\x04\n" +
 	"\x04Node\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12%\n" +
@@ -1309,7 +1325,10 @@ const file_hive_v1_types_proto_rawDesc = "" +
 	"\x06labels\x18\b \x03(\v2\x19.hive.v1.Node.LabelsEntryR\x06labels\x127\n" +
 	"\tjoined_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\bjoinedAt\x127\n" +
 	"\tlast_seen\x18\n" +
-	" \x01(\v2\x1a.google.protobuf.TimestampR\blastSeen\x1a9\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\blastSeen\x12\x1c\n" +
+	"\n" +
+	"wg_pub_key\x18\v \x01(\tR\bwgPubKey\x12\x17\n" +
+	"\awg_addr\x18\f \x01(\tR\x06wgAddr\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x81\x01\n" +

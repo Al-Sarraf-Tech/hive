@@ -39,6 +39,9 @@ type NodeInfo struct {
 	MemAvail      uint64   `json:"A" msg:"A"` // available memory bytes
 	DiskTotal     uint64   `json:"D" msg:"D"` // total disk bytes
 	DiskAvail     uint64   `json:"d" msg:"d"` // available disk bytes
+	WGPubKey      string   `json:"w" msg:"w"` // WireGuard public key (base64)
+	WGAddr        string   `json:"W" msg:"W"` // WireGuard mesh IP (10.47.X.X)
+	WGPort        int      `json:"U" msg:"U"` // WireGuard UDP listen port
 }
 
 // Peer represents a remote node in the cluster.
@@ -81,6 +84,34 @@ type Mesh struct {
 	stopped   atomic.Bool // set during shutdown to prevent sends on closed eventCh
 	config    Config
 	delegate  *meshDelegate
+	wgMesh    wgMeshInterface // optional WireGuard mesh (nil when disabled)
+}
+
+// wgMeshInterface is the subset of wgmesh.WGMesh methods used by the mesh layer.
+// Defined as an interface to avoid a circular import between mesh and wgmesh.
+type wgMeshInterface interface {
+	AddPeer(name string, pubKeyBase64 string, endpoint string) error
+	RemovePeer(name string) error
+}
+
+// SetWGMesh sets the WireGuard mesh instance for automatic peer management.
+// When set, peers with WireGuard keys are automatically added/removed as they
+// join/leave the gossip cluster.
+func (m *Mesh) SetWGMesh(wg wgMeshInterface) {
+	m.peersMu.Lock()
+	m.wgMesh = wg
+	// Add any peers that joined before WG was set (startup race window)
+	if wg != nil {
+		for name, peer := range m.peers {
+			if peer.Info.WGPubKey != "" && peer.Info.WGPort > 0 {
+				endpoint := fmt.Sprintf("%s:%d", peer.Info.AdvertiseAddr, peer.Info.WGPort)
+				if err := wg.AddPeer(name, peer.Info.WGPubKey, endpoint); err != nil {
+					slog.Warn("failed to add existing peer to wireguard", "node", name, "error", err)
+				}
+			}
+		}
+	}
+	m.peersMu.Unlock()
 }
 
 // New creates and starts a new gossip mesh.
@@ -115,6 +146,11 @@ func New(cfg Config, containerRuntime string, platforms []string) (*Mesh, error)
 		Runtime:       containerRuntime,
 		Platforms:     platforms,
 		Status:        int(NodeStatusReady),
+	}
+	if cfg.WireGuardEnabled {
+		local.WGPubKey = cfg.WireGuardPubKey
+		local.WGAddr = cfg.WireGuardAddr
+		local.WGPort = cfg.WireGuardPort
 	}
 
 	m := &Mesh{
@@ -305,6 +341,10 @@ func (m *Mesh) dialPeer(info NodeInfo) (*grpc.ClientConn, error) {
 	if port == 0 {
 		return nil, fmt.Errorf("peer %s has no gRPC/mesh port", info.Name)
 	}
+
+	// NOTE: WireGuard mesh address routing is deferred until the WG device
+	// is fully operational (Phase 2). Until then, always use AdvertiseAddr.
+	// Future: if m.config.WireGuardEnabled && info.WGAddr != "" && m.wgDeviceUp { use WGAddr }
 	addr := fmt.Sprintf("%s:%d", info.AdvertiseAddr, port)
 
 	var creds grpc.DialOption

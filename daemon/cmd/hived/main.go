@@ -31,6 +31,7 @@ import (
 	"github.com/jalsarraf0/hive/daemon/internal/secrets"
 	"github.com/jalsarraf0/hive/daemon/internal/store"
 	"github.com/jalsarraf0/hive/daemon/internal/sysinfo"
+	"github.com/jalsarraf0/hive/daemon/internal/wgmesh"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
@@ -50,6 +51,8 @@ func main() {
 	flagMeshPort := flag.Int("mesh-port", 7948, "gRPC port for daemon-to-daemon mesh (mTLS)")
 	flagTLS := flag.Bool("tls", false, "Enable TLS for CLI/TUI connections")
 	flagHTTPPort := flag.Int("http-port", 7949, "HTTP API port for web console (0 to disable)")
+	flagWG := flag.Bool("wg", false, "Enable WireGuard mesh overlay (opt-in)")
+	flagWGPort := flag.Int("wg-port", 51820, "WireGuard UDP listen port")
 	flag.Parse()
 
 	// Load config file (missing file = defaults, not an error)
@@ -89,6 +92,10 @@ func main() {
 			overrides.TLS = flagTLS
 		case "http-port":
 			overrides.HTTPPort = flagHTTPPort
+		case "wg":
+			overrides.WG = flagWG
+		case "wg-port":
+			overrides.WGPort = flagWGPort
 		}
 	})
 	cfg = cfg.Merge(overrides)
@@ -196,6 +203,17 @@ func main() {
 		slog.Info("mTLS disabled — run 'hive init' to generate cluster certificates")
 	}
 
+	// Initialize WireGuard mesh overlay (opt-in)
+	var wg *wgmesh.WGMesh
+	if cfg.WireGuard.Enabled {
+		wg, err = wgmesh.New(dataDir, cfg.WireGuard.Port)
+		if err != nil {
+			slog.Error("failed to initialize wireguard", "error", err)
+			// Non-fatal: continue without WireGuard
+			wg = nil
+		}
+	}
+
 	meshCfg := mesh.Config{
 		NodeName:      nodeName,
 		AdvertiseAddr: cfg.Node.AdvertiseAddr,
@@ -206,10 +224,19 @@ func main() {
 		TLSEnabled:    tlsEnabled,
 		DataDir:       dataDir,
 	}
+	if wg != nil {
+		meshCfg.WireGuardEnabled = true
+		meshCfg.WireGuardPubKey = wg.PublicKey()
+		meshCfg.WireGuardAddr = wg.MeshIP()
+		meshCfg.WireGuardPort = wg.ListenPort()
+	}
 	hiveMesh, err := mesh.New(meshCfg, containerProvider.RuntimeName(), containerProvider.DetectCapabilities())
 	if err != nil {
 		slog.Error("failed to initialize mesh", "error", err)
 		os.Exit(1)
+	}
+	if wg != nil {
+		hiveMesh.SetWGMesh(wg)
 	}
 
 	// Initialize scheduler
@@ -423,6 +450,9 @@ func main() {
 			meshGRPC.Stop()
 		}
 		_ = hiveMesh.Shutdown()
+		if wg != nil {
+			_ = wg.Close()
+		}
 	}()
 
 	httpAddr := "disabled"

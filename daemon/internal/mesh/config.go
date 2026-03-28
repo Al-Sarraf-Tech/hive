@@ -11,6 +11,12 @@ type Config struct {
 	GossipKey     []byte // Optional shared encryption key for gossip traffic
 	DataDir       string // Path to data directory containing pki/ subdirectory
 	TLSEnabled    bool   // Whether mTLS is active for mesh connections
+
+	// WireGuard overlay mesh settings (populated when WG is enabled)
+	WireGuardEnabled bool   // Whether WireGuard mesh is active
+	WireGuardPubKey  string // This node's WireGuard public key (base64)
+	WireGuardAddr    string // This node's WireGuard mesh IP (10.47.X.X)
+	WireGuardPort    int    // This node's WireGuard UDP listen port
 }
 
 // NodeStatus represents a node's operational state.

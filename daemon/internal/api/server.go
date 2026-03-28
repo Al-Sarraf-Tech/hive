@@ -94,11 +94,14 @@ func (s *Server) makeNode() *hivev1.Node {
 	nodeStatus := hivev1.NodeStatus_NODE_STATUS_READY
 	var advertiseAddr string
 	var grpcPort uint32
+	var wgPubKey, wgAddr string
 	if s.mesh != nil {
 		local := s.mesh.LocalNode()
 		nodeStatus = hivev1.NodeStatus(local.Status)
 		advertiseAddr = local.AdvertiseAddr
 		grpcPort = uint32(local.GRPCPort)
+		wgPubKey = local.WGPubKey
+		wgAddr = local.WGAddr
 	}
 
 	memTotal, memAvail := sysinfo.MemInfo()
@@ -124,6 +127,8 @@ func (s *Server) makeNode() *hivev1.Node {
 			DiskAvailableBytes:   diskAvail,
 		},
 		JoinedAt: timestamppb.New(s.startedAt),
+		WgPubKey: wgPubKey,
+		WgAddr:   wgAddr,
 	}
 }
 
@@ -369,6 +374,8 @@ func peerToNode(info mesh.NodeInfo) *hivev1.Node {
 			Platforms:        info.Platforms,
 			ContainerRuntime: info.Runtime,
 		},
+		WgPubKey: info.WGPubKey,
+		WgAddr:   info.WGAddr,
 	}
 }
 

@@ -78,6 +78,10 @@
       {/if}
       <div class="detail-row"><span class="detail-label">Joined</span><span class="detail-value">{timeAgo(node.joinedAt)}</span></div>
       <div class="detail-row"><span class="detail-label">Last Seen</span><span class="detail-value">{timeAgo(node.lastSeen)}</span></div>
+      {#if node.wgAddr}
+        <div class="detail-row"><span class="detail-label">WireGuard IP</span><span class="detail-value">{node.wgAddr}</span></div>
+        <div class="detail-row"><span class="detail-label">WireGuard Key</span><span class="detail-value" style="font-size:0.7rem">{node.wgPubKey?.substring(0, 20)}...</span></div>
+      {/if}
     </div>
 
     <div class="card">

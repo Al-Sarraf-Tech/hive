@@ -49,6 +49,7 @@
           <th>Status</th>
           <th>Name</th>
           <th>Address</th>
+          <th>Mesh IP</th>
           <th>OS/Arch</th>
           <th>Runtime</th>
           <th>CPU</th>
@@ -68,6 +69,7 @@
             <td><span class="badge {badge.cls}">{badge.text}</span></td>
             <td>{node.name}</td>
             <td class="muted">{node.advertiseAddr || '-'}</td>
+            <td class="muted">{node.wgAddr || '-'}</td>
             <td>{c.os || '-'}/{c.arch || '-'}</td>
             <td>{c.containerRuntime || '-'}</td>
             <td>{r.cpuCores || '-'}</td>
