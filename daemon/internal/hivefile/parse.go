@@ -37,6 +37,15 @@ type ServiceDef struct {
 	DependsOn     DependsDef        `toml:"depends_on"`
 	Cron          []CronDef         `toml:"cron"`
 	RestartPolicy string            `toml:"restart_policy"`
+	Ingress       IngressDef        `toml:"ingress"`
+}
+
+// IngressDef configures an auto-managed load balancer for the service.
+// When set, Hive creates an nginx proxy container that distributes traffic
+// across all healthy replicas with automatic failover.
+type IngressDef struct {
+	Port int    `toml:"port"` // external port for incoming traffic
+	Node string `toml:"node"` // which node runs the LB (default: deploying node)
 }
 
 // VolumeDef supports both simple and cross-platform volume syntax.
@@ -191,6 +200,14 @@ func parseWithVisited(data []byte, basePath string, visited map[string]bool) (*H
 		}
 		if svc.Deploy.Strategy == "" {
 			svc.Deploy.Strategy = "rolling"
+		}
+		if svc.Ingress.Port != 0 {
+			if svc.Ingress.Port < 1 || svc.Ingress.Port > 65535 {
+				return nil, fmt.Errorf("service %q: ingress port must be 1-65535", name)
+			}
+			if len(svc.Ports) == 0 {
+				return nil, fmt.Errorf("service %q: ingress requires at least one port mapping", name)
+			}
 		}
 		hf.Service[name] = svc
 	}

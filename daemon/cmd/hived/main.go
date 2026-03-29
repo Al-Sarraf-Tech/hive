@@ -29,6 +29,7 @@ import (
 	"github.com/jalsarraf0/hive/daemon/internal/metrics"
 	"github.com/jalsarraf0/hive/daemon/internal/pki"
 	"github.com/jalsarraf0/hive/daemon/internal/platform"
+	"github.com/jalsarraf0/hive/daemon/internal/proxy"
 	"github.com/jalsarraf0/hive/daemon/internal/scheduler"
 	"github.com/jalsarraf0/hive/daemon/internal/secrets"
 	"github.com/jalsarraf0/hive/daemon/internal/store"
@@ -375,6 +376,11 @@ func main() {
 			})
 		})
 	}
+	// Set up ingress proxy manager
+	proxyMgr := proxy.NewManager(containerProvider, stateStore, dataDir, nodeName, hiveMesh)
+	apiServer.SetProxyManager(proxyMgr)
+	healthLoop.SetProxyRefresh(proxyMgr.RefreshUpstreams)
+
 	go healthLoop.Start(ctx)
 
 	// Start certificate renewal checker with automatic CSR-based renewal.

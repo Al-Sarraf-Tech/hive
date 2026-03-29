@@ -29,6 +29,12 @@ type Loop struct {
 	onTickFunc           func()       // callback after each health tick (update resources in gossip, etc.)
 	onHealthFailFunc     func(string) // callback when a service exceeds health check retries (service name)
 	history              *History     // health event history (may be nil)
+	proxyRefresh         func(ctx context.Context, serviceName string) error // refresh ingress upstreams (may be nil)
+}
+
+// SetProxyRefresh sets the callback to refresh ingress proxy upstreams on health transitions.
+func (l *Loop) SetProxyRefresh(fn func(ctx context.Context, serviceName string) error) {
+	l.proxyRefresh = fn
 }
 
 // NewLoop creates a health check loop.
@@ -129,6 +135,10 @@ func (l *Loop) runChecks(ctx context.Context) {
 		if c.Status != "running" {
 			continue
 		}
+		// Skip ingress proxy containers — they self-heal via Docker restart policy
+		if c.Labels["hive.ingress"] == "true" {
+			continue
+		}
 
 		svcName := c.Labels["hive.service"]
 		if svcName == "" {
@@ -179,6 +189,12 @@ func (l *Loop) runChecks(ctx context.Context) {
 			metrics.HealthCheckTotal.WithLabelValues("healthy").Inc()
 			if l.failures[svcName] > 0 {
 				slog.Info("health check recovered", "service", svcName)
+				// Replica recovered — refresh ingress upstreams
+				if l.proxyRefresh != nil {
+					if err := l.proxyRefresh(ctx, svcName); err != nil {
+						slog.Warn("failed to refresh ingress upstreams on recovery", "service", svcName, "error", err)
+					}
+				}
 			}
 			l.failures[svcName] = 0
 		} else {
@@ -213,6 +229,13 @@ func (l *Loop) runChecks(ctx context.Context) {
 			retries = 3
 		}
 		if l.failures[svcName] >= retries {
+			// Refresh ingress upstreams to remove failed replica
+			if l.proxyRefresh != nil {
+				if err := l.proxyRefresh(ctx, svcName); err != nil {
+					slog.Warn("failed to refresh ingress upstreams on failure", "service", svcName, "error", err)
+				}
+			}
+
 			// Notify webhook hooks about health failure
 			if l.onHealthFailFunc != nil {
 				l.onHealthFailFunc(svcName)
@@ -339,6 +362,12 @@ func (l *Loop) runChecks(ctx context.Context) {
 					"service", svcName,
 					"old_id", container.ShortID(c.ID),
 					"new_id", container.ShortID(newID))
+				// Refresh ingress upstreams with the new container
+				if l.proxyRefresh != nil {
+					if err := l.proxyRefresh(ctx, svcName); err != nil {
+						slog.Warn("failed to refresh ingress upstreams after restart", "service", svcName, "error", err)
+					}
+				}
 			}
 			l.failures[svcName] = 0
 		}

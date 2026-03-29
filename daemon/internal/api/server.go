@@ -66,6 +66,7 @@ type Server struct {
 	cronSched       *cron.Scheduler // nil if no cron jobs
 	healthHistory   *health.History // nil if health timeline disabled
 	hookMgr         *hooks.Manager  // nil if no hooks configured
+	proxyMgr        proxyManager    // nil if ingress disabled
 	deployMu        sync.Mutex      // serializes DeployService to prevent concurrent races
 	certBootstrapMu sync.Mutex      // serializes bootstrapNodeCert to prevent concurrent CSR signing
 }
@@ -94,6 +95,19 @@ func (s *Server) SetCronScheduler(cs *cron.Scheduler) {
 // SetHealthHistory sets the health event history for the timeline API.
 func (s *Server) SetHealthHistory(h *health.History) {
 	s.healthHistory = h
+}
+
+// proxyManager is the interface for the ingress proxy manager.
+// Using an interface avoids a direct import of the proxy package.
+type proxyManager interface {
+	EnsureProxy(ctx context.Context, serviceName string, svcDef hivefile.ServiceDef, networkName string) error
+	RefreshUpstreams(ctx context.Context, serviceName string) error
+	RemoveProxy(ctx context.Context, serviceName string) error
+}
+
+// SetProxyManager sets the ingress proxy manager.
+func (s *Server) SetProxyManager(pm proxyManager) {
+	s.proxyMgr = pm
 }
 
 // SetHookManager sets the webhook hook manager for lifecycle event delivery.
@@ -1061,6 +1075,18 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 		}
 	}
 
+	// Set up / update ingress proxies for services with ingress config
+	if s.proxyMgr != nil {
+		for _, name := range deployOrder {
+			svcDef := hf.Service[name]
+			if svcDef.Ingress.Port != 0 {
+				if err := s.proxyMgr.EnsureProxy(ctx, name, svcDef, networkName); err != nil {
+					slog.Error("failed to set up ingress proxy", "service", name, "error", err)
+				}
+			}
+		}
+	}
+
 	return &hivev1.DeployServiceResponse{Services: deployed}, nil
 }
 
@@ -1467,6 +1493,13 @@ func (s *Server) StopService(ctx context.Context, req *hivev1.StopServiceRequest
 		}
 
 		slog.Info("service stopped", "name", req.Name)
+
+		// Remove ingress proxy if configured
+		if s.proxyMgr != nil {
+			if err := s.proxyMgr.RemoveProxy(ctx, req.Name); err != nil {
+				slog.Warn("failed to remove ingress proxy", "service", req.Name, "error", err)
+			}
+		}
 	} else {
 		return nil, status.Errorf(codes.Internal, "some containers for %q could not be removed", req.Name)
 	}
@@ -1590,6 +1623,14 @@ func (s *Server) ScaleService(ctx context.Context, req *hivev1.ScaleServiceReque
 	}
 
 	slog.Info("service scaled", "name", req.Name, "replicas", desired)
+
+	// Update ingress proxy upstreams after scale
+	if s.proxyMgr != nil {
+		if err := s.proxyMgr.RefreshUpstreams(ctx, req.Name); err != nil {
+			slog.Warn("failed to refresh ingress proxy after scale", "service", req.Name, "error", err)
+		}
+	}
+
 	return &emptypb.Empty{}, nil
 }
 
@@ -1833,6 +1874,14 @@ func (s *Server) RestartService(ctx context.Context, req *hivev1.RestartServiceR
 	}
 
 	slog.Info("service restarted", "name", req.Name, "restarted", restarted, "total", replicas)
+
+	// Update ingress proxy upstreams after restart
+	if s.proxyMgr != nil {
+		if err := s.proxyMgr.RefreshUpstreams(ctx, req.Name); err != nil {
+			slog.Warn("failed to refresh ingress proxy after restart", "service", req.Name, "error", err)
+		}
+	}
+
 	return &emptypb.Empty{}, nil
 }
 
