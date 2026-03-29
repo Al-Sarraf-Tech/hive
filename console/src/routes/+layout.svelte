@@ -6,27 +6,17 @@
   import { clearTokens } from '$lib/api.js';
 
   let { children } = $props();
-
-  // Public routes accessible without authentication
-  const publicRoutes = ['/login', '/appstore', '/learn'];
-
-  function isPublicRoute(pathname) {
-    return publicRoutes.some(r => pathname === r || pathname.startsWith(r + '/'));
-  }
-
   let authenticated = $state(false);
 
   onMount(() => {
-    const token = sessionStorage.getItem('hive_token');
-    authenticated = !!token;
-    if (!token && !isPublicRoute($page.url.pathname)) {
-      goto('/login');
-    }
+    authenticated = !!sessionStorage.getItem('hive_token');
+    // No redirect — all pages are browsable without login.
+    // Login is available for users who want to deploy/manage.
   });
 
   function logout() {
     clearTokens();
-    goto('/login');
+    authenticated = false;
   }
 
   const sections = [
@@ -139,38 +129,19 @@
         </svg>
         <span>Hive</span>
       </a>
-      {#if authenticated}
-        {#each sections as section}
-          <div class="nav-section">{section.label}</div>
-          {#each section.items as item}
-            <a
-              href={item.href}
-              class="nav-link"
-              class:active={isActive(item.href, $page.url.pathname)}
-            >
-              <svg width="16" height="16"><use href="#icon-{item.icon}"/></svg>
-              <span class="nav-label">{item.label}</span>
-            </a>
-          {/each}
-        {/each}
-      {:else}
-        <!-- Unauthenticated: show only public routes -->
-        <div class="nav-section">Browse</div>
-        <a href="/appstore" class="nav-link" class:active={isActive('/appstore', $page.url.pathname)}>
-          <svg width="16" height="16"><use href="#icon-store"/></svg>
-          <span class="nav-label">App Store</span>
-        </a>
-        <a href="/learn" class="nav-link" class:active={isActive('/learn', $page.url.pathname)}>
-          <svg width="16" height="16"><use href="#icon-book"/></svg>
-          <span class="nav-label">Tutorial</span>
-        </a>
-        <div style="padding:1rem 1.25rem; margin-top:1rem;">
-          <a href="/login" class="btn btn-primary" style="width:100%; text-decoration:none; justify-content:center; font-size:0.8125rem">
-            Sign In
+      {#each sections as section}
+        <div class="nav-section">{section.label}</div>
+        {#each section.items as item}
+          <a
+            href={item.href}
+            class="nav-link"
+            class:active={isActive(item.href, $page.url.pathname)}
+          >
+            <svg width="16" height="16"><use href="#icon-{item.icon}"/></svg>
+            <span class="nav-label">{item.label}</span>
           </a>
-          <p class="muted" style="font-size:0.65rem; margin-top:0.5rem; text-align:center">Sign in to deploy services</p>
-        </div>
-      {/if}
+        {/each}
+      {/each}
       <div style="margin-top:auto; padding:0.75rem 1.25rem; border-top:1px solid var(--border);">
         <span class="mono muted" style="font-size:0.65rem">Hive v2.5.1</span>
       </div>
