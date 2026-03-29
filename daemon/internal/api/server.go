@@ -679,6 +679,28 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 			}
 		}
 
+		// Inject ingress service discovery env vars for services with ingress configured
+		for otherName, otherDef := range hf.Service {
+			if otherDef.Ingress.Port == 0 || otherName == name {
+				continue
+			}
+			upperName := strings.ToUpper(strings.ReplaceAll(otherName, "-", "_"))
+			hostKey := "HIVE_INGRESS_" + upperName + "_HOST"
+			portKey := "HIVE_INGRESS_" + upperName + "_PORT"
+			if _, exists := env[hostKey]; !exists {
+				if networkName != "" {
+					env[hostKey] = otherName + "-ingress" // Docker DNS alias set by proxy manager
+				} else if s.mesh != nil {
+					env[hostKey] = s.mesh.LocalNode().AdvertiseAddr
+				} else {
+					env[hostKey] = "127.0.0.1"
+				}
+			}
+			if _, exists := env[portKey]; !exists {
+				env[portKey] = strconv.Itoa(otherDef.Ingress.Port)
+			}
+		}
+
 		// Parse memory limit
 		memBytes, err := hivefile.ParseMemory(svcDef.Resources.Memory)
 		if err != nil {

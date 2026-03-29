@@ -2,9 +2,16 @@ package proxy
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -65,8 +72,15 @@ func (m *Manager) EnsureProxy(ctx context.Context, serviceName string, svcDef hi
 	upstreams := m.collectUpstreams(ctx, serviceName, svcDef)
 	slog.Info("ingress proxy upstreams collected", "service", serviceName, "count", len(upstreams))
 
-	// Generate nginx config
-	conf := GenerateNginxConf(serviceName, 80, upstreams)
+	// Generate nginx config (TLS or plain)
+	listenPort := 80
+	var conf []byte
+	if svcDef.Ingress.TLS {
+		listenPort = 443
+		conf = GenerateNginxTLSConf(serviceName, listenPort, upstreams)
+	} else {
+		conf = GenerateNginxConf(serviceName, listenPort, upstreams)
+	}
 
 	// Write config atomically
 	confDir := filepath.Join(m.dataDir, "ingress", serviceName)
@@ -106,18 +120,57 @@ func (m *Manager) EnsureProxy(ctx context.Context, serviceName string, svcDef hi
 		m.container.Remove(ctx, existing[0].ID)
 	}
 
+	// Handle TLS certificates
+	volumes := []container.VolumeSpec{{
+		Source:   confPath,
+		Target:   "/etc/nginx/nginx.conf",
+		ReadOnly: true,
+	}}
+	if svcDef.Ingress.TLS {
+		certDir := filepath.Join(confDir, "certs")
+		if err := os.MkdirAll(certDir, 0o700); err != nil {
+			return fmt.Errorf("create cert dir: %w", err)
+		}
+		certPath := filepath.Join(certDir, "tls.crt")
+		keyPath := filepath.Join(certDir, "tls.key")
+		if svcDef.Ingress.TLSCert != "" && svcDef.Ingress.TLSKey != "" {
+			// Use provided cert/key — copy to ingress dir
+			certData, err := os.ReadFile(svcDef.Ingress.TLSCert)
+			if err != nil {
+				return fmt.Errorf("read TLS cert: %w", err)
+			}
+			keyData, err := os.ReadFile(svcDef.Ingress.TLSKey)
+			if err != nil {
+				return fmt.Errorf("read TLS key: %w", err)
+			}
+			os.WriteFile(certPath, certData, 0o644)
+			os.WriteFile(keyPath, keyData, 0o600)
+		} else {
+			// Generate self-signed cert if none exists
+			if _, err := os.Stat(certPath); os.IsNotExist(err) {
+				if genErr := generateSelfSignedCert(certPath, keyPath, serviceName); genErr != nil {
+					return fmt.Errorf("generate self-signed cert: %w", genErr)
+				}
+				slog.Info("ingress: generated self-signed TLS certificate", "service", serviceName)
+			}
+		}
+		volumes = append(volumes, container.VolumeSpec{
+			Source:   certDir,
+			Target:   "/etc/nginx/certs",
+			ReadOnly: true,
+		})
+	}
+
+	containerPort := strconv.Itoa(listenPort)
+
 	// Create proxy container
 	spec := container.ContainerSpec{
 		Name:  proxyContainerName(serviceName),
 		Image: "nginx:alpine",
 		Ports: map[string]string{
-			strconv.Itoa(svcDef.Ingress.Port): "80",
+			strconv.Itoa(svcDef.Ingress.Port): containerPort,
 		},
-		Volumes: []container.VolumeSpec{{
-			Source:   confPath,
-			Target:   "/etc/nginx/nginx.conf",
-			ReadOnly: true,
-		}},
+		Volumes: volumes,
 		Labels: map[string]string{
 			"hive.managed": "true",
 			"hive.ingress": "true",
@@ -257,4 +310,49 @@ func (m *Manager) collectUpstreams(ctx context.Context, serviceName string, svcD
 	}
 
 	return upstreams
+}
+
+// generateSelfSignedCert creates a self-signed TLS certificate for the ingress proxy.
+func generateSelfSignedCert(certPath, keyPath, serviceName string) error {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("generate key: %w", err)
+	}
+
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return fmt.Errorf("generate serial: %w", err)
+	}
+
+	now := time.Now()
+	template := &x509.Certificate{
+		SerialNumber: serial,
+		Subject: pkix.Name{
+			CommonName:   serviceName + ".hive.local",
+			Organization: []string{"Hive Ingress"},
+		},
+		NotBefore:             now,
+		NotAfter:              now.Add(365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		DNSNames:              []string{serviceName, serviceName + ".hive.local", "localhost"},
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		return fmt.Errorf("create cert: %w", err)
+	}
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyDER, _ := x509.MarshalECPrivateKey(key)
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+
+	if err := os.WriteFile(certPath, certPEM, 0o644); err != nil {
+		return fmt.Errorf("write cert: %w", err)
+	}
+	if err := os.WriteFile(keyPath, keyPEM, 0o600); err != nil {
+		return fmt.Errorf("write key: %w", err)
+	}
+	return nil
 }

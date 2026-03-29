@@ -11,7 +11,8 @@ import (
 
 // Upstream represents one backend replica endpoint for the load balancer.
 type Upstream struct {
-	Addr string // e.g. "love-note-web-0:80" (docker DNS) or "192.168.50.5:26149" (host)
+	Addr   string // e.g. "love-note-web-0:80" (docker DNS) or "192.168.50.5:26149" (host)
+	Weight int    // 0 = equal weight (default), >0 for canary deploys
 }
 
 var nginxTmpl = template.Must(template.New("nginx").Parse(`
@@ -28,7 +29,7 @@ http {
 
     upstream {{ .ServiceName }} {
 {{- range .Upstreams }}
-        server {{ .Addr }};
+        server {{ .Addr }}{{ if .Weight }} weight={{ .Weight }}{{ end }};
 {{- end }}
 {{- if not .Upstreams }}
         server 127.0.0.1:1 down;
@@ -59,11 +60,61 @@ http {
 }
 `))
 
+var nginxTLSTmpl = template.Must(template.New("nginx-tls").Parse(`
+worker_processes 1;
+error_log /dev/stderr warn;
+pid /tmp/nginx.pid;
+
+events {
+    worker_connections 256;
+}
+
+http {
+    access_log /dev/stdout;
+
+    upstream {{ .ServiceName }} {
+{{- range .Upstreams }}
+        server {{ .Addr }}{{ if .Weight }} weight={{ .Weight }}{{ end }};
+{{- end }}
+{{- if not .Upstreams }}
+        server 127.0.0.1:1 down;
+{{- end }}
+    }
+
+    server {
+        listen {{ .ListenPort }} ssl;
+        ssl_certificate /etc/nginx/certs/tls.crt;
+        ssl_certificate_key /etc/nginx/certs/tls.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_prefer_server_ciphers on;
+
+        location / {
+            proxy_pass http://{{ .ServiceName }};
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 60s;
+            proxy_send_timeout 30s;
+            proxy_next_upstream error timeout http_502 http_503;
+            proxy_next_upstream_tries 3;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto https;
+        }
+
+        location /hive-ingress-health {
+            return 200 "ok";
+            add_header Content-Type text/plain;
+        }
+    }
+}
+`))
+
 type nginxData struct {
 	ServiceName string
 	ListenPort  int
 	Upstreams   []Upstream
 }
+
 
 // safeNginxName validates that a string is safe for use in nginx config.
 // Rejects any string containing characters that could inject nginx directives.
@@ -81,6 +132,23 @@ func safeNginxName(s string) bool {
 // upstreams is the list of healthy backend addresses.
 // When upstreams is empty, a placeholder down server is used so nginx can
 // still start — requests will get 502 until a backend recovers.
+// GenerateNginxTLSConf renders an nginx.conf with TLS termination for the given service.
+func GenerateNginxTLSConf(serviceName string, listenPort int, upstreams []Upstream) []byte {
+	var safe []Upstream
+	for _, u := range upstreams {
+		if safeNginxName(u.Addr) {
+			safe = append(safe, u)
+		}
+	}
+	var buf bytes.Buffer
+	nginxTLSTmpl.Execute(&buf, nginxData{
+		ServiceName: serviceName,
+		ListenPort:  listenPort,
+		Upstreams:   safe,
+	})
+	return buf.Bytes()
+}
+
 func GenerateNginxConf(serviceName string, listenPort int, upstreams []Upstream) []byte {
 	// Filter unsafe upstream addresses to prevent nginx config injection
 	var safe []Upstream

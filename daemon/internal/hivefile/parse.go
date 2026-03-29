@@ -66,8 +66,11 @@ type MeshDef struct {
 // When set, Hive creates an nginx proxy container that distributes traffic
 // across all healthy replicas with automatic failover.
 type IngressDef struct {
-	Port int    `toml:"port"` // external port for incoming traffic
-	Node string `toml:"node"` // which node runs the LB (default: deploying node)
+	Port    int    `toml:"port"`     // external port for incoming traffic
+	Node    string `toml:"node"`     // which node runs the LB (default: deploying node)
+	TLS     bool   `toml:"tls"`      // enable TLS termination (HTTPS)
+	TLSCert string `toml:"tls_cert"` // path to TLS certificate (auto-generates self-signed if empty)
+	TLSKey  string `toml:"tls_key"`  // path to TLS private key
 }
 
 // VolumeDef supports both simple and cross-platform volume syntax.
