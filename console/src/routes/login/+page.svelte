@@ -90,7 +90,8 @@
       </div>
 
       {#if mode === 'setup'}
-        <p class="muted" style="margin-bottom:1.25rem">Create your admin account to get started</p>
+        <p class="muted" style="margin-bottom:0.5rem">Create your Hive cluster admin account</p>
+        <p style="font-size:0.7rem; color:var(--text-muted); margin-bottom:1rem">This is for managing your cluster, not Docker Hub. Docker registry credentials are configured in Settings after login.</p>
         <div class="badge badge-accent" style="margin-bottom:1rem">First-time setup</div>
 
         {#if error}
@@ -119,7 +120,8 @@
         </button>
 
       {:else if mode === 'login'}
-        <p class="muted" style="margin-bottom:1.25rem">Sign in to your cluster</p>
+        <p class="muted" style="margin-bottom:0.5rem">Sign in to your Hive cluster</p>
+        <p style="font-size:0.7rem; color:var(--text-muted); margin-bottom:1rem">Not Docker Hub — this is your Hive account. Docker registry creds are in Settings.</p>
 
         {#if error}
           <div class="callout callout-warn" style="margin-bottom:1rem; padding:0.5rem 0.75rem">
@@ -147,7 +149,8 @@
         </div>
 
       {:else}
-        <p class="muted" style="margin-bottom:1.25rem">Enter your API bearer token</p>
+        <p class="muted" style="margin-bottom:0.5rem">Enter your Hive API bearer token</p>
+        <p style="font-size:0.7rem; color:var(--text-muted); margin-bottom:1rem">This authenticates you to the Hive daemon, not Docker Hub.</p>
 
         {#if error}
           <div class="callout callout-warn" style="margin-bottom:1rem; padding:0.5rem 0.75rem">

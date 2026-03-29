@@ -56,9 +56,12 @@
 </div>
 
 <div class="card" style="padding:1.5rem; margin-bottom:1.5rem">
-  <div class="card-title" style="margin-bottom:1rem">Docker Registries</div>
-  <p class="muted" style="font-size:0.8rem; margin-bottom:1rem">
-    Add credentials for private container registries. Credentials are encrypted at rest.
+  <div class="card-title" style="margin-bottom:0.5rem">Docker Registry Credentials</div>
+  <p class="muted" style="font-size:0.8rem; margin-bottom:0.25rem">
+    These are your <strong>Docker Hub / GHCR / private registry</strong> credentials for pulling container images.
+  </p>
+  <p style="font-size:0.7rem; color:var(--text-muted); margin-bottom:1rem">
+    This is separate from your Hive login. Add credentials here so Hive can pull images from private registries when you deploy apps.
   </p>
 
   {#if loading}
@@ -88,11 +91,17 @@
     {/if}
   {/if}
 
-  <h4 style="margin-bottom:0.75rem">Add Registry</h4>
+  <h4 style="margin-bottom:0.5rem">Add Registry</h4>
+  <div style="display:flex; gap:0.375rem; margin-bottom:0.75rem; flex-wrap:wrap">
+    <button class="btn btn-sm" style="font-size:0.65rem" onclick={() => newUrl = 'docker.io'}>Docker Hub</button>
+    <button class="btn btn-sm" style="font-size:0.65rem" onclick={() => newUrl = 'ghcr.io'}>GitHub (GHCR)</button>
+    <button class="btn btn-sm" style="font-size:0.65rem" onclick={() => newUrl = 'registry.gitlab.com'}>GitLab</button>
+    <button class="btn btn-sm" style="font-size:0.65rem" onclick={() => newUrl = 'lscr.io'}>LinuxServer.io</button>
+  </div>
   <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end">
     <div>
-      <label class="muted" style="font-size:0.7rem; display:block">URL</label>
-      <input type="text" bind:value={newUrl} placeholder="ghcr.io" style="padding:0.4rem 0.75rem; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--fg); width:180px" />
+      <label class="muted" style="font-size:0.7rem; display:block">Registry URL</label>
+      <input type="text" bind:value={newUrl} placeholder="docker.io, ghcr.io, etc." style="padding:0.4rem 0.75rem; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--fg); width:200px" />
     </div>
     <div>
       <label class="muted" style="font-size:0.7rem; display:block">Username</label>
