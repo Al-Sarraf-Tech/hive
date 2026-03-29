@@ -92,7 +92,12 @@ pub async fn remove(key: &str, addr: &str, ca_cert: Option<&str>) -> Result<()> 
     Ok(())
 }
 
-pub async fn rotate(key: &str, value: Option<&str>, addr: &str, ca_cert: Option<&str>) -> Result<()> {
+pub async fn rotate(
+    key: &str,
+    value: Option<&str>,
+    addr: &str,
+    ca_cert: Option<&str>,
+) -> Result<()> {
     let secret_value = match value {
         Some(v) => v.to_string(),
         None => {

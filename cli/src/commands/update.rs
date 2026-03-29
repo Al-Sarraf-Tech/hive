@@ -36,9 +36,9 @@ pub async fn run(
     // Parse KEY=VALUE env pairs
     let mut env_map = std::collections::HashMap::new();
     for kv in env {
-        let (k, v) = kv.split_once('=').ok_or_else(|| {
-            anyhow::anyhow!("invalid env format '{}' — expected KEY=VALUE", kv)
-        })?;
+        let (k, v) = kv
+            .split_once('=')
+            .ok_or_else(|| anyhow::anyhow!("invalid env format '{}' — expected KEY=VALUE", kv))?;
         env_map.insert(k.to_string(), v.to_string());
     }
 
