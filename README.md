@@ -1,4 +1,4 @@
-# Hive v2.5.2
+# Hive v2.5.3
 
 **Deploy and manage Docker containers across multiple computers from one place.**
 
@@ -242,13 +242,23 @@ The Svelte 5 web console connects to the HTTP API on port 7949 and provides 18 p
 - **Settings** — Docker registry credentials, cluster version info
 - **Login** — auto-detects auth mode: first-time admin setup, username/password, or legacy bearer token
 
-**Enhanced existing pages:**
+**Public pages (no login required):**
+- **App Store** — browse all 35 apps, search, filter by category, view details and config fields
+- **Learn** — full interactive tutorial with 18 sections covering every Hive feature
+- **Login** — auto-detects auth mode: first-time admin setup, username/password, or legacy bearer token
+
+**Authenticated pages (show "Sign in" prompt when not logged in):**
+- **Dashboard** — cluster stats, Quick Deploy section with popular apps
+- **Services, Nodes, Containers, Logs** — live cluster data
+- **Deploy, Secrets, Backup, Settings** — management actions
+
+**Enhanced pages:**
 - **Services** — inline quick-update modal (change image, replicas, env vars without redeploying TOML)
 - **Nodes Detail** — interactive label management (add/remove labels for placement constraints)
 - **Secrets** — secret rotation with affected-service preview and auto rolling-restart
-- **Dashboard** — live pulse indicator, quick-action buttons (Deploy, App Store)
+- **Dashboard** — Quick Deploy grid showing 6 popular apps with sign-in status indicator
 
-The console features a polished dark theme with SVG iconography, smooth animations, glassmorphism cards, gradient accents, and responsive mobile layout. It is compiled to static HTML/CSS/JS and served directly by `hived`.
+The console features a polished dark theme with SVG iconography, smooth animations, glassmorphism cards, gradient accents, and responsive mobile layout. All pages are browsable without login — authenticated features show a clear "Sign in to access" prompt. Compiled to static HTML/CSS/JS and served directly by `hived`.
 
 ## Daemon Configuration
 
@@ -384,7 +394,7 @@ cooldown_up = "60s"
 cooldown_down = "300s"
 ```
 
-### App Store (v2.5.1)
+### App Store (v2.5.3)
 35 built-in apps ready to deploy in one command. The App Store is **publicly browsable without authentication** — sign in only when you're ready to deploy.
 
 **Core Infrastructure:**
@@ -440,7 +450,7 @@ hive app install postgres --config db_password=secret  # one-click deploy
 
 Users can also add custom apps via the API or the web console.
 
-### Interactive Tutorial (v2.5.1)
+### Interactive Tutorial (v2.5.3)
 The web console includes a built-in **Learn** tab with:
 - Step-by-step TOML syntax guide with syntax-highlighted examples
 - Coverage of all Hivefile features: services, health checks, volumes, secrets, deploy strategies, ingress, cron, autoscaling
@@ -448,7 +458,7 @@ The web console includes a built-in **Learn** tab with:
 - Complete field reference card
 - Copy-to-clipboard and deploy-from-playground buttons
 
-### One-Shot Installer (v2.5.1)
+### One-Shot Installer (v2.5.3)
 Install Hive on any Linux x86_64 machine with a single command:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.sh | bash
@@ -460,7 +470,7 @@ Options:
 - `--token TOKEN` — configure HTTP API bearer token
 - `--version VER` — install a specific version
 
-### User Authentication (v2.5.1)
+### User Authentication (v2.5.3)
 Hive now includes a full user authentication system with:
 - **argon2id** password hashing (OWASP recommended, memory-hard, GPU-resistant)
 - **HMAC-SHA256 JWT** tokens with auto-generated 256-bit signing keys
