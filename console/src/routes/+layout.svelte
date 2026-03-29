@@ -30,6 +30,8 @@
     { href: '/cron', label: 'Cron', icon: '@' },
     { href: '/deploy', label: 'Deploy', icon: '+' },
     { href: '/secrets', label: 'Secrets', icon: '*' },
+    { href: '/appstore', label: 'App Store', icon: '□' },
+    { href: '/settings', label: 'Settings', icon: '⚙' },
   ];
 
   function isActive(href, pathname) {
@@ -70,7 +72,18 @@
         </a>
       {/each}
       <div class="nav-section">Manage</div>
-      {#each nav.slice(6) as item}
+      {#each nav.slice(6, 8) as item}
+        <a
+          href={item.href}
+          class="nav-link"
+          class:active={isActive(item.href, $page.url.pathname)}
+        >
+          <span class="mono muted" style="margin-right:0.5rem">{item.icon}</span>
+          {item.label}
+        </a>
+      {/each}
+      <div class="nav-section">Store</div>
+      {#each nav.slice(8) as item}
         <a
           href={item.href}
           class="nav-link"

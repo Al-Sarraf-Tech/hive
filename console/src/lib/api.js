@@ -67,4 +67,20 @@ export const api = {
 
   // Cron
   listCronJobs: () => request('/cron'),
+
+  // App Store
+  listApps: (category) => request(`/apps${category ? '?category=' + encodeURIComponent(category) : ''}`),
+  getApp: (id) => request(`/apps/${encodeURIComponent(id)}`),
+  searchApps: (q) => request(`/apps/search?q=${encodeURIComponent(q)}`),
+  installApp: (id, serviceName, config) => request(`/apps/${encodeURIComponent(id)}/install`, {
+    method: 'POST', body: JSON.stringify({ service_name: serviceName, config })
+  }),
+  listInstalledApps: () => request('/apps/installed'),
+
+  // Registry
+  registryLogin: (url, username, password) => request('/registries', {
+    method: 'POST', body: JSON.stringify({ url, username, password })
+  }),
+  listRegistries: () => request('/registries'),
+  removeRegistry: (url) => request(`/registries/${encodeURIComponent(url)}`, { method: 'DELETE' }),
 };
