@@ -1,0 +1,59 @@
+[recipe]
+id = "influxdb"
+name = "InfluxDB"
+description = "Time series database for metrics, events, and real-time analytics"
+icon = "📈"
+category = "database"
+tags = ["timeseries", "metrics", "iot", "analytics"]
+image = "influxdb:2-alpine"
+version = "2"
+min_memory = "256M"
+platforms = ["linux/amd64"]
+
+  [recipe.config.admin_token]
+  label = "Admin Token"
+  type = "secret"
+  required = true
+  description = "API token for admin access"
+
+  [recipe.config.org_name]
+  label = "Organization Name"
+  type = "string"
+  required = true
+  default = "my-org"
+  description = "Default organization name"
+
+  [recipe.config.bucket_name]
+  label = "Default Bucket"
+  type = "string"
+  required = true
+  default = "default"
+  description = "Default bucket name for data"
+
+[service.influxdb]
+image = "influxdb:2-alpine"
+replicas = 1
+
+  [service.influxdb.env]
+  DOCKER_INFLUXDB_INIT_MODE = "setup"
+  DOCKER_INFLUXDB_INIT_USERNAME = "admin"
+  DOCKER_INFLUXDB_INIT_PASSWORD = "{{ config:admin_token }}"
+  DOCKER_INFLUXDB_INIT_ORG = "{{ config:org_name }}"
+  DOCKER_INFLUXDB_INIT_BUCKET = "{{ config:bucket_name }}"
+
+  [service.influxdb.health]
+  type = "http"
+  path = "/ping"
+  port = 8086
+  interval = "30s"
+
+  [service.influxdb.ports]
+  "8086" = "8086"
+
+  [[service.influxdb.volumes]]
+  name = "influxdb-data"
+  target = "/var/lib/influxdb2"
+
+  [service.influxdb.resources]
+  memory = "256M"
+  cpus = 0.5

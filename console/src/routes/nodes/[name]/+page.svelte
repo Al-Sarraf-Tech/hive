@@ -21,9 +21,27 @@
     } catch (e) { error = e.message; }
   }
 
+  let showAddLabel = $state(false);
+  let labelKey = $state('');
+  let labelValue = $state('');
+
   async function drain() {
     if (!confirm(`Drain node "${name}"? New workloads will not be scheduled here.`)) return;
     try { await api.drainNode(name); await refresh(); } catch (e) { alert(e.message); }
+  }
+
+  async function addLabel() {
+    if (!labelKey.trim()) return;
+    try {
+      await api.setNodeLabel(name, labelKey.trim(), labelValue.trim());
+      labelKey = ''; labelValue = ''; showAddLabel = false;
+      await refresh();
+    } catch (e) { alert(e.message); }
+  }
+
+  async function removeLabel(key) {
+    if (!confirm(`Remove label "${key}" from ${name}?`)) return;
+    try { await api.removeNodeLabel(name, key); await refresh(); } catch (e) { alert(e.message); }
   }
 
   function barColor(pctVal) {
@@ -145,17 +163,39 @@
     {/if}
   </div>
 
-  {#if node.labels && Object.keys(node.labels).length}
-    <div class="section">
-      <h2 class="section-title">Labels</h2>
-      <div class="card">
-        <div class="kv-grid">
-          {#each Object.entries(node.labels) as [k, v]}
-            <span class="kv-key">{k}</span>
-            <span class="kv-val">{v}</span>
-          {/each}
-        </div>
-      </div>
+  <div class="section">
+    <div class="flex items-center justify-between" style="margin-bottom:0.75rem">
+      <h2 class="section-title" style="margin-bottom:0">Labels</h2>
+      <button class="btn btn-sm" onclick={() => showAddLabel = !showAddLabel}>
+        {showAddLabel ? 'Cancel' : '+ Add Label'}
+      </button>
     </div>
-  {/if}
+    {#if showAddLabel}
+      <div class="card animate-in" style="margin-bottom:0.75rem; padding:1rem; display:flex; gap:0.5rem; align-items:flex-end">
+        <div style="flex:1">
+          <label>Key</label>
+          <input type="text" bind:value={labelKey} placeholder="gpu" style="font-size:0.8125rem" />
+        </div>
+        <div style="flex:1">
+          <label>Value</label>
+          <input type="text" bind:value={labelValue} placeholder="true"
+            onkeydown={(e) => { if (e.key === 'Enter') addLabel(); }}
+            style="font-size:0.8125rem" />
+        </div>
+        <button class="btn btn-primary btn-sm" onclick={addLabel}>Set</button>
+      </div>
+    {/if}
+    {#if node.labels && Object.keys(node.labels).length}
+      <div class="card">
+        {#each Object.entries(node.labels) as [k, v]}
+          <div class="detail-row">
+            <span><span class="kv-key">{k}</span> = <span class="kv-val">{v}</span></span>
+            <button class="btn btn-sm btn-danger" onclick={() => removeLabel(k)} style="padding:0.125rem 0.375rem; font-size:0.65rem">Remove</button>
+          </div>
+        {/each}
+      </div>
+    {:else if !showAddLabel}
+      <div class="card"><p class="muted">No labels. Add labels to use placement constraints.</p></div>
+    {/if}
+  </div>
 {/if}

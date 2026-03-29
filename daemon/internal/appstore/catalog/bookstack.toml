@@ -1,0 +1,64 @@
+[recipe]
+id = "bookstack"
+name = "BookStack"
+description = "Simple, self-hosted wiki and documentation platform"
+icon = "📚"
+category = "productivity"
+tags = ["wiki", "docs", "documentation", "knowledge-base", "linuxserver.io"]
+image = "lscr.io/linuxserver/bookstack:latest"
+version = "latest"
+min_memory = "256M"
+platforms = ["linux/amd64"]
+
+  [recipe.config.app_url]
+  label = "App URL"
+  type = "string"
+  required = true
+  default = "http://localhost:6875"
+  description = "Full URL where BookStack will be accessed"
+
+  [recipe.config.db_host]
+  label = "Database Host"
+  type = "string"
+  required = true
+  default = "mariadb"
+  description = "MariaDB/MySQL host (deploy a database first)"
+
+  [recipe.config.db_pass]
+  label = "Database Password"
+  type = "secret"
+  required = true
+  description = "MariaDB/MySQL password"
+
+[service.bookstack]
+image = "lscr.io/linuxserver/bookstack:latest"
+replicas = 1
+
+  [service.bookstack.env]
+  PUID = "1000"
+  PGID = "1000"
+  TZ = "Etc/UTC"
+  APP_URL = "{{ config:app_url }}"
+  DB_HOST = "{{ config:db_host }}"
+  DB_PORT = "3306"
+  DB_USER = "bookstack"
+  DB_PASS = "{{ config:db_pass }}"
+  DB_DATABASE = "bookstackapp"
+
+  [service.bookstack.health]
+  type = "http"
+  path = "/login"
+  port = 6875
+  interval = "30s"
+  timeout = "10s"
+
+  [service.bookstack.ports]
+  "6875" = "6875"
+
+  [[service.bookstack.volumes]]
+  name = "bookstack-config"
+  target = "/config"
+
+  [service.bookstack.resources]
+  memory = "256M"
+  cpus = 0.5

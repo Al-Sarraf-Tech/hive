@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	hivev1 "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1"
+	"github.com/jalsarraf0/hive/daemon/internal/auth"
 	"github.com/jalsarraf0/hive/daemon/internal/console"
 	"github.com/jalsarraf0/hive/daemon/internal/joincode"
 	"github.com/jalsarraf0/hive/daemon/internal/logs"
@@ -36,15 +37,16 @@ import (
 type Handler struct {
 	api       hivev1.HiveAPIServer
 	mux       *http.ServeMux
-	token     string           // bearer token for authentication (empty = no auth)
+	token     string           // legacy bearer token for authentication (empty = no auth)
+	authSvc   *auth.Service    // user auth service (nil = disabled, legacy token only)
 	logBuffer *logs.RingBuffer // nil if log aggregation is disabled
 	store     *store.Store     // direct store access for bootstrap endpoint
 	dataDir   string           // data directory for reading CA cert
 }
 
 // New creates an HTTP handler that delegates to the given gRPC API server.
-func New(api hivev1.HiveAPIServer, token string, logBuffer *logs.RingBuffer, s *store.Store, dataDir string) *Handler {
-	h := &Handler{api: api, mux: http.NewServeMux(), token: token, logBuffer: logBuffer, store: s, dataDir: dataDir}
+func New(api hivev1.HiveAPIServer, token string, authSvc *auth.Service, logBuffer *logs.RingBuffer, s *store.Store, dataDir string) *Handler {
+	h := &Handler{api: api, mux: http.NewServeMux(), token: token, authSvc: authSvc, logBuffer: logBuffer, store: s, dataDir: dataDir}
 	h.registerRoutes()
 	return h
 }
@@ -69,21 +71,47 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Bearer token authentication (skip for OPTIONS already handled above)
-	// /metrics and /api/v1/bootstrap/ are unauthenticated
-	if h.token != "" && !strings.HasPrefix(r.URL.Path, "/metrics") && !strings.HasPrefix(r.URL.Path, "/api/v1/bootstrap/") {
-		auth := r.Header.Get("Authorization")
+	// Authentication — skip for unauthenticated paths
+	// Console static files, /metrics, /api/v1/bootstrap/, /api/v1/public/, and /api/v1/auth/ are unauthenticated
+	skipAuth := !strings.HasPrefix(r.URL.Path, "/api/") ||
+		strings.HasPrefix(r.URL.Path, "/api/v1/bootstrap/") ||
+		strings.HasPrefix(r.URL.Path, "/api/v1/public/") ||
+		strings.HasPrefix(r.URL.Path, "/api/v1/auth/login") ||
+		strings.HasPrefix(r.URL.Path, "/api/v1/auth/setup") ||
+		strings.HasPrefix(r.URL.Path, "/api/v1/auth/status")
+
+	if !skipAuth {
+		authHeader := r.Header.Get("Authorization")
 		// Also accept token as query parameter (needed for SSE — EventSource cannot set headers)
-		if auth == "" {
+		if authHeader == "" {
 			if qToken := r.URL.Query().Get("token"); qToken != "" {
-				auth = "Bearer " + qToken
+				authHeader = "Bearer " + qToken
 			}
 		}
-		expected := "Bearer " + h.token
-		if subtle.ConstantTimeCompare([]byte(auth), []byte(expected)) != 1 {
+
+		authenticated := false
+
+		// Try legacy bearer token first
+		if h.token != "" && authHeader != "" {
+			expected := "Bearer " + h.token
+			if subtle.ConstantTimeCompare([]byte(authHeader), []byte(expected)) == 1 {
+				authenticated = true
+			}
+		}
+
+		// Try JWT token
+		if !authenticated && h.authSvc != nil && authHeader != "" {
+			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+			if _, err := h.authSvc.ValidateToken(tokenStr); err == nil {
+				authenticated = true
+			}
+		}
+
+		// If neither auth method succeeded and at least one is configured
+		if !authenticated && (h.token != "" || h.authSvc != nil) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error":"unauthorized — provide Authorization: Bearer <token>"}`))
+			w.Write([]byte(`{"error":"unauthorized — provide a valid token"}`))
 			return
 		}
 	}
@@ -122,6 +150,28 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("POST /api/v1/diff", h.diffDeploy)
 	h.mux.HandleFunc("GET /api/v1/services/{name}/health", h.getServiceHealth)
 
+	// Node: get single + labels
+	h.mux.HandleFunc("GET /api/v1/nodes/{name}", h.getNode)
+	h.mux.HandleFunc("POST /api/v1/nodes/{name}/labels", h.setNodeLabel)
+	h.mux.HandleFunc("DELETE /api/v1/nodes/{name}/labels/{key}", h.removeNodeLabel)
+
+	// Service: get single
+	h.mux.HandleFunc("GET /api/v1/services/{name}", h.getService)
+
+	// Secret rotation
+	h.mux.HandleFunc("POST /api/v1/secrets/{key}/rotate", h.rotateSecret)
+
+	// Backup / Restore
+	h.mux.HandleFunc("GET /api/v1/backup/export", h.exportCluster)
+	h.mux.HandleFunc("POST /api/v1/backup/import", h.importCluster)
+
+	// Cluster init / join
+	h.mux.HandleFunc("POST /api/v1/cluster/init", h.initCluster)
+	h.mux.HandleFunc("POST /api/v1/cluster/join", h.joinCluster)
+
+	// Stack deploy
+	h.mux.HandleFunc("POST /api/v1/deploy/stack", h.deployStack)
+
 	// App Store
 	h.mux.HandleFunc("GET /api/v1/apps/search", h.searchApps)      // before {id} to avoid collision
 	h.mux.HandleFunc("GET /api/v1/apps/installed", h.listInstalledApps)
@@ -130,6 +180,23 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("POST /api/v1/apps/{id}/install", h.installApp)
 	h.mux.HandleFunc("POST /api/v1/apps/custom", h.addCustomApp)
 	h.mux.HandleFunc("DELETE /api/v1/apps/custom/{id}", h.removeCustomApp)
+
+	// Public App Store (unauthenticated — read-only catalog browsing)
+	h.mux.HandleFunc("GET /api/v1/public/apps/search", h.searchApps)
+	h.mux.HandleFunc("GET /api/v1/public/apps", h.listApps)
+	h.mux.HandleFunc("GET /api/v1/public/apps/{id}", h.getApp)
+
+	// User Authentication (login/setup are unauthenticated; others require auth)
+	h.mux.HandleFunc("GET /api/v1/auth/status", h.authStatus)
+	h.mux.HandleFunc("POST /api/v1/auth/setup", h.authSetup)
+	h.mux.HandleFunc("POST /api/v1/auth/login", h.authLogin)
+	h.mux.HandleFunc("POST /api/v1/auth/refresh", h.authRefresh)
+	h.mux.HandleFunc("GET /api/v1/auth/me", h.authMe)
+	h.mux.HandleFunc("PUT /api/v1/auth/password", h.authChangePassword)
+	h.mux.HandleFunc("GET /api/v1/auth/users", h.authListUsers)
+	h.mux.HandleFunc("POST /api/v1/auth/users", h.authCreateUser)
+	h.mux.HandleFunc("DELETE /api/v1/auth/users/{username}", h.authDeleteUser)
+	h.mux.HandleFunc("PUT /api/v1/auth/users/{username}/role", h.authSetRole)
 
 	// Registry
 	h.mux.HandleFunc("GET /api/v1/registries", h.listRegistriesHTTP)
@@ -761,8 +828,8 @@ func (h *Handler) bootstrap(w http.ResponseWriter, r *http.Request) {
 // NewServer creates an *http.Server with timeouts, ready for graceful shutdown.
 // If tlsConfig is non-nil, the server's TLSConfig is set so the caller can use
 // ListenAndServeTLS("", "") with certificates provided via GetCertificate.
-func NewServer(addr string, api hivev1.HiveAPIServer, token string, logBuffer *logs.RingBuffer, s *store.Store, dataDir string, tlsConfig *tls.Config) *http.Server {
-	h := New(api, token, logBuffer, s, dataDir)
+func NewServer(addr string, api hivev1.HiveAPIServer, token string, authSvc *auth.Service, logBuffer *logs.RingBuffer, s *store.Store, dataDir string, tlsConfig *tls.Config) *http.Server {
+	h := New(api, token, authSvc, logBuffer, s, dataDir)
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      h,

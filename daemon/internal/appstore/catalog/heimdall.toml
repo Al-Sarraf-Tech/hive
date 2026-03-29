@@ -1,0 +1,38 @@
+[recipe]
+id = "heimdall"
+name = "Heimdall"
+description = "Application dashboard to organize and access all your web services"
+icon = "🏠"
+category = "productivity"
+tags = ["dashboard", "startpage", "home", "linuxserver.io"]
+image = "lscr.io/linuxserver/heimdall:latest"
+version = "latest"
+min_memory = "64M"
+platforms = ["linux/amd64"]
+
+[service.heimdall]
+image = "lscr.io/linuxserver/heimdall:latest"
+replicas = 1
+
+  [service.heimdall.env]
+  PUID = "1000"
+  PGID = "1000"
+  TZ = "Etc/UTC"
+
+  [service.heimdall.health]
+  type = "http"
+  path = "/"
+  port = 80
+  interval = "30s"
+
+  [service.heimdall.ports]
+  "80" = "80"
+  "443" = "443"
+
+  [[service.heimdall.volumes]]
+  name = "heimdall-config"
+  target = "/config"
+
+  [service.heimdall.resources]
+  memory = "64M"
+  cpus = 0.25

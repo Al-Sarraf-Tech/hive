@@ -1,4 +1,5 @@
 <script>
+  import { onMount } from 'svelte';
   import { api } from '$lib/api.js';
 
   const templates = {
@@ -75,6 +76,16 @@ cpus = 0.5
   let validating = $state(false);
   let diffResult = $state(null);
   let diffing = $state(false);
+
+  // Pick up TOML from Learn playground if available
+  onMount(() => {
+    const draft = sessionStorage.getItem('hive_draft_toml');
+    if (draft) {
+      toml = draft;
+      selectedTemplate = 'blank';
+      sessionStorage.removeItem('hive_draft_toml');
+    }
+  });
 
   function selectTemplate(name) {
     selectedTemplate = name;

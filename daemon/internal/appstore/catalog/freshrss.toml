@@ -1,0 +1,37 @@
+[recipe]
+id = "freshrss"
+name = "FreshRSS"
+description = "Self-hosted RSS feed aggregator — fast, lightweight, customizable"
+icon = "📰"
+category = "productivity"
+tags = ["rss", "news", "reader", "feeds", "linuxserver.io"]
+image = "lscr.io/linuxserver/freshrss:latest"
+version = "latest"
+min_memory = "64M"
+platforms = ["linux/amd64"]
+
+[service.freshrss]
+image = "lscr.io/linuxserver/freshrss:latest"
+replicas = 1
+
+  [service.freshrss.env]
+  PUID = "1000"
+  PGID = "1000"
+  TZ = "Etc/UTC"
+
+  [service.freshrss.health]
+  type = "http"
+  path = "/"
+  port = 80
+  interval = "30s"
+
+  [service.freshrss.ports]
+  "80" = "80"
+
+  [[service.freshrss.volumes]]
+  name = "freshrss-config"
+  target = "/config"
+
+  [service.freshrss.resources]
+  memory = "64M"
+  cpus = 0.25

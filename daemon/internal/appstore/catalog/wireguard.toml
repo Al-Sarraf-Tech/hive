@@ -1,0 +1,55 @@
+[recipe]
+id = "wireguard-lsio"
+name = "WireGuard VPN"
+description = "Fast, modern VPN server with automatic peer config and QR code generation"
+icon = "🛡"
+category = "networking"
+tags = ["vpn", "wireguard", "tunnel", "privacy", "linuxserver.io"]
+image = "lscr.io/linuxserver/wireguard:latest"
+version = "latest"
+min_memory = "128M"
+platforms = ["linux/amd64"]
+
+  [recipe.config.server_url]
+  label = "Server URL"
+  type = "string"
+  required = true
+  description = "Public hostname or IP of this server (for peer configs)"
+
+  [recipe.config.peers]
+  label = "Number of Peers"
+  type = "string"
+  required = true
+  default = "3"
+  description = "Number of VPN peer configs to generate (or comma-separated names)"
+
+[service.wireguard-lsio]
+image = "lscr.io/linuxserver/wireguard:latest"
+replicas = 1
+
+  [service.wireguard-lsio.env]
+  PUID = "1000"
+  PGID = "1000"
+  TZ = "Etc/UTC"
+  SERVERURL = "{{ config:server_url }}"
+  SERVERPORT = "51820"
+  PEERS = "{{ config:peers }}"
+  PEERDNS = "auto"
+  INTERNAL_SUBNET = "10.13.13.0"
+  ALLOWEDIPS = "0.0.0.0/0"
+
+  [service.wireguard-lsio.health]
+  type = "exec"
+  exec_command = ["wg", "show"]
+  interval = "30s"
+
+  [service.wireguard-lsio.ports]
+  "51820" = "51820"
+
+  [[service.wireguard-lsio.volumes]]
+  name = "wireguard-config"
+  target = "/config"
+
+  [service.wireguard-lsio.resources]
+  memory = "128M"
+  cpus = 0.25

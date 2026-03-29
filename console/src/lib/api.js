@@ -1,7 +1,11 @@
 const BASE = '/api/v1';
 
+function getToken() {
+  return typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('hive_token') : null;
+}
+
 async function request(path, opts = {}) {
-  const token = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('hive_token') : null;
+  const token = getToken();
   const headers = { 'Content-Type': 'application/json', ...opts.headers };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -14,6 +18,19 @@ async function request(path, opts = {}) {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
+}
+
+// Public (unauthenticated) requests — for app store browsing without login
+async function publicRequest(path) {
+  const res = await fetch(`${BASE}/public${path}`);
+  if (res.status === 204) return {};
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+export function isAuthenticated() {
+  return !!getToken();
 }
 
 export const api = {
@@ -77,10 +94,88 @@ export const api = {
   }),
   listInstalledApps: () => request('/apps/installed'),
 
+  // Node labels
+  getNode: (name) => request(`/nodes/${encodeURIComponent(name)}`),
+  setNodeLabel: (name, key, value) => request(`/nodes/${encodeURIComponent(name)}/labels`, {
+    method: 'POST', body: JSON.stringify({ key, value })
+  }),
+  removeNodeLabel: (name, key) => request(`/nodes/${encodeURIComponent(name)}/labels/${encodeURIComponent(key)}`, { method: 'DELETE' }),
+
+  // Secret rotation
+  rotateSecret: (key, value) => request(`/secrets/${encodeURIComponent(key)}/rotate`, {
+    method: 'POST', body: JSON.stringify({ value })
+  }),
+
+  // Backup / Restore
+  exportCluster: () => request('/backup/export'),
+  importCluster: (data, overwrite = false) => request('/backup/import', {
+    method: 'POST', body: JSON.stringify({ data, overwrite })
+  }),
+
+  // Cluster init / join
+  initCluster: (name) => request('/cluster/init', { method: 'POST', body: JSON.stringify({ name }) }),
+  joinCluster: (addresses, token) => request('/cluster/join', { method: 'POST', body: JSON.stringify({ addresses, token }) }),
+
+  // Stack deploy
+  deployStack: (name, files) => request('/deploy/stack', { method: 'POST', body: JSON.stringify({ name, files }) }),
+
+  // Service detail
+  getServiceDetail: (name) => request(`/services/${encodeURIComponent(name)}`),
+
+  // Update service (image, replicas, env)
+  updateService: (name, updates) => request(`/services/${encodeURIComponent(name)}`, {
+    method: 'PATCH', body: JSON.stringify(updates)
+  }),
+
   // Registry
   registryLogin: (url, username, password) => request('/registries', {
     method: 'POST', body: JSON.stringify({ url, username, password })
   }),
   listRegistries: () => request('/registries'),
   removeRegistry: (url) => request(`/registries/${encodeURIComponent(url)}`, { method: 'DELETE' }),
+
+  // Public App Store (no auth required — read-only catalog)
+  publicListApps: (category) => publicRequest(`/apps${category ? '?category=' + encodeURIComponent(category) : ''}`),
+  publicGetApp: (id) => publicRequest(`/apps/${encodeURIComponent(id)}`),
+  publicSearchApps: (q) => publicRequest(`/apps/search?q=${encodeURIComponent(q)}`),
+
+  // Authentication
+  authStatus: () => publicRequest('/auth/status'.replace('/public', '')).catch(() =>
+    fetch(`${BASE}/auth/status`).then(r => r.json())
+  ),
+  authSetup: (username, password) => fetch(`${BASE}/auth/setup`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  }).then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error); return d; })),
+  authLogin: (username, password) => fetch(`${BASE}/auth/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  }).then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error); return d; })),
+  authRefresh: (refreshToken) => fetch(`${BASE}/auth/refresh`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken })
+  }).then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error); return d; })),
+  authMe: () => request('/auth/me'),
+  authChangePassword: (oldPassword, newPassword) => request('/auth/password', {
+    method: 'PUT', body: JSON.stringify({ old_password: oldPassword, new_password: newPassword })
+  }),
+  authListUsers: () => request('/auth/users'),
+  authCreateUser: (username, password, role) => request('/auth/users', {
+    method: 'POST', body: JSON.stringify({ username, password, role })
+  }),
+  authDeleteUser: (username) => request(`/auth/users/${encodeURIComponent(username)}`, { method: 'DELETE' }),
+  authSetRole: (username, role) => request(`/auth/users/${encodeURIComponent(username)}/role`, {
+    method: 'PUT', body: JSON.stringify({ role })
+  }),
 };
+
+// Store and retrieve JWT tokens
+export function storeTokens(access, refresh) {
+  sessionStorage.setItem('hive_token', access);
+  if (refresh) sessionStorage.setItem('hive_refresh_token', refresh);
+}
+
+export function clearTokens() {
+  sessionStorage.removeItem('hive_token');
+  sessionStorage.removeItem('hive_refresh_token');
+}

@@ -1,0 +1,42 @@
+[recipe]
+id = "syncthing"
+name = "Syncthing"
+description = "Continuous peer-to-peer file synchronization — no cloud required"
+icon = "🔄"
+category = "productivity"
+tags = ["sync", "files", "p2p", "backup", "linuxserver.io"]
+image = "lscr.io/linuxserver/syncthing:latest"
+version = "latest"
+min_memory = "128M"
+platforms = ["linux/amd64"]
+
+[service.syncthing]
+image = "lscr.io/linuxserver/syncthing:latest"
+replicas = 1
+
+  [service.syncthing.env]
+  PUID = "1000"
+  PGID = "1000"
+  TZ = "Etc/UTC"
+
+  [service.syncthing.health]
+  type = "http"
+  path = "/rest/noauth/health"
+  port = 8384
+  interval = "30s"
+
+  [service.syncthing.ports]
+  "8384" = "8384"
+  "22000" = "22000"
+
+  [[service.syncthing.volumes]]
+  name = "syncthing-config"
+  target = "/config"
+
+  [[service.syncthing.volumes]]
+  name = "syncthing-data"
+  target = "/data"
+
+  [service.syncthing.resources]
+  memory = "128M"
+  cpus = 0.5

@@ -1,0 +1,37 @@
+[recipe]
+id = "radarr"
+name = "Radarr"
+description = "Movie collection manager and automated download organizer"
+icon = "🎞"
+category = "media"
+tags = ["pvr", "movies", "automation", "arr-stack", "linuxserver.io"]
+image = "lscr.io/linuxserver/radarr:latest"
+version = "latest"
+min_memory = "256M"
+platforms = ["linux/amd64"]
+
+[service.radarr]
+image = "lscr.io/linuxserver/radarr:latest"
+replicas = 1
+
+  [service.radarr.env]
+  PUID = "1000"
+  PGID = "1000"
+  TZ = "Etc/UTC"
+
+  [service.radarr.health]
+  type = "http"
+  path = "/ping"
+  port = 7878
+  interval = "30s"
+
+  [service.radarr.ports]
+  "7878" = "7878"
+
+  [[service.radarr.volumes]]
+  name = "radarr-config"
+  target = "/config"
+
+  [service.radarr.resources]
+  memory = "256M"
+  cpus = 0.5

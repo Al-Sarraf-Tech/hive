@@ -39,6 +39,45 @@
     try { await api.scaleService(name, n); await refresh(); } catch (e) { alert(e.message); }
   }
 
+  // Quick-update modal
+  let editSvc = $state(null);
+  let editImage = $state('');
+  let editReplicas = $state(1);
+  let editEnv = $state('');
+  let updating = $state(false);
+  let updateError = $state('');
+
+  function openEdit(svc) {
+    editSvc = svc;
+    editImage = svc.image || '';
+    editReplicas = svc.replicasDesired || 1;
+    editEnv = Object.entries(svc.env || {}).map(([k, v]) => `${k}=${v}`).join('\n');
+    updateError = '';
+  }
+
+  async function submitUpdate() {
+    updating = true;
+    updateError = '';
+    try {
+      const updates = {};
+      if (editImage !== editSvc.image) updates.image = editImage;
+      if (editReplicas !== editSvc.replicasDesired) updates.replicas = editReplicas;
+      const envLines = editEnv.trim().split('\n').filter(l => l.includes('='));
+      if (envLines.length > 0) {
+        const env = {};
+        for (const line of envLines) {
+          const idx = line.indexOf('=');
+          env[line.substring(0, idx)] = line.substring(idx + 1);
+        }
+        updates.env = env;
+      }
+      await api.updateService(editSvc.name, updates);
+      editSvc = null;
+      await refresh();
+    } catch (e) { updateError = e.message; }
+    finally { updating = false; }
+  }
+
   onMount(() => { refresh(); const i = setInterval(refresh, 5000); return () => clearInterval(i); });
 </script>
 
@@ -92,6 +131,7 @@
             </td>
             <td>
               <div class="btn-group">
+                <button class="btn btn-sm btn-primary" onclick={() => openEdit(svc)}>Edit</button>
                 <button class="btn btn-sm" onclick={() => scale(svc.name)}>Scale</button>
                 <button class="btn btn-sm" onclick={() => restart(svc.name)}>Restart</button>
                 <button class="btn btn-sm" onclick={() => rollback(svc.name)}>Rollback</button>
@@ -102,5 +142,36 @@
         {/each}
       </tbody>
     </table>
+  </div>
+{/if}
+
+{#if editSvc}
+  <div class="modal-overlay" onclick={() => editSvc = null} role="presentation">
+    <div class="modal animate-in" onclick={(e) => e.stopPropagation()} role="dialog">
+      <div class="modal-title">Update Service: {editSvc.name}</div>
+      {#if updateError}
+        <div class="callout callout-warn" style="margin-bottom:1rem; padding:0.5rem 0.75rem">
+          <p style="margin:0; font-size:0.8125rem; color:var(--red)">{updateError}</p>
+        </div>
+      {/if}
+      <div class="form-group">
+        <label>Image</label>
+        <input type="text" bind:value={editImage} placeholder="nginx:alpine" />
+      </div>
+      <div class="form-group">
+        <label>Replicas</label>
+        <input type="number" bind:value={editReplicas} min="1" max="100" style="max-width:100px" />
+      </div>
+      <div class="form-group">
+        <label>Environment Variables (KEY=VALUE, one per line)</label>
+        <textarea bind:value={editEnv} rows="5" placeholder="KEY=value" style="font-family:var(--mono); font-size:0.8125rem"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" onclick={() => editSvc = null}>Cancel</button>
+        <button class="btn btn-primary" onclick={submitUpdate} disabled={updating}>
+          {updating ? 'Updating...' : 'Apply Changes'}
+        </button>
+      </div>
+    </div>
   </div>
 {/if}

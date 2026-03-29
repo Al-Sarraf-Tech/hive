@@ -32,9 +32,27 @@
     finally { adding = false; }
   }
 
+  let rotateKey = $state(null);
+  let rotateValue = $state('');
+  let rotating = $state(false);
+  let rotateResult = $state(null);
+
   async function remove(key) {
     if (!confirm(`Delete secret "${key}"? Services using this secret will fail.`)) return;
     try { await api.deleteSecret(key); await refresh(); } catch (e) { alert(e.message); }
+  }
+
+  async function rotate() {
+    if (!rotateValue) return;
+    rotating = true;
+    rotateResult = null;
+    try {
+      const resp = await api.rotateSecret(rotateKey, rotateValue);
+      rotateResult = resp;
+      rotateValue = '';
+      await refresh();
+    } catch (e) { alert(e.message); }
+    finally { rotating = false; }
   }
 
   onMount(() => {
@@ -104,11 +122,46 @@
             <td class="muted">{s.createdAtUnix ? timeAgo({ seconds: s.createdAtUnix }) : '-'}</td>
             <td class="muted">{s.updatedAtUnix ? timeAgo({ seconds: s.updatedAtUnix }) : '-'}</td>
             <td>
-              <button class="btn btn-sm btn-danger" onclick={() => remove(s.key)}>Delete</button>
+              <div class="btn-group">
+                <button class="btn btn-sm" onclick={() => { rotateKey = s.key; rotateResult = null; }}>Rotate</button>
+                <button class="btn btn-sm btn-danger" onclick={() => remove(s.key)}>Delete</button>
+              </div>
             </td>
           </tr>
         {/each}
       </tbody>
     </table>
+  </div>
+{/if}
+
+{#if rotateKey}
+  <div class="modal-overlay" onclick={() => rotateKey = null} role="presentation">
+    <div class="modal animate-in" onclick={(e) => e.stopPropagation()} role="dialog">
+      <div class="modal-title">Rotate Secret: {rotateKey}</div>
+      <p class="muted" style="margin-bottom:1rem; font-size:0.8125rem">
+        Set a new value and automatically rolling-restart all services that reference this secret.
+      </p>
+      <div class="form-group">
+        <label>New Value</label>
+        <input type="password" bind:value={rotateValue} placeholder="New secret value"
+          onkeydown={(e) => { if (e.key === 'Enter') rotate(); }} />
+      </div>
+      {#if rotateResult}
+        <div class="callout callout-tip" style="margin-bottom:1rem">
+          <div class="callout-title">Rotation Complete</div>
+          {#if rotateResult.restartedServices?.length}
+            <p style="margin:0; font-size:0.8125rem">Restarted services: {rotateResult.restartedServices.join(', ')}</p>
+          {:else}
+            <p style="margin:0; font-size:0.8125rem">No services reference this secret.</p>
+          {/if}
+        </div>
+      {/if}
+      <div class="modal-actions">
+        <button class="btn" onclick={() => rotateKey = null}>Close</button>
+        <button class="btn btn-primary" onclick={rotate} disabled={rotating || !rotateValue}>
+          {rotating ? 'Rotating...' : 'Rotate & Restart'}
+        </button>
+      </div>
+    </div>
   </div>
 {/if}

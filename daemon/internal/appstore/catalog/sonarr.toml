@@ -1,0 +1,37 @@
+[recipe]
+id = "sonarr"
+name = "Sonarr"
+description = "TV series management and automated download organizer"
+icon = "📺"
+category = "media"
+tags = ["pvr", "tv", "automation", "arr-stack", "linuxserver.io"]
+image = "lscr.io/linuxserver/sonarr:latest"
+version = "latest"
+min_memory = "256M"
+platforms = ["linux/amd64"]
+
+[service.sonarr]
+image = "lscr.io/linuxserver/sonarr:latest"
+replicas = 1
+
+  [service.sonarr.env]
+  PUID = "1000"
+  PGID = "1000"
+  TZ = "Etc/UTC"
+
+  [service.sonarr.health]
+  type = "http"
+  path = "/ping"
+  port = 8989
+  interval = "30s"
+
+  [service.sonarr.ports]
+  "8989" = "8989"
+
+  [[service.sonarr.volumes]]
+  name = "sonarr-config"
+  target = "/config"
+
+  [service.sonarr.resources]
+  memory = "256M"
+  cpus = 0.5

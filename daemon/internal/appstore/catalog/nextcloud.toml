@@ -1,0 +1,42 @@
+[recipe]
+id = "nextcloud"
+name = "Nextcloud"
+description = "Self-hosted cloud storage, collaboration, and productivity platform"
+icon = "☁"
+category = "productivity"
+tags = ["cloud", "files", "sync", "collaboration", "linuxserver.io"]
+image = "lscr.io/linuxserver/nextcloud:latest"
+version = "latest"
+min_memory = "512M"
+platforms = ["linux/amd64"]
+
+[service.nextcloud]
+image = "lscr.io/linuxserver/nextcloud:latest"
+replicas = 1
+
+  [service.nextcloud.env]
+  PUID = "1000"
+  PGID = "1000"
+  TZ = "Etc/UTC"
+
+  [service.nextcloud.health]
+  type = "http"
+  path = "/status.php"
+  port = 443
+  interval = "30s"
+  timeout = "10s"
+
+  [service.nextcloud.ports]
+  "443" = "443"
+
+  [[service.nextcloud.volumes]]
+  name = "nextcloud-config"
+  target = "/config"
+
+  [[service.nextcloud.volumes]]
+  name = "nextcloud-data"
+  target = "/data"
+
+  [service.nextcloud.resources]
+  memory = "512M"
+  cpus = 1.0

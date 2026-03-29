@@ -1,4 +1,4 @@
-# Hive v2.5
+# Hive v2.5.1
 
 **Deploy and manage Docker containers across multiple computers from one place.**
 
@@ -50,8 +50,18 @@ hive CLI (Rust)          hivetop TUI (Rust)          Hive Console (Svelte)
 ## Quick Start
 
 ```bash
-# Install (Linux)
-curl -fsSL https://get.hive.dev | sh
+# One-shot install (Linux x86_64)
+curl -fsSL https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.sh | bash
+
+# Install + set up systemd service
+curl -fsSL https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.sh | bash -s -- --service --token MY_SECRET
+
+# Build from source (requires Go + Rust)
+curl -fsSL https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.sh | bash -s -- --local
+
+# Or clone and build locally
+git clone https://github.com/Al-Sarraf-Tech/hive.git && cd hive
+./install.sh --local --service
 
 # First node — interactive setup (installs Docker if needed, starts daemon)
 hive setup
@@ -210,7 +220,7 @@ Controls: `1-4` switch tabs, `q`/`Esc` quit.
 
 ## Web Console
 
-The Svelte 5 web console connects to the HTTP API on port 7949 and provides 10 pages:
+The Svelte 5 web console connects to the HTTP API on port 7949 and provides 18 pages:
 
 - **Overview** — cluster stats, node list, recent events, containers per node
 - **Services** — service list with replicas, status, health badges
@@ -222,8 +232,21 @@ The Svelte 5 web console connects to the HTTP API on port 7949 and provides 10 p
 - **Cron** — scheduled job list with next/last run times
 - **Deploy** — TOML editor with templates (nginx, postgres, redis), validate button, deploy
 - **Secrets** — add/delete secrets, masked values
+- **App Store** — browse 35 curated apps (publicly, no login required), featured section, 14 category filters, LinuxServer.io collection with LSIO badges, one-click install with TOML preview
+- **Learn** — interactive TOML tutorial with syntax-highlighted examples, live validation playground, and complete Hivefile reference card
+- **Users** — user management with role assignment, create/delete users (admin only)
+- **Backup** — export/import cluster state (services, secrets, config) as encrypted backup files
+- **Cluster** — web-based cluster init and node join wizard (no CLI required)
+- **Settings** — Docker registry credentials, cluster version info
+- **Login** — auto-detects auth mode: first-time admin setup, username/password, or legacy bearer token
 
-The console is compiled to static HTML/CSS/JS and served directly by `hived`.
+**Enhanced existing pages:**
+- **Services** — inline quick-update modal (change image, replicas, env vars without redeploying TOML)
+- **Nodes Detail** — interactive label management (add/remove labels for placement constraints)
+- **Secrets** — secret rotation with affected-service preview and auto rolling-restart
+- **Dashboard** — live pulse indicator, quick-action buttons (Deploy, App Store)
+
+The console features a polished dark theme with SVG iconography, smooth animations, glassmorphism cards, gradient accents, and responsive mobile layout. It is compiled to static HTML/CSS/JS and served directly by `hived`.
 
 ## Daemon Configuration
 
@@ -359,31 +382,108 @@ cooldown_up = "60s"
 cooldown_down = "300s"
 ```
 
-### App Store (v2.5)
-13 built-in apps ready to deploy in one command:
+### App Store (v2.5.1)
+35 built-in apps ready to deploy in one command. The App Store is **publicly browsable without authentication** — sign in only when you're ready to deploy.
+
+**Core Infrastructure:**
 
 | App | Category | Image |
 |-----|----------|-------|
 | PostgreSQL | database | postgres:16-alpine |
 | MySQL | database | mysql:8 |
 | MongoDB | database | mongo:7 |
+| InfluxDB | database | influxdb:2-alpine |
 | Redis | cache | redis:7-alpine |
+| Valkey | cache | valkey/valkey:8-alpine |
 | Nginx | webserver | nginx:alpine |
+| Caddy | webserver | caddy:2-alpine |
 | RabbitMQ | messaging | rabbitmq:3-management-alpine |
 | Grafana | monitoring | grafana/grafana:11-alpine |
 | Prometheus | monitoring | prom/prometheus:latest |
 | Loki | monitoring | grafana/loki:3.0.0 |
+| Uptime Kuma | monitoring | louislam/uptime-kuma:1 |
 | Traefik | proxy | traefik:v3 |
 | MinIO | storage | minio/minio:latest |
 | Gitea | devtools | gitea/gitea:latest |
 | Docker Registry | devtools | registry:2 |
+| n8n | automation | n8nio/n8n:latest |
+| Keycloak | security | quay.io/keycloak/keycloak:25.0 |
+| HashiCorp Vault | security | hashicorp/vault:1.17 |
+
+**LinuxServer.io Collection** (15 apps with PUID/PGID/TZ, `/config` volume pattern):
+
+| App | Category | Image |
+|-----|----------|-------|
+| Plex | media | lscr.io/linuxserver/plex |
+| Jellyfin | media | lscr.io/linuxserver/jellyfin |
+| Sonarr | media | lscr.io/linuxserver/sonarr |
+| Radarr | media | lscr.io/linuxserver/radarr |
+| Prowlarr | media | lscr.io/linuxserver/prowlarr |
+| qBittorrent | media | lscr.io/linuxserver/qbittorrent |
+| Overseerr | media | lscr.io/linuxserver/overseerr |
+| Transmission | media | lscr.io/linuxserver/transmission |
+| Nextcloud | productivity | lscr.io/linuxserver/nextcloud |
+| Heimdall | productivity | lscr.io/linuxserver/heimdall |
+| Syncthing | productivity | lscr.io/linuxserver/syncthing |
+| BookStack | productivity | lscr.io/linuxserver/bookstack |
+| FreshRSS | productivity | lscr.io/linuxserver/freshrss |
+| Code Server | devtools | lscr.io/linuxserver/code-server |
+| WireGuard VPN | networking | lscr.io/linuxserver/wireguard |
 
 ```bash
 hive app ls                                    # browse catalog
+hive app ls --category media                   # filter by category
 hive app install postgres --config db_password=secret  # one-click deploy
 ```
 
-Users can also add custom apps via the API.
+Users can also add custom apps via the API or the web console.
+
+### Interactive Tutorial (v2.5.1)
+The web console includes a built-in **Learn** tab with:
+- Step-by-step TOML syntax guide with syntax-highlighted examples
+- Coverage of all Hivefile features: services, health checks, volumes, secrets, deploy strategies, ingress, cron, autoscaling
+- **Live playground** — write TOML and validate against the daemon in real-time
+- Complete field reference card
+- Copy-to-clipboard and deploy-from-playground buttons
+
+### One-Shot Installer (v2.5.1)
+Install Hive on any Linux x86_64 machine with a single command:
+```bash
+curl -fsSL https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.sh | bash
+```
+
+Options:
+- `--local` — build from source instead of downloading binaries
+- `--service` — set up `hived` as a systemd service
+- `--token TOKEN` — configure HTTP API bearer token
+- `--version VER` — install a specific version
+
+### User Authentication (v2.5.1)
+Hive now includes a full user authentication system with:
+- **argon2id** password hashing (OWASP recommended, memory-hard, GPU-resistant)
+- **HMAC-SHA256 JWT** tokens with auto-generated 256-bit signing keys
+- **Role-based access**: `admin` (full), `operator` (deploy/manage), `viewer` (read-only)
+- **Rate limiting**: 5 failed attempts per 5-minute window per user
+- **First-time setup**: on first visit, create an admin account — no config required
+- **Backwards compatible**: legacy `--http-token` bearer auth still works alongside user auth
+
+```bash
+# First-time setup via CLI
+curl -X POST http://localhost:7949/api/v1/auth/setup \
+  -d '{"username":"admin","password":"secure-password-here"}'
+
+# Login returns JWT tokens
+curl -X POST http://localhost:7949/api/v1/auth/login \
+  -d '{"username":"admin","password":"secure-password-here"}'
+# → {"access_token":"eyJ...","refresh_token":"eyJ..."}
+
+# User management (admin only)
+hive user list
+hive user create bob --role operator
+hive user delete bob
+```
+
+The web console auto-detects whether user auth is configured and presents the appropriate login flow (username/password or legacy bearer token). User data is stored in the same bbolt database as cluster state — no external database required.
 
 ### Docker Registry Login (v2.5)
 ```bash
@@ -483,6 +583,7 @@ hive/
     internal/
       api/            gRPC server implementation
       config/         TOML config file parsing
+      auth/           User auth — argon2id, JWT, RBAC, rate limiting
       container/      Docker/Podman runtime abstraction
       cron/           Cron scheduler (5-field expressions)
       health/         HTTP/TCP/exec health checks
@@ -504,7 +605,8 @@ hive/
       autoscale/      Horizontal autoscaler
   cli/              Rust CLI (hive) — 24+ commands via gRPC
   tui/              Rust TUI (hivetop) — 4-tab ratatui dashboard with health column
-  console/          Svelte 5 web console — 10 pages with dark theme
+  console/          Svelte 5 web console — 12 pages with polished dark theme
+  install.sh        One-shot installer (GitHub releases or local build)
   proto/            Protobuf definitions (api.proto, mesh.proto, types.proto)
   recipes/          TOML one-click deploy templates
   .github/          CI and release workflows

@@ -1,0 +1,57 @@
+[recipe]
+id = "transmission"
+name = "Transmission"
+description = "Lightweight BitTorrent client with clean web interface"
+icon = "📥"
+category = "media"
+tags = ["torrent", "download", "p2p", "linuxserver.io"]
+image = "lscr.io/linuxserver/transmission:latest"
+version = "latest"
+min_memory = "128M"
+platforms = ["linux/amd64"]
+
+  [recipe.config.user]
+  label = "Web UI Username"
+  type = "string"
+  required = false
+  default = ""
+  description = "Username for web interface (leave empty to disable auth)"
+
+  [recipe.config.pass]
+  label = "Web UI Password"
+  type = "secret"
+  required = false
+  description = "Password for web interface"
+
+[service.transmission]
+image = "lscr.io/linuxserver/transmission:latest"
+replicas = 1
+
+  [service.transmission.env]
+  PUID = "1000"
+  PGID = "1000"
+  TZ = "Etc/UTC"
+  USER = "{{ config:user }}"
+  PASS = "{{ config:pass }}"
+
+  [service.transmission.health]
+  type = "http"
+  path = "/transmission/web/"
+  port = 9091
+  interval = "30s"
+
+  [service.transmission.ports]
+  "9091" = "9091"
+  "51413" = "51413"
+
+  [[service.transmission.volumes]]
+  name = "transmission-config"
+  target = "/config"
+
+  [[service.transmission.volumes]]
+  name = "transmission-downloads"
+  target = "/downloads"
+
+  [service.transmission.resources]
+  memory = "128M"
+  cpus = 0.5

@@ -1,0 +1,50 @@
+[recipe]
+id = "plex"
+name = "Plex Media Server"
+description = "Stream your media library to any device — movies, TV, music, photos"
+icon = "🎬"
+category = "media"
+tags = ["media-server", "streaming", "video", "linuxserver.io"]
+image = "lscr.io/linuxserver/plex:latest"
+version = "latest"
+min_memory = "512M"
+platforms = ["linux/amd64"]
+
+  [recipe.config.plex_claim]
+  label = "Plex Claim Token"
+  type = "string"
+  required = false
+  default = ""
+  description = "Get a claim token from https://plex.tv/claim (optional, for first-time setup)"
+
+[service.plex]
+image = "lscr.io/linuxserver/plex:latest"
+replicas = 1
+
+  [service.plex.env]
+  PUID = "1000"
+  PGID = "1000"
+  TZ = "Etc/UTC"
+  VERSION = "docker"
+  PLEX_CLAIM = "{{ config:plex_claim }}"
+
+  [service.plex.health]
+  type = "http"
+  path = "/identity"
+  port = 32400
+  interval = "30s"
+
+  [service.plex.ports]
+  "32400" = "32400"
+
+  [[service.plex.volumes]]
+  name = "plex-config"
+  target = "/config"
+
+  [[service.plex.volumes]]
+  name = "plex-media"
+  target = "/data"
+
+  [service.plex.resources]
+  memory = "512M"
+  cpus = 2.0

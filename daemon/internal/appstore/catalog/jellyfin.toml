@@ -1,0 +1,41 @@
+[recipe]
+id = "jellyfin"
+name = "Jellyfin"
+description = "Free and open-source media server — no subscriptions, no tracking"
+icon = "🎥"
+category = "media"
+tags = ["media-server", "streaming", "video", "open-source", "linuxserver.io"]
+image = "lscr.io/linuxserver/jellyfin:latest"
+version = "latest"
+min_memory = "512M"
+platforms = ["linux/amd64"]
+
+[service.jellyfin]
+image = "lscr.io/linuxserver/jellyfin:latest"
+replicas = 1
+
+  [service.jellyfin.env]
+  PUID = "1000"
+  PGID = "1000"
+  TZ = "Etc/UTC"
+
+  [service.jellyfin.health]
+  type = "http"
+  path = "/health"
+  port = 8096
+  interval = "30s"
+
+  [service.jellyfin.ports]
+  "8096" = "8096"
+
+  [[service.jellyfin.volumes]]
+  name = "jellyfin-config"
+  target = "/config"
+
+  [[service.jellyfin.volumes]]
+  name = "jellyfin-media"
+  target = "/data"
+
+  [service.jellyfin.resources]
+  memory = "512M"
+  cpus = 2.0

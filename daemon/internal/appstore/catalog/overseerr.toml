@@ -1,0 +1,37 @@
+[recipe]
+id = "overseerr"
+name = "Overseerr"
+description = "Media request management for Plex — users request, you approve"
+icon = "🎟"
+category = "media"
+tags = ["requests", "plex", "media", "arr-stack", "linuxserver.io"]
+image = "lscr.io/linuxserver/overseerr:latest"
+version = "latest"
+min_memory = "256M"
+platforms = ["linux/amd64"]
+
+[service.overseerr]
+image = "lscr.io/linuxserver/overseerr:latest"
+replicas = 1
+
+  [service.overseerr.env]
+  PUID = "1000"
+  PGID = "1000"
+  TZ = "Etc/UTC"
+
+  [service.overseerr.health]
+  type = "http"
+  path = "/api/v1/status"
+  port = 5055
+  interval = "30s"
+
+  [service.overseerr.ports]
+  "5055" = "5055"
+
+  [[service.overseerr.volumes]]
+  name = "overseerr-config"
+  target = "/config"
+
+  [service.overseerr.resources]
+  memory = "256M"
+  cpus = 0.5

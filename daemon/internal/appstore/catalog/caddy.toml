@@ -1,0 +1,37 @@
+[recipe]
+id = "caddy"
+name = "Caddy"
+description = "Fast, multi-platform web server with automatic HTTPS"
+icon = "🔒"
+category = "webserver"
+tags = ["http", "https", "reverse-proxy", "auto-tls"]
+image = "caddy:2-alpine"
+version = "2"
+min_memory = "64M"
+platforms = ["linux/amd64"]
+
+[service.caddy]
+image = "caddy:2-alpine"
+replicas = 1
+
+  [service.caddy.health]
+  type = "http"
+  path = "/"
+  port = 80
+  interval = "15s"
+
+  [service.caddy.ports]
+  "80" = "80"
+  "443" = "443"
+
+  [[service.caddy.volumes]]
+  name = "caddy-data"
+  target = "/data"
+
+  [[service.caddy.volumes]]
+  name = "caddy-config"
+  target = "/config"
+
+  [service.caddy.resources]
+  memory = "64M"
+  cpus = 0.25

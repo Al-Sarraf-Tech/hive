@@ -1,0 +1,19 @@
+# Love Note — deployed on both amarillo and WSL2
+
+[service.love-note-web]
+image = "nginx:alpine"
+replicas = 2
+
+  [service.love-note-web.ports]
+  "26149" = "80"
+
+  [service.love-note-web.health]
+  type = "http"
+  path = "/"
+  port = 80
+  interval = "30s"
+  timeout = "5s"
+
+  [service.love-note-web.resources]
+  memory = "64MB"
+  cpu = 0.25

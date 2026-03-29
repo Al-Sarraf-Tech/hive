@@ -1,0 +1,42 @@
+[recipe]
+id = "vault"
+name = "HashiCorp Vault"
+description = "Secrets management, encryption as a service, and privileged access management"
+icon = "🔐"
+category = "security"
+tags = ["secrets", "encryption", "security", "pki"]
+image = "hashicorp/vault:1.17"
+version = "1.17"
+min_memory = "256M"
+platforms = ["linux/amd64"]
+
+[service.vault]
+image = "hashicorp/vault:1.17"
+replicas = 1
+
+  [service.vault.env]
+  VAULT_DEV_ROOT_TOKEN_ID = "{{ config:root_token }}"
+  VAULT_DEV_LISTEN_ADDRESS = "0.0.0.0:8200"
+
+  [service.vault.health]
+  type = "http"
+  path = "/v1/sys/health"
+  port = 8200
+  interval = "30s"
+
+  [service.vault.ports]
+  "8200" = "8200"
+
+  [[service.vault.volumes]]
+  name = "vault-data"
+  target = "/vault/data"
+
+  [service.vault.resources]
+  memory = "256M"
+  cpus = 0.5
+
+  [recipe.config.root_token]
+  label = "Root Token"
+  type = "secret"
+  required = true
+  description = "Root token for dev mode (change in production)"

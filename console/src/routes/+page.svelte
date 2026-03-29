@@ -27,8 +27,15 @@
 </script>
 
 <div class="page-header">
-  <h1 class="page-title">Cluster Overview</h1>
-  <button class="btn btn-sm" onclick={refresh}>Refresh</button>
+  <h1 class="page-title">
+    Cluster Overview
+    <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--green); margin-left:0.5rem; animation:pulse-dot 2s ease infinite"></span>
+  </h1>
+  <div class="btn-group">
+    <a href="/deploy" class="btn btn-primary btn-sm" style="text-decoration:none">Deploy</a>
+    <a href="/appstore" class="btn btn-sm" style="text-decoration:none">App Store</a>
+    <button class="btn btn-sm" onclick={refresh}>Refresh</button>
+  </div>
 </div>
 
 {#if loading}

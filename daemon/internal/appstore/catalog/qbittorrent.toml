@@ -1,0 +1,43 @@
+[recipe]
+id = "qbittorrent"
+name = "qBittorrent"
+description = "Fast, lightweight BitTorrent client with web UI"
+icon = "⬇"
+category = "media"
+tags = ["torrent", "download", "p2p", "linuxserver.io"]
+image = "lscr.io/linuxserver/qbittorrent:latest"
+version = "latest"
+min_memory = "256M"
+platforms = ["linux/amd64"]
+
+[service.qbittorrent]
+image = "lscr.io/linuxserver/qbittorrent:latest"
+replicas = 1
+
+  [service.qbittorrent.env]
+  PUID = "1000"
+  PGID = "1000"
+  TZ = "Etc/UTC"
+  WEBUI_PORT = "8080"
+
+  [service.qbittorrent.health]
+  type = "http"
+  path = "/"
+  port = 8080
+  interval = "30s"
+
+  [service.qbittorrent.ports]
+  "8080" = "8080"
+  "6881" = "6881"
+
+  [[service.qbittorrent.volumes]]
+  name = "qbt-config"
+  target = "/config"
+
+  [[service.qbittorrent.volumes]]
+  name = "qbt-downloads"
+  target = "/downloads"
+
+  [service.qbittorrent.resources]
+  memory = "256M"
+  cpus = 0.5

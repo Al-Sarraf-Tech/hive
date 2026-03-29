@@ -1,0 +1,38 @@
+[recipe]
+id = "valkey"
+name = "Valkey"
+description = "High-performance open-source key-value store (Redis fork)"
+icon = "🔑"
+category = "cache"
+tags = ["kv", "cache", "in-memory", "redis-compatible"]
+image = "valkey/valkey:8-alpine"
+version = "8"
+min_memory = "128M"
+platforms = ["linux/amd64"]
+
+  [recipe.config.max_memory]
+  label = "Max Memory"
+  type = "string"
+  required = false
+  default = "128mb"
+  description = "Maximum memory limit for the Valkey instance"
+
+[service.valkey]
+image = "valkey/valkey:8-alpine"
+replicas = 1
+
+  [service.valkey.health]
+  type = "tcp"
+  port = 6379
+  interval = "15s"
+
+  [service.valkey.ports]
+  "6379" = "6379"
+
+  [[service.valkey.volumes]]
+  name = "valkey-data"
+  target = "/data"
+
+  [service.valkey.resources]
+  memory = "128M"
+  cpus = 0.25

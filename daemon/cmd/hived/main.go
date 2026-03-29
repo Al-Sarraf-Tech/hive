@@ -18,6 +18,7 @@ import (
 
 	"github.com/jalsarraf0/hive/daemon/internal/api"
 	hivev1 "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1"
+	"github.com/jalsarraf0/hive/daemon/internal/auth"
 	"github.com/jalsarraf0/hive/daemon/internal/config"
 	"github.com/jalsarraf0/hive/daemon/internal/container"
 	"github.com/jalsarraf0/hive/daemon/internal/cron"
@@ -543,7 +544,14 @@ func main() {
 			}
 		}
 
-		srv := httpapi.NewServer(addr, apiServer, cfg.HTTP.Token, logCollector.Buffer(), stateStore, dataDir, httpTLSConfig)
+		// Initialize user auth service (uses the same bbolt store)
+		authSvc, err := auth.New(stateStore.DB(), "")
+		if err != nil {
+			slog.Error("failed to initialize auth service", "error", err)
+			os.Exit(1)
+		}
+
+		srv := httpapi.NewServer(addr, apiServer, cfg.HTTP.Token, authSvc, logCollector.Buffer(), stateStore, dataDir, httpTLSConfig)
 		httpServer.Store(srv)
 		go func() {
 			if httpTLSConfig != nil {

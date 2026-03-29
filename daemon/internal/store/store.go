@@ -50,6 +50,11 @@ func Open(dataDir string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
+// DB returns the underlying bbolt database for use by other packages (e.g., auth).
+func (s *Store) DB() *bolt.DB {
+	return s.db
+}
+
 // Close shuts down the store.
 func (s *Store) Close() error {
 	return s.db.Close()

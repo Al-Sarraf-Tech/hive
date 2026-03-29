@@ -1,0 +1,51 @@
+[recipe]
+id = "keycloak"
+name = "Keycloak"
+description = "Open-source identity and access management (SSO, OIDC, SAML)"
+icon = "🪪"
+category = "security"
+tags = ["auth", "sso", "oidc", "saml", "identity"]
+image = "quay.io/keycloak/keycloak:25.0"
+version = "25"
+min_memory = "512M"
+platforms = ["linux/amd64"]
+
+  [recipe.config.admin_user]
+  label = "Admin Username"
+  type = "string"
+  required = true
+  default = "admin"
+  description = "Keycloak admin console username"
+
+  [recipe.config.admin_password]
+  label = "Admin Password"
+  type = "secret"
+  required = true
+  description = "Keycloak admin console password"
+
+[service.keycloak]
+image = "quay.io/keycloak/keycloak:25.0"
+replicas = 1
+
+  [service.keycloak.env]
+  KEYCLOAK_ADMIN = "{{ config:admin_user }}"
+  KEYCLOAK_ADMIN_PASSWORD = "{{ config:admin_password }}"
+  KC_HTTP_PORT = "8080"
+
+  [service.keycloak.health]
+  type = "http"
+  path = "/health/ready"
+  port = 8080
+  interval = "30s"
+  timeout = "10s"
+
+  [service.keycloak.ports]
+  "8080" = "8080"
+
+  [[service.keycloak.volumes]]
+  name = "keycloak-data"
+  target = "/opt/keycloak/data"
+
+  [service.keycloak.resources]
+  memory = "512M"
+  cpus = 1.0

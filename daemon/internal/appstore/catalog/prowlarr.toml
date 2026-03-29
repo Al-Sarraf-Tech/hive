@@ -1,0 +1,37 @@
+[recipe]
+id = "prowlarr"
+name = "Prowlarr"
+description = "Indexer manager and proxy for the Arr stack — unified search"
+icon = "🔍"
+category = "media"
+tags = ["indexer", "search", "arr-stack", "linuxserver.io"]
+image = "lscr.io/linuxserver/prowlarr:latest"
+version = "latest"
+min_memory = "128M"
+platforms = ["linux/amd64"]
+
+[service.prowlarr]
+image = "lscr.io/linuxserver/prowlarr:latest"
+replicas = 1
+
+  [service.prowlarr.env]
+  PUID = "1000"
+  PGID = "1000"
+  TZ = "Etc/UTC"
+
+  [service.prowlarr.health]
+  type = "http"
+  path = "/ping"
+  port = 9696
+  interval = "30s"
+
+  [service.prowlarr.ports]
+  "9696" = "9696"
+
+  [[service.prowlarr.volumes]]
+  name = "prowlarr-config"
+  target = "/config"
+
+  [service.prowlarr.resources]
+  memory = "128M"
+  cpus = 0.25

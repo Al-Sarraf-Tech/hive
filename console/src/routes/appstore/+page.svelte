@@ -1,25 +1,53 @@
 <script>
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { api } from '$lib/api.js';
+  import { api, isAuthenticated } from '$lib/api.js';
 
   let apps = $state([]);
+  let installed = $state([]);
   let loading = $state(true);
   let error = $state(null);
   let search = $state('');
   let category = $state('');
 
-  const categories = ['', 'database', 'cache', 'monitoring', 'webserver', 'proxy', 'messaging', 'storage', 'devtools'];
+  const categories = [
+    { key: '', label: 'All', icon: 'grid' },
+    { key: 'database', label: 'Database', icon: 'db' },
+    { key: 'cache', label: 'Cache', icon: 'zap' },
+    { key: 'media', label: 'Media', icon: 'media' },
+    { key: 'monitoring', label: 'Monitoring', icon: 'chart' },
+    { key: 'webserver', label: 'Web Server', icon: 'globe' },
+    { key: 'proxy', label: 'Proxy', icon: 'shuffle' },
+    { key: 'messaging', label: 'Messaging', icon: 'mail' },
+    { key: 'storage', label: 'Storage', icon: 'hdd' },
+    { key: 'devtools', label: 'DevTools', icon: 'wrench' },
+    { key: 'networking', label: 'Networking', icon: 'network' },
+    { key: 'security', label: 'Security', icon: 'shield' },
+    { key: 'productivity', label: 'Productivity', icon: 'productivity' },
+    { key: 'automation', label: 'Automation', icon: 'play' },
+  ];
+
+  const featured = ['postgres', 'jellyfin', 'grafana', 'traefik', 'nextcloud'];
+
+  let installedSet = $derived(new Set(installed.map(a => a.appId || a.app_id)));
+
+  let authed = $state(false);
 
   async function refresh() {
     try {
       loading = true;
-      if (search) {
-        const data = await api.searchApps(search);
-        apps = data.apps || [];
+      authed = isAuthenticated();
+      // Use public API when not authenticated, authenticated API otherwise
+      const listFn = authed ? (search ? api.searchApps : (cat) => api.listApps(cat)) : (search ? api.publicSearchApps : (cat) => api.publicListApps(cat));
+      const appData = search ? await (authed ? api.searchApps(search) : api.publicSearchApps(search))
+                             : await (authed ? api.listApps(category) : api.publicListApps(category));
+      apps = appData.apps || [];
+      // Installed apps only available when authenticated
+      if (authed) {
+        const installedData = await api.listInstalledApps().catch(() => ({ apps: [] }));
+        installed = installedData.apps || installedData.instances || [];
       } else {
-        const data = await api.listApps(category);
-        apps = data.apps || [];
+        installed = [];
       }
       error = null;
     } catch (e) { error = e.message; }
@@ -38,67 +66,159 @@
     category = '';
     refresh();
   }
+
+  function handleSearchKey(e) {
+    if (e.key === 'Enter') onSearch();
+  }
+
+  let featuredApps = $derived(apps.filter(a => featured.includes(a.id)));
+  let regularApps = $derived(
+    category || search ? apps : apps.filter(a => !featured.includes(a.id))
+  );
+
+  function categoryIcon(key) {
+    const map = {
+      '': '⬡', database: '🗃', cache: '⚡', media: '🎬', monitoring: '📊',
+      webserver: '🌐', proxy: '🔀', messaging: '✉', storage: '💾',
+      devtools: '🔧', networking: '🌍', security: '🛡', productivity: '📋',
+      automation: '▶',
+    };
+    return map[key] || '⬡';
+  }
 </script>
 
-<div class="page-header">
-  <h1 class="page-title">App Store</h1>
-  <div style="display:flex; gap:0.5rem; align-items:center">
+<div class="appstore-hero animate-in">
+  <h1>App Store</h1>
+  <p>Deploy production-ready services in one click. Browse curated recipes or bring your own.</p>
+  <div class="appstore-search">
     <input
       type="text"
-      placeholder="Search apps..."
+      placeholder="Search apps, tags, categories..."
       bind:value={search}
-      onkeydown={(e) => { if (e.key === 'Enter') onSearch(); }}
-      style="padding:0.4rem 0.75rem; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; color:var(--fg); width:200px"
+      onkeydown={handleSearchKey}
     />
-    <button class="btn btn-sm" onclick={onSearch}>Search</button>
+    <button class="btn btn-primary" onclick={onSearch}>Search</button>
   </div>
 </div>
 
-<div style="display:flex; gap:0.5rem; margin-bottom:1.5rem; flex-wrap:wrap">
+<div class="category-pills">
   {#each categories as cat}
     <button
-      class="btn btn-sm"
-      style={cat === category ? 'background:var(--ring); color:#fff' : ''}
-      onclick={() => selectCategory(cat)}
+      class="category-pill"
+      class:active={cat.key === category}
+      onclick={() => selectCategory(cat.key)}
     >
-      {cat || 'All'}
+      <span>{categoryIcon(cat.key)}</span>
+      {cat.label}
     </button>
   {/each}
 </div>
 
 {#if loading}
-  <p class="muted">Loading catalog...</p>
+  <div class="app-grid">
+    {#each Array(6) as _}
+      <div class="skeleton skeleton-card"></div>
+    {/each}
+  </div>
 {:else if error}
   <div class="card" style="border-color:var(--red)">
     <p class="text-red">{error}</p>
+    <button class="btn btn-sm mt-1" onclick={refresh}>Retry</button>
   </div>
-{:else if apps.length === 0}
-  <p class="muted">No apps found.</p>
 {:else}
-  <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:1rem">
-    {#each apps as app}
-      <div
-        class="card clickable"
-        style="cursor:pointer; padding:1.25rem"
-        onclick={() => goto(`/appstore/${app.id}`)}
-        role="button"
-        tabindex="0"
-        onkeydown={(e) => { if (e.key === 'Enter') goto(`/appstore/${app.id}`); }}
-      >
-        <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem">
-          <span style="font-size:2rem">{app.icon}</span>
-          <div>
-            <div style="font-weight:600; font-size:1.1rem">{app.name}</div>
-            <span class="badge" style="font-size:0.65rem">{app.category}</span>
-          </div>
-        </div>
-        <p class="muted" style="font-size:0.85rem; margin:0">{app.description}</p>
-        <div style="margin-top:0.75rem; display:flex; gap:0.5rem; flex-wrap:wrap">
-          {#each (app.tags || []).slice(0, 3) as tag}
-            <span style="font-size:0.6rem; padding:0.15rem 0.5rem; border:1px solid var(--border); border-radius:999px; color:var(--text-muted)">{tag}</span>
-          {/each}
-        </div>
+  {#if featuredApps.length > 0 && !category && !search}
+    <div class="section">
+      <div class="flex items-center justify-between mb-1">
+        <h2 style="font-size:1rem; font-weight:600">Popular</h2>
+        <span class="muted" style="font-size:0.75rem">{apps.length} apps available</span>
       </div>
-    {/each}
-  </div>
+      <div class="featured-grid">
+        {#each featuredApps as app}
+          <div
+            class="featured-card"
+            onclick={() => goto(`/appstore/${app.id}`)}
+            role="button"
+            tabindex="0"
+            onkeydown={(e) => { if (e.key === 'Enter') goto(`/appstore/${app.id}`); }}
+          >
+            <div class="featured-label">Popular</div>
+            <div class="app-card-header">
+              <div class="app-card-icon">{app.icon}</div>
+              <div class="app-card-meta">
+                <div class="app-card-name">{app.name}</div>
+                <div class="app-card-category">{app.category}</div>
+              </div>
+              {#if installedSet.has(app.id)}
+                <span class="app-card-installed">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                  Installed
+                </span>
+              {/if}
+            </div>
+            <p class="app-card-desc">{app.description}</p>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  {#if regularApps.length === 0 && featuredApps.length === 0}
+    <div class="empty-state">
+      <div class="empty-state-icon">⬡</div>
+      <p>No apps found{search ? ` for "${search}"` : category ? ` in ${category}` : ''}.</p>
+      {#if search || category}
+        <button class="btn btn-sm mt-1" onclick={() => { search = ''; category = ''; refresh(); }}>Clear filters</button>
+      {/if}
+    </div>
+  {:else}
+    <div class="section">
+      {#if !category && !search}
+        <h2 style="font-size:1rem; font-weight:600; margin-bottom:1rem">All Apps</h2>
+      {:else}
+        <h2 style="font-size:1rem; font-weight:600; margin-bottom:1rem">
+          {search ? `Results for "${search}"` : categories.find(c => c.key === category)?.label || 'Apps'}
+          <span class="muted" style="font-weight:400; font-size:0.875rem"> ({regularApps.length})</span>
+        </h2>
+      {/if}
+      <div class="app-grid">
+        {#each regularApps as app}
+          <div
+            class="app-card"
+            onclick={() => goto(`/appstore/${app.id}`)}
+            role="button"
+            tabindex="0"
+            onkeydown={(e) => { if (e.key === 'Enter') goto(`/appstore/${app.id}`); }}
+          >
+            <div class="app-card-header">
+              <div class="app-card-icon">{app.icon}</div>
+              <div class="app-card-meta">
+                <div class="app-card-name">{app.name}</div>
+                <div class="app-card-category">{app.category}</div>
+              </div>
+              {#if installedSet.has(app.id)}
+                <span class="app-card-installed">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                  Installed
+                </span>
+              {/if}
+            </div>
+            <p class="app-card-desc">{app.description}</p>
+            <div class="app-card-footer">
+              <div class="app-card-tags">
+                {#each (app.tags || []).slice(0, 3) as tag}
+                  <span class="app-card-tag">{tag}</span>
+                {/each}
+              </div>
+              <span class="mono muted" style="font-size:0.7rem">
+                {#if (app.tags || []).includes('linuxserver.io')}
+                  <span class="badge badge-purple" style="font-size:0.6rem; margin-right:0.25rem">LSIO</span>
+                {/if}
+                {app.version || 'latest'}
+              </span>
+            </div>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
 {/if}

@@ -1,0 +1,32 @@
+[recipe]
+id = "uptime-kuma"
+name = "Uptime Kuma"
+description = "Self-hosted monitoring tool with a beautiful status page"
+icon = "📡"
+category = "monitoring"
+tags = ["uptime", "monitoring", "status-page", "alerting"]
+image = "louislam/uptime-kuma:1"
+version = "1"
+min_memory = "128M"
+platforms = ["linux/amd64"]
+
+[service.uptime-kuma]
+image = "louislam/uptime-kuma:1"
+replicas = 1
+
+  [service.uptime-kuma.health]
+  type = "http"
+  path = "/"
+  port = 3001
+  interval = "30s"
+
+  [service.uptime-kuma.ports]
+  "3001" = "3001"
+
+  [[service.uptime-kuma.volumes]]
+  name = "uptime-kuma-data"
+  target = "/app/data"
+
+  [service.uptime-kuma.resources]
+  memory = "128M"
+  cpus = 0.25
