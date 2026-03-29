@@ -3,7 +3,7 @@ use colored::Colorize;
 use std::io::{self, BufRead, IsTerminal};
 
 use crate::grpc_client;
-use crate::grpc_client::hive_proto::{DeleteSecretRequest, SetSecretRequest};
+use crate::grpc_client::hive_proto::{DeleteSecretRequest, RotateSecretRequest, SetSecretRequest};
 
 pub async fn set(key: &str, value: Option<&str>, addr: &str, ca_cert: Option<&str>) -> Result<()> {
     let secret_value = match value {
@@ -89,6 +89,51 @@ pub async fn remove(key: &str, addr: &str, ca_cert: Option<&str>) -> Result<()> 
         .map_err(grpc_client::map_grpc_error)?;
 
     println!("{} Secret {} removed.", "✓".green(), key.cyan());
+    Ok(())
+}
+
+pub async fn rotate(key: &str, value: Option<&str>, addr: &str, ca_cert: Option<&str>) -> Result<()> {
+    let secret_value = match value {
+        Some(v) => v.to_string(),
+        None => {
+            if io::stdin().is_terminal() {
+                eprintln!("Enter new secret value (then press Enter):");
+            }
+            let mut line = String::new();
+            io::stdin()
+                .lock()
+                .read_line(&mut line)
+                .context("failed to read secret from stdin")?;
+            line.trim_end_matches('\n')
+                .trim_end_matches('\r')
+                .to_string()
+        }
+    };
+
+    if secret_value.is_empty() {
+        anyhow::bail!("secret value cannot be empty");
+    }
+
+    println!("Rotating secret {}...", key.cyan());
+
+    let mut client = grpc_client::connect(addr, ca_cert).await?;
+    let resp = client
+        .rotate_secret(RotateSecretRequest {
+            key: key.into(),
+            new_value: secret_value.as_bytes().to_vec(),
+        })
+        .await
+        .map_err(grpc_client::map_grpc_error)?
+        .into_inner();
+
+    println!("{} Secret {} rotated.", "✓".green(), key.cyan());
+    if resp.restarted_services.is_empty() {
+        println!("  No services reference this secret.");
+    } else {
+        for svc in &resp.restarted_services {
+            println!("  {} rolling-restarted", svc.cyan());
+        }
+    }
     Ok(())
 }
 

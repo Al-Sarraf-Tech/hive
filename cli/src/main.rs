@@ -111,7 +111,7 @@ enum Commands {
         service: String,
     },
 
-    /// Update a running service (image, replicas) without a full Hivefile redeploy
+    /// Update a running service (image, replicas, env) with rolling restart
     Update {
         /// Service name
         service: String,
@@ -123,6 +123,10 @@ enum Commands {
         /// New replica count
         #[arg(long)]
         replicas: Option<u32>,
+
+        /// Environment variable updates (KEY=VALUE, repeatable)
+        #[arg(long = "env", short = 'e')]
+        env: Vec<String>,
     },
 
     /// Execute a command in a service container
@@ -215,6 +219,13 @@ enum SecretAction {
     Rm {
         /// Secret key
         key: String,
+    },
+    /// Rotate a secret and rolling-restart all referencing services
+    Rotate {
+        /// Secret key
+        key: String,
+        /// New secret value (omit to read from stdin)
+        value: Option<String>,
     },
 }
 
@@ -316,11 +327,13 @@ async fn main() -> Result<()> {
             service,
             image,
             replicas,
+            env,
         } => {
             commands::update::run(
                 &service,
                 image.as_deref(),
                 replicas,
+                &env,
                 &cli.addr,
                 cli.ca_cert.as_deref(),
             )
@@ -337,6 +350,10 @@ async fn main() -> Result<()> {
             SecretAction::Ls => commands::secret::list(&cli.addr, cli.ca_cert.as_deref()).await,
             SecretAction::Rm { key } => {
                 commands::secret::remove(&key, &cli.addr, cli.ca_cert.as_deref()).await
+            }
+            SecretAction::Rotate { key, value } => {
+                commands::secret::rotate(&key, value.as_deref(), &cli.addr, cli.ca_cert.as_deref())
+                    .await
             }
         },
         Commands::Status => commands::status::run(&cli.addr, cli.ca_cert.as_deref()).await,

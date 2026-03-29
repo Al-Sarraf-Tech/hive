@@ -41,6 +41,10 @@ const (
 	HiveAPI_SetSecret_FullMethodName        = "/hive.v1.HiveAPI/SetSecret"
 	HiveAPI_ListSecrets_FullMethodName      = "/hive.v1.HiveAPI/ListSecrets"
 	HiveAPI_DeleteSecret_FullMethodName     = "/hive.v1.HiveAPI/DeleteSecret"
+	HiveAPI_RotateSecret_FullMethodName     = "/hive.v1.HiveAPI/RotateSecret"
+	HiveAPI_SetNodeLabel_FullMethodName     = "/hive.v1.HiveAPI/SetNodeLabel"
+	HiveAPI_RemoveNodeLabel_FullMethodName  = "/hive.v1.HiveAPI/RemoveNodeLabel"
+	HiveAPI_DeployStack_FullMethodName      = "/hive.v1.HiveAPI/DeployStack"
 	HiveAPI_StreamEvents_FullMethodName     = "/hive.v1.HiveAPI/StreamEvents"
 	HiveAPI_ListCronJobs_FullMethodName     = "/hive.v1.HiveAPI/ListCronJobs"
 	HiveAPI_GetServiceHealth_FullMethodName = "/hive.v1.HiveAPI/GetServiceHealth"
@@ -86,6 +90,12 @@ type HiveAPIClient interface {
 	SetSecret(ctx context.Context, in *SetSecretRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ListSecrets(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListSecretsResponse, error)
 	DeleteSecret(ctx context.Context, in *DeleteSecretRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	RotateSecret(ctx context.Context, in *RotateSecretRequest, opts ...grpc.CallOption) (*RotateSecretResponse, error)
+	// ─── Node Labels ──────────────────────────────────────────
+	SetNodeLabel(ctx context.Context, in *SetNodeLabelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	RemoveNodeLabel(ctx context.Context, in *RemoveNodeLabelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// ─── Stacks ───────────────────────────────────────────────
+	DeployStack(ctx context.Context, in *DeployStackRequest, opts ...grpc.CallOption) (*DeployServiceResponse, error)
 	// ─── Events ────────────────────────────────────────────────
 	StreamEvents(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Event], error)
 	// ─── Cron ────────────────────────────────────────────────
@@ -330,6 +340,46 @@ func (c *hiveAPIClient) DeleteSecret(ctx context.Context, in *DeleteSecretReques
 	return out, nil
 }
 
+func (c *hiveAPIClient) RotateSecret(ctx context.Context, in *RotateSecretRequest, opts ...grpc.CallOption) (*RotateSecretResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RotateSecretResponse)
+	err := c.cc.Invoke(ctx, HiveAPI_RotateSecret_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hiveAPIClient) SetNodeLabel(ctx context.Context, in *SetNodeLabelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, HiveAPI_SetNodeLabel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hiveAPIClient) RemoveNodeLabel(ctx context.Context, in *RemoveNodeLabelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, HiveAPI_RemoveNodeLabel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hiveAPIClient) DeployStack(ctx context.Context, in *DeployStackRequest, opts ...grpc.CallOption) (*DeployServiceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeployServiceResponse)
+	err := c.cc.Invoke(ctx, HiveAPI_DeployStack_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *hiveAPIClient) StreamEvents(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Event], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &HiveAPI_ServiceDesc.Streams[1], HiveAPI_StreamEvents_FullMethodName, cOpts...)
@@ -463,6 +513,12 @@ type HiveAPIServer interface {
 	SetSecret(context.Context, *SetSecretRequest) (*emptypb.Empty, error)
 	ListSecrets(context.Context, *emptypb.Empty) (*ListSecretsResponse, error)
 	DeleteSecret(context.Context, *DeleteSecretRequest) (*emptypb.Empty, error)
+	RotateSecret(context.Context, *RotateSecretRequest) (*RotateSecretResponse, error)
+	// ─── Node Labels ──────────────────────────────────────────
+	SetNodeLabel(context.Context, *SetNodeLabelRequest) (*emptypb.Empty, error)
+	RemoveNodeLabel(context.Context, *RemoveNodeLabelRequest) (*emptypb.Empty, error)
+	// ─── Stacks ───────────────────────────────────────────────
+	DeployStack(context.Context, *DeployStackRequest) (*DeployServiceResponse, error)
 	// ─── Events ────────────────────────────────────────────────
 	StreamEvents(*emptypb.Empty, grpc.ServerStreamingServer[Event]) error
 	// ─── Cron ────────────────────────────────────────────────
@@ -550,6 +606,18 @@ func (UnimplementedHiveAPIServer) ListSecrets(context.Context, *emptypb.Empty) (
 }
 func (UnimplementedHiveAPIServer) DeleteSecret(context.Context, *DeleteSecretRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteSecret not implemented")
+}
+func (UnimplementedHiveAPIServer) RotateSecret(context.Context, *RotateSecretRequest) (*RotateSecretResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RotateSecret not implemented")
+}
+func (UnimplementedHiveAPIServer) SetNodeLabel(context.Context, *SetNodeLabelRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetNodeLabel not implemented")
+}
+func (UnimplementedHiveAPIServer) RemoveNodeLabel(context.Context, *RemoveNodeLabelRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemoveNodeLabel not implemented")
+}
+func (UnimplementedHiveAPIServer) DeployStack(context.Context, *DeployStackRequest) (*DeployServiceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeployStack not implemented")
 }
 func (UnimplementedHiveAPIServer) StreamEvents(*emptypb.Empty, grpc.ServerStreamingServer[Event]) error {
 	return status.Error(codes.Unimplemented, "method StreamEvents not implemented")
@@ -970,6 +1038,78 @@ func _HiveAPI_DeleteSecret_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HiveAPI_RotateSecret_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RotateSecretRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).RotateSecret(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_RotateSecret_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).RotateSecret(ctx, req.(*RotateSecretRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HiveAPI_SetNodeLabel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetNodeLabelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).SetNodeLabel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_SetNodeLabel_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).SetNodeLabel(ctx, req.(*SetNodeLabelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HiveAPI_RemoveNodeLabel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveNodeLabelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).RemoveNodeLabel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_RemoveNodeLabel_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).RemoveNodeLabel(ctx, req.(*RemoveNodeLabelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HiveAPI_DeployStack_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeployStackRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).DeployStack(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_DeployStack_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).DeployStack(ctx, req.(*DeployStackRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _HiveAPI_StreamEvents_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(emptypb.Empty)
 	if err := stream.RecvMsg(m); err != nil {
@@ -1211,6 +1351,22 @@ var HiveAPI_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteSecret",
 			Handler:    _HiveAPI_DeleteSecret_Handler,
+		},
+		{
+			MethodName: "RotateSecret",
+			Handler:    _HiveAPI_RotateSecret_Handler,
+		},
+		{
+			MethodName: "SetNodeLabel",
+			Handler:    _HiveAPI_SetNodeLabel_Handler,
+		},
+		{
+			MethodName: "RemoveNodeLabel",
+			Handler:    _HiveAPI_RemoveNodeLabel_Handler,
+		},
+		{
+			MethodName: "DeployStack",
+			Handler:    _HiveAPI_DeployStack_Handler,
 		},
 		{
 			MethodName: "ListCronJobs",

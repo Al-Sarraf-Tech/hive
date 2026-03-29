@@ -946,8 +946,9 @@ func (x *RestartServiceRequest) GetName() string {
 type UpdateServiceRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Image         string                 `protobuf:"bytes,2,opt,name=image,proto3" json:"image,omitempty"`        // new image (empty = no change)
-	Replicas      uint32                 `protobuf:"varint,3,opt,name=replicas,proto3" json:"replicas,omitempty"` // new replica count (0 = no change)
+	Image         string                 `protobuf:"bytes,2,opt,name=image,proto3" json:"image,omitempty"`                                                                       // new image (empty = no change)
+	Replicas      uint32                 `protobuf:"varint,3,opt,name=replicas,proto3" json:"replicas,omitempty"`                                                                // new replica count (0 = no change)
+	Env           map[string]string      `protobuf:"bytes,4,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // env var updates (merged into existing)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1001,6 +1002,13 @@ func (x *UpdateServiceRequest) GetReplicas() uint32 {
 		return x.Replicas
 	}
 	return 0
+}
+
+func (x *UpdateServiceRequest) GetEnv() map[string]string {
+	if x != nil {
+		return x.Env
+	}
+	return nil
 }
 
 type ListContainersRequest struct {
@@ -2707,6 +2715,266 @@ func (x *DeleteVolumeRequest) GetName() string {
 	return ""
 }
 
+type RotateSecretRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	NewValue      []byte                 `protobuf:"bytes,2,opt,name=new_value,json=newValue,proto3" json:"new_value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RotateSecretRequest) Reset() {
+	*x = RotateSecretRequest{}
+	mi := &file_hive_v1_api_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RotateSecretRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RotateSecretRequest) ProtoMessage() {}
+
+func (x *RotateSecretRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_hive_v1_api_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RotateSecretRequest.ProtoReflect.Descriptor instead.
+func (*RotateSecretRequest) Descriptor() ([]byte, []int) {
+	return file_hive_v1_api_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *RotateSecretRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *RotateSecretRequest) GetNewValue() []byte {
+	if x != nil {
+		return x.NewValue
+	}
+	return nil
+}
+
+type RotateSecretResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	RestartedServices []string               `protobuf:"bytes,1,rep,name=restarted_services,json=restartedServices,proto3" json:"restarted_services,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *RotateSecretResponse) Reset() {
+	*x = RotateSecretResponse{}
+	mi := &file_hive_v1_api_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RotateSecretResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RotateSecretResponse) ProtoMessage() {}
+
+func (x *RotateSecretResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_hive_v1_api_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RotateSecretResponse.ProtoReflect.Descriptor instead.
+func (*RotateSecretResponse) Descriptor() ([]byte, []int) {
+	return file_hive_v1_api_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *RotateSecretResponse) GetRestartedServices() []string {
+	if x != nil {
+		return x.RestartedServices
+	}
+	return nil
+}
+
+type SetNodeLabelRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Node          string                 `protobuf:"bytes,1,opt,name=node,proto3" json:"node,omitempty"`
+	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	Value         string                 `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetNodeLabelRequest) Reset() {
+	*x = SetNodeLabelRequest{}
+	mi := &file_hive_v1_api_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetNodeLabelRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetNodeLabelRequest) ProtoMessage() {}
+
+func (x *SetNodeLabelRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_hive_v1_api_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetNodeLabelRequest.ProtoReflect.Descriptor instead.
+func (*SetNodeLabelRequest) Descriptor() ([]byte, []int) {
+	return file_hive_v1_api_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *SetNodeLabelRequest) GetNode() string {
+	if x != nil {
+		return x.Node
+	}
+	return ""
+}
+
+func (x *SetNodeLabelRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *SetNodeLabelRequest) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+type RemoveNodeLabelRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Node          string                 `protobuf:"bytes,1,opt,name=node,proto3" json:"node,omitempty"`
+	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveNodeLabelRequest) Reset() {
+	*x = RemoveNodeLabelRequest{}
+	mi := &file_hive_v1_api_proto_msgTypes[50]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveNodeLabelRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveNodeLabelRequest) ProtoMessage() {}
+
+func (x *RemoveNodeLabelRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_hive_v1_api_proto_msgTypes[50]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveNodeLabelRequest.ProtoReflect.Descriptor instead.
+func (*RemoveNodeLabelRequest) Descriptor() ([]byte, []int) {
+	return file_hive_v1_api_proto_rawDescGZIP(), []int{50}
+}
+
+func (x *RemoveNodeLabelRequest) GetNode() string {
+	if x != nil {
+		return x.Node
+	}
+	return ""
+}
+
+func (x *RemoveNodeLabelRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+type DeployStackRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	StackName     string                 `protobuf:"bytes,1,opt,name=stack_name,json=stackName,proto3" json:"stack_name,omitempty"`
+	HivefileTomls []string               `protobuf:"bytes,2,rep,name=hivefile_tomls,json=hivefileTomls,proto3" json:"hivefile_tomls,omitempty"` // TOML content of each Hivefile
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeployStackRequest) Reset() {
+	*x = DeployStackRequest{}
+	mi := &file_hive_v1_api_proto_msgTypes[51]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeployStackRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeployStackRequest) ProtoMessage() {}
+
+func (x *DeployStackRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_hive_v1_api_proto_msgTypes[51]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeployStackRequest.ProtoReflect.Descriptor instead.
+func (*DeployStackRequest) Descriptor() ([]byte, []int) {
+	return file_hive_v1_api_proto_rawDescGZIP(), []int{51}
+}
+
+func (x *DeployStackRequest) GetStackName() string {
+	if x != nil {
+		return x.StackName
+	}
+	return ""
+}
+
+func (x *DeployStackRequest) GetHivefileTomls() []string {
+	if x != nil {
+		return x.HivefileTomls
+	}
+	return nil
+}
+
 var File_hive_v1_api_proto protoreflect.FileDescriptor
 
 const file_hive_v1_api_proto_rawDesc = "" +
@@ -2766,11 +3034,15 @@ const file_hive_v1_api_proto_rawDesc = "" +
 	"\x16RollbackServiceRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"+\n" +
 	"\x15RestartServiceRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\\\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xce\x01\n" +
 	"\x14UpdateServiceRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05image\x18\x02 \x01(\tR\x05image\x12\x1a\n" +
-	"\breplicas\x18\x03 \x01(\rR\breplicas\"W\n" +
+	"\breplicas\x18\x03 \x01(\rR\breplicas\x128\n" +
+	"\x03env\x18\x04 \x03(\v2&.hive.v1.UpdateServiceRequest.EnvEntryR\x03env\x1a6\n" +
+	"\bEnvEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"W\n" +
 	"\x15ListContainersRequest\x12!\n" +
 	"\fservice_name\x18\x01 \x01(\tR\vserviceName\x12\x1b\n" +
 	"\tnode_name\x18\x02 \x01(\tR\bnodeName\"L\n" +
@@ -2892,7 +3164,23 @@ const file_hive_v1_api_proto_rawDesc = "" +
 	"mountpoint\x18\x02 \x01(\tR\n" +
 	"mountpoint\")\n" +
 	"\x13DeleteVolumeRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name*\x97\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"D\n" +
+	"\x13RotateSecretRequest\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x1b\n" +
+	"\tnew_value\x18\x02 \x01(\fR\bnewValue\"E\n" +
+	"\x14RotateSecretResponse\x12-\n" +
+	"\x12restarted_services\x18\x01 \x03(\tR\x11restartedServices\"Q\n" +
+	"\x13SetNodeLabelRequest\x12\x12\n" +
+	"\x04node\x18\x01 \x01(\tR\x04node\x12\x10\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x03 \x01(\tR\x05value\">\n" +
+	"\x16RemoveNodeLabelRequest\x12\x12\n" +
+	"\x04node\x18\x01 \x01(\tR\x04node\x12\x10\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"Z\n" +
+	"\x12DeployStackRequest\x12\x1d\n" +
+	"\n" +
+	"stack_name\x18\x01 \x01(\tR\tstackName\x12%\n" +
+	"\x0ehivefile_tomls\x18\x02 \x03(\tR\rhivefileTomls*\x97\x01\n" +
 	"\x12ValidationSeverity\x12#\n" +
 	"\x1fVALIDATION_SEVERITY_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19VALIDATION_SEVERITY_ERROR\x10\x01\x12\x1f\n" +
@@ -2903,7 +3191,7 @@ const file_hive_v1_api_proto_rawDesc = "" +
 	"\x17DIFF_ACTION_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12DIFF_ACTION_CREATE\x10\x01\x12\x16\n" +
 	"\x12DIFF_ACTION_UPDATE\x10\x02\x12\x19\n" +
-	"\x15DIFF_ACTION_UNCHANGED\x10\x032\xf6\x10\n" +
+	"\x15DIFF_ACTION_UNCHANGED\x10\x032\xa1\x13\n" +
 	"\aHiveAPI\x12J\n" +
 	"\x10GetClusterStatus\x12\x16.google.protobuf.Empty\x1a\x1e.hive.v1.ClusterStatusResponse\x12H\n" +
 	"\vInitCluster\x12\x1b.hive.v1.InitClusterRequest\x1a\x1c.hive.v1.InitClusterResponse\x12H\n" +
@@ -2926,7 +3214,11 @@ const file_hive_v1_api_proto_rawDesc = "" +
 	"\rExecContainer\x12\x1d.hive.v1.ExecContainerRequest\x1a\x1e.hive.v1.ExecContainerResponse\x12>\n" +
 	"\tSetSecret\x12\x19.hive.v1.SetSecretRequest\x1a\x16.google.protobuf.Empty\x12C\n" +
 	"\vListSecrets\x12\x16.google.protobuf.Empty\x1a\x1c.hive.v1.ListSecretsResponse\x12D\n" +
-	"\fDeleteSecret\x12\x1c.hive.v1.DeleteSecretRequest\x1a\x16.google.protobuf.Empty\x128\n" +
+	"\fDeleteSecret\x12\x1c.hive.v1.DeleteSecretRequest\x1a\x16.google.protobuf.Empty\x12K\n" +
+	"\fRotateSecret\x12\x1c.hive.v1.RotateSecretRequest\x1a\x1d.hive.v1.RotateSecretResponse\x12D\n" +
+	"\fSetNodeLabel\x12\x1c.hive.v1.SetNodeLabelRequest\x1a\x16.google.protobuf.Empty\x12J\n" +
+	"\x0fRemoveNodeLabel\x12\x1f.hive.v1.RemoveNodeLabelRequest\x1a\x16.google.protobuf.Empty\x12J\n" +
+	"\vDeployStack\x12\x1b.hive.v1.DeployStackRequest\x1a\x1e.hive.v1.DeployServiceResponse\x128\n" +
 	"\fStreamEvents\x12\x16.google.protobuf.Empty\x1a\x0e.hive.v1.Event0\x01\x12E\n" +
 	"\fListCronJobs\x12\x16.google.protobuf.Empty\x1a\x1d.hive.v1.ListCronJobsResponse\x12W\n" +
 	"\x10GetServiceHealth\x12 .hive.v1.GetServiceHealthRequest\x1a!.hive.v1.GetServiceHealthResponse\x12E\n" +
@@ -2951,7 +3243,7 @@ func file_hive_v1_api_proto_rawDescGZIP() []byte {
 }
 
 var file_hive_v1_api_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_hive_v1_api_proto_msgTypes = make([]protoimpl.MessageInfo, 48)
+var file_hive_v1_api_proto_msgTypes = make([]protoimpl.MessageInfo, 54)
 var file_hive_v1_api_proto_goTypes = []any{
 	(ValidationSeverity)(0),          // 0: hive.v1.ValidationSeverity
 	(DiffAction)(0),                  // 1: hive.v1.DiffAction
@@ -3002,96 +3294,111 @@ var file_hive_v1_api_proto_goTypes = []any{
 	(*CreateVolumeRequest)(nil),      // 46: hive.v1.CreateVolumeRequest
 	(*CreateVolumeResponse)(nil),     // 47: hive.v1.CreateVolumeResponse
 	(*DeleteVolumeRequest)(nil),      // 48: hive.v1.DeleteVolumeRequest
-	nil,                              // 49: hive.v1.ClusterStatusResponse.ContainersPerNodeEntry
-	(*Node)(nil),                     // 50: hive.v1.Node
-	(*Event)(nil),                    // 51: hive.v1.Event
-	(*Service)(nil),                  // 52: hive.v1.Service
-	(*Container)(nil),                // 53: hive.v1.Container
-	(*HealthEvent)(nil),              // 54: hive.v1.HealthEvent
-	(*emptypb.Empty)(nil),            // 55: google.protobuf.Empty
+	(*RotateSecretRequest)(nil),      // 49: hive.v1.RotateSecretRequest
+	(*RotateSecretResponse)(nil),     // 50: hive.v1.RotateSecretResponse
+	(*SetNodeLabelRequest)(nil),      // 51: hive.v1.SetNodeLabelRequest
+	(*RemoveNodeLabelRequest)(nil),   // 52: hive.v1.RemoveNodeLabelRequest
+	(*DeployStackRequest)(nil),       // 53: hive.v1.DeployStackRequest
+	nil,                              // 54: hive.v1.ClusterStatusResponse.ContainersPerNodeEntry
+	nil,                              // 55: hive.v1.UpdateServiceRequest.EnvEntry
+	(*Node)(nil),                     // 56: hive.v1.Node
+	(*Event)(nil),                    // 57: hive.v1.Event
+	(*Service)(nil),                  // 58: hive.v1.Service
+	(*Container)(nil),                // 59: hive.v1.Container
+	(*HealthEvent)(nil),              // 60: hive.v1.HealthEvent
+	(*emptypb.Empty)(nil),            // 61: google.protobuf.Empty
 }
 var file_hive_v1_api_proto_depIdxs = []int32{
-	50, // 0: hive.v1.JoinClusterResponse.nodes:type_name -> hive.v1.Node
-	50, // 1: hive.v1.ClusterStatusResponse.nodes:type_name -> hive.v1.Node
-	51, // 2: hive.v1.ClusterStatusResponse.recent_events:type_name -> hive.v1.Event
-	49, // 3: hive.v1.ClusterStatusResponse.containers_per_node:type_name -> hive.v1.ClusterStatusResponse.ContainersPerNodeEntry
-	50, // 4: hive.v1.ListNodesResponse.nodes:type_name -> hive.v1.Node
-	52, // 5: hive.v1.DeployServiceResponse.services:type_name -> hive.v1.Service
-	52, // 6: hive.v1.ListServicesResponse.services:type_name -> hive.v1.Service
-	53, // 7: hive.v1.ListContainersResponse.containers:type_name -> hive.v1.Container
-	27, // 8: hive.v1.ListSecretsResponse.secrets:type_name -> hive.v1.SecretMeta
-	29, // 9: hive.v1.ListCronJobsResponse.jobs:type_name -> hive.v1.CronJob
-	33, // 10: hive.v1.ValidateHivefileResponse.issues:type_name -> hive.v1.ValidationIssue
-	0,  // 11: hive.v1.ValidationIssue.severity:type_name -> hive.v1.ValidationSeverity
-	54, // 12: hive.v1.GetServiceHealthResponse.events:type_name -> hive.v1.HealthEvent
-	43, // 13: hive.v1.DiffDeployResponse.diffs:type_name -> hive.v1.ServiceDiff
-	1,  // 14: hive.v1.ServiceDiff.action:type_name -> hive.v1.DiffAction
-	45, // 15: hive.v1.ListVolumesResponse.volumes:type_name -> hive.v1.VolumeInfo
-	55, // 16: hive.v1.HiveAPI.GetClusterStatus:input_type -> google.protobuf.Empty
-	2,  // 17: hive.v1.HiveAPI.InitCluster:input_type -> hive.v1.InitClusterRequest
-	4,  // 18: hive.v1.HiveAPI.JoinCluster:input_type -> hive.v1.JoinClusterRequest
-	55, // 19: hive.v1.HiveAPI.ListNodes:input_type -> google.protobuf.Empty
-	8,  // 20: hive.v1.HiveAPI.GetNode:input_type -> hive.v1.GetNodeRequest
-	9,  // 21: hive.v1.HiveAPI.DrainNode:input_type -> hive.v1.DrainNodeRequest
-	31, // 22: hive.v1.HiveAPI.ValidateHivefile:input_type -> hive.v1.ValidateHivefileRequest
-	10, // 23: hive.v1.HiveAPI.DeployService:input_type -> hive.v1.DeployServiceRequest
-	55, // 24: hive.v1.HiveAPI.ListServices:input_type -> google.protobuf.Empty
-	13, // 25: hive.v1.HiveAPI.GetService:input_type -> hive.v1.GetServiceRequest
-	14, // 26: hive.v1.HiveAPI.StopService:input_type -> hive.v1.StopServiceRequest
-	15, // 27: hive.v1.HiveAPI.ScaleService:input_type -> hive.v1.ScaleServiceRequest
-	16, // 28: hive.v1.HiveAPI.RollbackService:input_type -> hive.v1.RollbackServiceRequest
-	17, // 29: hive.v1.HiveAPI.RestartService:input_type -> hive.v1.RestartServiceRequest
-	18, // 30: hive.v1.HiveAPI.UpdateService:input_type -> hive.v1.UpdateServiceRequest
-	19, // 31: hive.v1.HiveAPI.ListContainers:input_type -> hive.v1.ListContainersRequest
-	21, // 32: hive.v1.HiveAPI.ContainerLogs:input_type -> hive.v1.ContainerLogsRequest
-	23, // 33: hive.v1.HiveAPI.ExecContainer:input_type -> hive.v1.ExecContainerRequest
-	25, // 34: hive.v1.HiveAPI.SetSecret:input_type -> hive.v1.SetSecretRequest
-	55, // 35: hive.v1.HiveAPI.ListSecrets:input_type -> google.protobuf.Empty
-	28, // 36: hive.v1.HiveAPI.DeleteSecret:input_type -> hive.v1.DeleteSecretRequest
-	55, // 37: hive.v1.HiveAPI.StreamEvents:input_type -> google.protobuf.Empty
-	55, // 38: hive.v1.HiveAPI.ListCronJobs:input_type -> google.protobuf.Empty
-	36, // 39: hive.v1.HiveAPI.GetServiceHealth:input_type -> hive.v1.GetServiceHealthRequest
-	41, // 40: hive.v1.HiveAPI.DiffDeploy:input_type -> hive.v1.DiffDeployRequest
-	55, // 41: hive.v1.HiveAPI.ListVolumes:input_type -> google.protobuf.Empty
-	46, // 42: hive.v1.HiveAPI.CreateVolume:input_type -> hive.v1.CreateVolumeRequest
-	48, // 43: hive.v1.HiveAPI.DeleteVolume:input_type -> hive.v1.DeleteVolumeRequest
-	55, // 44: hive.v1.HiveAPI.ExportCluster:input_type -> google.protobuf.Empty
-	39, // 45: hive.v1.HiveAPI.ImportCluster:input_type -> hive.v1.ImportClusterRequest
-	6,  // 46: hive.v1.HiveAPI.GetClusterStatus:output_type -> hive.v1.ClusterStatusResponse
-	3,  // 47: hive.v1.HiveAPI.InitCluster:output_type -> hive.v1.InitClusterResponse
-	5,  // 48: hive.v1.HiveAPI.JoinCluster:output_type -> hive.v1.JoinClusterResponse
-	7,  // 49: hive.v1.HiveAPI.ListNodes:output_type -> hive.v1.ListNodesResponse
-	50, // 50: hive.v1.HiveAPI.GetNode:output_type -> hive.v1.Node
-	55, // 51: hive.v1.HiveAPI.DrainNode:output_type -> google.protobuf.Empty
-	32, // 52: hive.v1.HiveAPI.ValidateHivefile:output_type -> hive.v1.ValidateHivefileResponse
-	11, // 53: hive.v1.HiveAPI.DeployService:output_type -> hive.v1.DeployServiceResponse
-	12, // 54: hive.v1.HiveAPI.ListServices:output_type -> hive.v1.ListServicesResponse
-	52, // 55: hive.v1.HiveAPI.GetService:output_type -> hive.v1.Service
-	55, // 56: hive.v1.HiveAPI.StopService:output_type -> google.protobuf.Empty
-	55, // 57: hive.v1.HiveAPI.ScaleService:output_type -> google.protobuf.Empty
-	55, // 58: hive.v1.HiveAPI.RollbackService:output_type -> google.protobuf.Empty
-	55, // 59: hive.v1.HiveAPI.RestartService:output_type -> google.protobuf.Empty
-	55, // 60: hive.v1.HiveAPI.UpdateService:output_type -> google.protobuf.Empty
-	20, // 61: hive.v1.HiveAPI.ListContainers:output_type -> hive.v1.ListContainersResponse
-	22, // 62: hive.v1.HiveAPI.ContainerLogs:output_type -> hive.v1.LogEntry
-	24, // 63: hive.v1.HiveAPI.ExecContainer:output_type -> hive.v1.ExecContainerResponse
-	55, // 64: hive.v1.HiveAPI.SetSecret:output_type -> google.protobuf.Empty
-	26, // 65: hive.v1.HiveAPI.ListSecrets:output_type -> hive.v1.ListSecretsResponse
-	55, // 66: hive.v1.HiveAPI.DeleteSecret:output_type -> google.protobuf.Empty
-	51, // 67: hive.v1.HiveAPI.StreamEvents:output_type -> hive.v1.Event
-	30, // 68: hive.v1.HiveAPI.ListCronJobs:output_type -> hive.v1.ListCronJobsResponse
-	37, // 69: hive.v1.HiveAPI.GetServiceHealth:output_type -> hive.v1.GetServiceHealthResponse
-	42, // 70: hive.v1.HiveAPI.DiffDeploy:output_type -> hive.v1.DiffDeployResponse
-	44, // 71: hive.v1.HiveAPI.ListVolumes:output_type -> hive.v1.ListVolumesResponse
-	47, // 72: hive.v1.HiveAPI.CreateVolume:output_type -> hive.v1.CreateVolumeResponse
-	55, // 73: hive.v1.HiveAPI.DeleteVolume:output_type -> google.protobuf.Empty
-	38, // 74: hive.v1.HiveAPI.ExportCluster:output_type -> hive.v1.ExportClusterResponse
-	40, // 75: hive.v1.HiveAPI.ImportCluster:output_type -> hive.v1.ImportClusterResponse
-	46, // [46:76] is the sub-list for method output_type
-	16, // [16:46] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	56, // 0: hive.v1.JoinClusterResponse.nodes:type_name -> hive.v1.Node
+	56, // 1: hive.v1.ClusterStatusResponse.nodes:type_name -> hive.v1.Node
+	57, // 2: hive.v1.ClusterStatusResponse.recent_events:type_name -> hive.v1.Event
+	54, // 3: hive.v1.ClusterStatusResponse.containers_per_node:type_name -> hive.v1.ClusterStatusResponse.ContainersPerNodeEntry
+	56, // 4: hive.v1.ListNodesResponse.nodes:type_name -> hive.v1.Node
+	58, // 5: hive.v1.DeployServiceResponse.services:type_name -> hive.v1.Service
+	58, // 6: hive.v1.ListServicesResponse.services:type_name -> hive.v1.Service
+	55, // 7: hive.v1.UpdateServiceRequest.env:type_name -> hive.v1.UpdateServiceRequest.EnvEntry
+	59, // 8: hive.v1.ListContainersResponse.containers:type_name -> hive.v1.Container
+	27, // 9: hive.v1.ListSecretsResponse.secrets:type_name -> hive.v1.SecretMeta
+	29, // 10: hive.v1.ListCronJobsResponse.jobs:type_name -> hive.v1.CronJob
+	33, // 11: hive.v1.ValidateHivefileResponse.issues:type_name -> hive.v1.ValidationIssue
+	0,  // 12: hive.v1.ValidationIssue.severity:type_name -> hive.v1.ValidationSeverity
+	60, // 13: hive.v1.GetServiceHealthResponse.events:type_name -> hive.v1.HealthEvent
+	43, // 14: hive.v1.DiffDeployResponse.diffs:type_name -> hive.v1.ServiceDiff
+	1,  // 15: hive.v1.ServiceDiff.action:type_name -> hive.v1.DiffAction
+	45, // 16: hive.v1.ListVolumesResponse.volumes:type_name -> hive.v1.VolumeInfo
+	61, // 17: hive.v1.HiveAPI.GetClusterStatus:input_type -> google.protobuf.Empty
+	2,  // 18: hive.v1.HiveAPI.InitCluster:input_type -> hive.v1.InitClusterRequest
+	4,  // 19: hive.v1.HiveAPI.JoinCluster:input_type -> hive.v1.JoinClusterRequest
+	61, // 20: hive.v1.HiveAPI.ListNodes:input_type -> google.protobuf.Empty
+	8,  // 21: hive.v1.HiveAPI.GetNode:input_type -> hive.v1.GetNodeRequest
+	9,  // 22: hive.v1.HiveAPI.DrainNode:input_type -> hive.v1.DrainNodeRequest
+	31, // 23: hive.v1.HiveAPI.ValidateHivefile:input_type -> hive.v1.ValidateHivefileRequest
+	10, // 24: hive.v1.HiveAPI.DeployService:input_type -> hive.v1.DeployServiceRequest
+	61, // 25: hive.v1.HiveAPI.ListServices:input_type -> google.protobuf.Empty
+	13, // 26: hive.v1.HiveAPI.GetService:input_type -> hive.v1.GetServiceRequest
+	14, // 27: hive.v1.HiveAPI.StopService:input_type -> hive.v1.StopServiceRequest
+	15, // 28: hive.v1.HiveAPI.ScaleService:input_type -> hive.v1.ScaleServiceRequest
+	16, // 29: hive.v1.HiveAPI.RollbackService:input_type -> hive.v1.RollbackServiceRequest
+	17, // 30: hive.v1.HiveAPI.RestartService:input_type -> hive.v1.RestartServiceRequest
+	18, // 31: hive.v1.HiveAPI.UpdateService:input_type -> hive.v1.UpdateServiceRequest
+	19, // 32: hive.v1.HiveAPI.ListContainers:input_type -> hive.v1.ListContainersRequest
+	21, // 33: hive.v1.HiveAPI.ContainerLogs:input_type -> hive.v1.ContainerLogsRequest
+	23, // 34: hive.v1.HiveAPI.ExecContainer:input_type -> hive.v1.ExecContainerRequest
+	25, // 35: hive.v1.HiveAPI.SetSecret:input_type -> hive.v1.SetSecretRequest
+	61, // 36: hive.v1.HiveAPI.ListSecrets:input_type -> google.protobuf.Empty
+	28, // 37: hive.v1.HiveAPI.DeleteSecret:input_type -> hive.v1.DeleteSecretRequest
+	49, // 38: hive.v1.HiveAPI.RotateSecret:input_type -> hive.v1.RotateSecretRequest
+	51, // 39: hive.v1.HiveAPI.SetNodeLabel:input_type -> hive.v1.SetNodeLabelRequest
+	52, // 40: hive.v1.HiveAPI.RemoveNodeLabel:input_type -> hive.v1.RemoveNodeLabelRequest
+	53, // 41: hive.v1.HiveAPI.DeployStack:input_type -> hive.v1.DeployStackRequest
+	61, // 42: hive.v1.HiveAPI.StreamEvents:input_type -> google.protobuf.Empty
+	61, // 43: hive.v1.HiveAPI.ListCronJobs:input_type -> google.protobuf.Empty
+	36, // 44: hive.v1.HiveAPI.GetServiceHealth:input_type -> hive.v1.GetServiceHealthRequest
+	41, // 45: hive.v1.HiveAPI.DiffDeploy:input_type -> hive.v1.DiffDeployRequest
+	61, // 46: hive.v1.HiveAPI.ListVolumes:input_type -> google.protobuf.Empty
+	46, // 47: hive.v1.HiveAPI.CreateVolume:input_type -> hive.v1.CreateVolumeRequest
+	48, // 48: hive.v1.HiveAPI.DeleteVolume:input_type -> hive.v1.DeleteVolumeRequest
+	61, // 49: hive.v1.HiveAPI.ExportCluster:input_type -> google.protobuf.Empty
+	39, // 50: hive.v1.HiveAPI.ImportCluster:input_type -> hive.v1.ImportClusterRequest
+	6,  // 51: hive.v1.HiveAPI.GetClusterStatus:output_type -> hive.v1.ClusterStatusResponse
+	3,  // 52: hive.v1.HiveAPI.InitCluster:output_type -> hive.v1.InitClusterResponse
+	5,  // 53: hive.v1.HiveAPI.JoinCluster:output_type -> hive.v1.JoinClusterResponse
+	7,  // 54: hive.v1.HiveAPI.ListNodes:output_type -> hive.v1.ListNodesResponse
+	56, // 55: hive.v1.HiveAPI.GetNode:output_type -> hive.v1.Node
+	61, // 56: hive.v1.HiveAPI.DrainNode:output_type -> google.protobuf.Empty
+	32, // 57: hive.v1.HiveAPI.ValidateHivefile:output_type -> hive.v1.ValidateHivefileResponse
+	11, // 58: hive.v1.HiveAPI.DeployService:output_type -> hive.v1.DeployServiceResponse
+	12, // 59: hive.v1.HiveAPI.ListServices:output_type -> hive.v1.ListServicesResponse
+	58, // 60: hive.v1.HiveAPI.GetService:output_type -> hive.v1.Service
+	61, // 61: hive.v1.HiveAPI.StopService:output_type -> google.protobuf.Empty
+	61, // 62: hive.v1.HiveAPI.ScaleService:output_type -> google.protobuf.Empty
+	61, // 63: hive.v1.HiveAPI.RollbackService:output_type -> google.protobuf.Empty
+	61, // 64: hive.v1.HiveAPI.RestartService:output_type -> google.protobuf.Empty
+	61, // 65: hive.v1.HiveAPI.UpdateService:output_type -> google.protobuf.Empty
+	20, // 66: hive.v1.HiveAPI.ListContainers:output_type -> hive.v1.ListContainersResponse
+	22, // 67: hive.v1.HiveAPI.ContainerLogs:output_type -> hive.v1.LogEntry
+	24, // 68: hive.v1.HiveAPI.ExecContainer:output_type -> hive.v1.ExecContainerResponse
+	61, // 69: hive.v1.HiveAPI.SetSecret:output_type -> google.protobuf.Empty
+	26, // 70: hive.v1.HiveAPI.ListSecrets:output_type -> hive.v1.ListSecretsResponse
+	61, // 71: hive.v1.HiveAPI.DeleteSecret:output_type -> google.protobuf.Empty
+	50, // 72: hive.v1.HiveAPI.RotateSecret:output_type -> hive.v1.RotateSecretResponse
+	61, // 73: hive.v1.HiveAPI.SetNodeLabel:output_type -> google.protobuf.Empty
+	61, // 74: hive.v1.HiveAPI.RemoveNodeLabel:output_type -> google.protobuf.Empty
+	11, // 75: hive.v1.HiveAPI.DeployStack:output_type -> hive.v1.DeployServiceResponse
+	57, // 76: hive.v1.HiveAPI.StreamEvents:output_type -> hive.v1.Event
+	30, // 77: hive.v1.HiveAPI.ListCronJobs:output_type -> hive.v1.ListCronJobsResponse
+	37, // 78: hive.v1.HiveAPI.GetServiceHealth:output_type -> hive.v1.GetServiceHealthResponse
+	42, // 79: hive.v1.HiveAPI.DiffDeploy:output_type -> hive.v1.DiffDeployResponse
+	44, // 80: hive.v1.HiveAPI.ListVolumes:output_type -> hive.v1.ListVolumesResponse
+	47, // 81: hive.v1.HiveAPI.CreateVolume:output_type -> hive.v1.CreateVolumeResponse
+	61, // 82: hive.v1.HiveAPI.DeleteVolume:output_type -> google.protobuf.Empty
+	38, // 83: hive.v1.HiveAPI.ExportCluster:output_type -> hive.v1.ExportClusterResponse
+	40, // 84: hive.v1.HiveAPI.ImportCluster:output_type -> hive.v1.ImportClusterResponse
+	51, // [51:85] is the sub-list for method output_type
+	17, // [17:51] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_hive_v1_api_proto_init() }
@@ -3106,7 +3413,7 @@ func file_hive_v1_api_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hive_v1_api_proto_rawDesc), len(file_hive_v1_api_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   48,
+			NumMessages:   54,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

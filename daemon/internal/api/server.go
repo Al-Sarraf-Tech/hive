@@ -1914,6 +1914,15 @@ func (s *Server) UpdateService(ctx context.Context, req *hivev1.UpdateServiceReq
 		svcDef.Replicas = int(req.Replicas)
 		changed = true
 	}
+	if len(req.Env) > 0 {
+		if svcDef.Env == nil {
+			svcDef.Env = make(map[string]string)
+		}
+		for k, v := range req.Env {
+			svcDef.Env[k] = v
+		}
+		changed = true
+	}
 	if !changed {
 		return &emptypb.Empty{}, nil
 	}
@@ -1927,22 +1936,221 @@ func (s *Server) UpdateService(ctx context.Context, req *hivev1.UpdateServiceReq
 		return nil, status.Errorf(codes.Internal, "failed to persist updated service definition: %v", err)
 	}
 
-	slog.Info("service definition updated, triggering restart",
+	slog.Info("service definition updated, triggering rolling restart",
 		"service", req.Name,
 		"image", svcDef.Image,
 		"replicas", svcDef.Replicas,
 	)
 
-	// Release the deploy lock before calling RestartService (which acquires it)
-	s.deployMu.Unlock()
-	_, err = s.RestartService(ctx, &hivev1.RestartServiceRequest{Name: req.Name})
-	s.deployMu.Lock() // re-acquire so the deferred Unlock is balanced
-
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "update succeeded but restart failed for %q: %v", req.Name, err)
+	// Do a rolling restart with health checks between replicas
+	if err := s.rollingRestart(ctx, req.Name, svcDef); err != nil {
+		return nil, status.Errorf(codes.Internal, "update succeeded but rolling restart failed for %q: %v", req.Name, err)
 	}
 
 	return &emptypb.Empty{}, nil
+}
+
+// rollingRestart restarts each replica of a service one at a time, waiting
+// for each to pass health checks before proceeding to the next.
+func (s *Server) rollingRestart(ctx context.Context, name string, svcDef hivefile.ServiceDef) error {
+	containers, _ := s.container.ListContainers(ctx, map[string]string{
+		"hive.managed": "true",
+		"hive.service": name,
+	})
+	// Filter out ingress proxy containers
+	var replicas []container.ContainerInfo
+	for _, c := range containers {
+		if c.Labels["hive.ingress"] != "true" && c.Status == "running" {
+			replicas = append(replicas, c)
+		}
+	}
+
+	if len(replicas) == 0 {
+		return nil
+	}
+
+	// Resolve secrets for env injection
+	secretKeys, _ := s.store.List("secrets")
+	secrets := make(map[string]string, len(secretKeys))
+	for _, key := range secretKeys {
+		val, err := s.store.Get("secrets", key)
+		if err != nil || val == nil {
+			continue
+		}
+		if s.vault != nil {
+			if dec, decErr := s.vault.Decrypt(val); decErr == nil {
+				secrets[key] = string(dec)
+			}
+		} else {
+			secrets[key] = string(val)
+		}
+	}
+	env, _ := hivefile.ResolveEnv(svcDef.Env, secrets)
+	memBytes, _ := hivefile.ParseMemory(svcDef.Resources.Memory)
+
+	// Get the network name
+	networkName := ""
+	if netData, err := s.store.Get("meta", "network:"+name); err == nil && netData != nil {
+		networkName = string(netData)
+	}
+
+	for i, c := range replicas {
+		replicaIdx := 0
+		if label := c.Labels["hive.replica"]; label != "" {
+			fmt.Sscanf(label, "%d", &replicaIdx)
+		}
+
+		slog.Info("rolling restart: stopping replica", "service", name, "replica", replicaIdx, "index", i+1, "total", len(replicas))
+
+		// Stop and remove old container
+		warnErr(s.container.Stop(ctx, c.ID, 10), "failed to stop container")
+		warnErr(s.container.Remove(ctx, c.ID), "failed to remove container")
+
+		// Create new container
+		if _, err := s.deployLocalReplica(ctx, name, replicaIdx, svcDef, env, memBytes, networkName); err != nil {
+			return fmt.Errorf("rolling restart replica %d: %w", replicaIdx, err)
+		}
+
+		// Wait for health check to pass (if configured)
+		if svcDef.Health.Port > 0 || len(svcDef.Health.ExecCommand) > 0 {
+			checkTimeout := 5 * time.Second
+			if d, parseErr := time.ParseDuration(svcDef.Health.Timeout); parseErr == nil && d > 0 {
+				checkTimeout = d
+			}
+			healthy := false
+			for attempt := 0; attempt < 10; attempt++ {
+				time.Sleep(checkTimeout)
+				cfg := health.Config{
+					Host: "127.0.0.1",
+					Port: svcDef.Health.Port,
+					Path: svcDef.Health.Path,
+				}
+				switch svcDef.Health.Type {
+				case "http":
+					cfg.Type = health.CheckHTTP
+				case "tcp":
+					cfg.Type = health.CheckTCP
+				case "exec":
+					cfg.Type = health.CheckExec
+				}
+				result := s.health.Check(ctx, cfg)
+				if result.Healthy {
+					healthy = true
+					break
+				}
+			}
+			if !healthy {
+				slog.Warn("rolling restart: replica did not pass health check, continuing", "service", name, "replica", replicaIdx)
+			}
+		}
+	}
+
+	slog.Info("rolling restart complete", "service", name, "replicas", len(replicas))
+	return nil
+}
+
+// RotateSecret updates a secret value and rolling-restarts all services that reference it.
+func (s *Server) RotateSecret(ctx context.Context, req *hivev1.RotateSecretRequest) (*hivev1.RotateSecretResponse, error) {
+	if req.Key == "" {
+		return nil, status.Error(codes.InvalidArgument, "secret key is required")
+	}
+	if len(req.NewValue) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "secret value is required")
+	}
+
+	// Encrypt and store the new value
+	var encrypted []byte
+	if s.vault != nil {
+		enc, err := s.vault.Encrypt(req.NewValue)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "encrypt secret: %v", err)
+		}
+		encrypted = enc
+	} else {
+		encrypted = req.NewValue
+	}
+	if err := s.store.Put("secrets", req.Key, encrypted); err != nil {
+		return nil, status.Errorf(codes.Internal, "store secret: %v", err)
+	}
+
+	slog.Info("secret rotated", "key", req.Key)
+
+	// Find all services referencing this secret
+	var restarted []string
+	svcKeys, _ := s.store.List("services")
+	for _, svcName := range svcKeys {
+		data, err := s.store.Get("services", svcName)
+		if err != nil || data == nil {
+			continue
+		}
+		var svcDef hivefile.ServiceDef
+		if err := json.Unmarshal(data, &svcDef); err != nil {
+			continue
+		}
+		// Check if any env var references the secret via template placeholder
+		found := false
+		for _, v := range svcDef.Env {
+			if hivefile.ReferencesSecret(v, req.Key) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			continue
+		}
+
+		slog.Info("secret rotation: restarting service", "service", svcName, "secret", req.Key)
+		s.deployMu.Lock()
+		err = s.rollingRestart(ctx, svcName, svcDef)
+		s.deployMu.Unlock()
+		if err != nil {
+			slog.Error("secret rotation: restart failed", "service", svcName, "error", err)
+		} else {
+			restarted = append(restarted, svcName)
+		}
+	}
+
+	return &hivev1.RotateSecretResponse{RestartedServices: restarted}, nil
+}
+
+// SetNodeLabel sets a label on a node (persisted in store).
+func (s *Server) SetNodeLabel(ctx context.Context, req *hivev1.SetNodeLabelRequest) (*emptypb.Empty, error) {
+	if req.Node == "" || req.Key == "" {
+		return nil, status.Error(codes.InvalidArgument, "node and key are required")
+	}
+	labels := s.getNodeLabels(req.Node)
+	labels[req.Key] = req.Value
+	data, _ := json.Marshal(labels)
+	if err := s.store.Put("meta", "node_labels:"+req.Node, data); err != nil {
+		return nil, status.Errorf(codes.Internal, "persist label: %v", err)
+	}
+	slog.Info("node label set", "node", req.Node, "key", req.Key, "value", req.Value)
+	return &emptypb.Empty{}, nil
+}
+
+// RemoveNodeLabel removes a label from a node.
+func (s *Server) RemoveNodeLabel(ctx context.Context, req *hivev1.RemoveNodeLabelRequest) (*emptypb.Empty, error) {
+	if req.Node == "" || req.Key == "" {
+		return nil, status.Error(codes.InvalidArgument, "node and key are required")
+	}
+	labels := s.getNodeLabels(req.Node)
+	delete(labels, req.Key)
+	data, _ := json.Marshal(labels)
+	if err := s.store.Put("meta", "node_labels:"+req.Node, data); err != nil {
+		return nil, status.Errorf(codes.Internal, "persist label: %v", err)
+	}
+	slog.Info("node label removed", "node", req.Node, "key", req.Key)
+	return &emptypb.Empty{}, nil
+}
+
+// getNodeLabels loads labels for a node from the store.
+func (s *Server) getNodeLabels(nodeName string) map[string]string {
+	data, _ := s.store.Get("meta", "node_labels:"+nodeName)
+	labels := make(map[string]string)
+	if data != nil {
+		json.Unmarshal(data, &labels)
+	}
+	return labels
 }
 
 // ListContainers lists containers, optionally filtered.

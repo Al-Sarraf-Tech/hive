@@ -14,6 +14,11 @@ import (
 // secretRefPattern matches {{ secret:key-name }} placeholders.
 var secretRefPattern = regexp.MustCompile(`\{\{\s*secret:([a-zA-Z0-9_-]+)\s*\}\}`)
 
+// ReferencesSecret checks if a string contains a reference to the given secret key.
+func ReferencesSecret(s, key string) bool {
+	return secretRefPattern.MatchString(s) && strings.Contains(s, key)
+}
+
 // Hivefile is the top-level structure of a hive.toml file.
 type Hivefile struct {
 	Include []string              `toml:"include"`
@@ -38,6 +43,23 @@ type ServiceDef struct {
 	Cron          []CronDef         `toml:"cron"`
 	RestartPolicy string            `toml:"restart_policy"`
 	Ingress       IngressDef        `toml:"ingress"`
+	Constraints   []string          `toml:"constraints"` // placement constraints: "key=value", "key!=value"
+	Autoscale     AutoscaleDef      `toml:"autoscale"`
+	Mesh          MeshDef           `toml:"mesh"`
+}
+
+// AutoscaleDef configures horizontal autoscaling.
+type AutoscaleDef struct {
+	Min          int     `toml:"min"`
+	Max          int     `toml:"max"`
+	CPUTarget    float64 `toml:"cpu_target"`    // target CPU %, e.g. 70.0
+	CooldownUp   string  `toml:"cooldown_up"`   // e.g. "60s"
+	CooldownDown string  `toml:"cooldown_down"` // e.g. "300s"
+}
+
+// MeshDef configures service mesh features.
+type MeshDef struct {
+	MTLS bool `toml:"mtls"` // enable mutual TLS between this service and others
 }
 
 // IngressDef configures an auto-managed load balancer for the service.

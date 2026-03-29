@@ -2,11 +2,14 @@
 package scheduler
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/jalsarraf0/hive/daemon/internal/hivefile"
 	"github.com/jalsarraf0/hive/daemon/internal/mesh"
+	"github.com/jalsarraf0/hive/daemon/internal/store"
 )
 
 // Candidate is a node that can run a service, with a fitness score.
@@ -20,11 +23,30 @@ type Candidate struct {
 type Scheduler struct {
 	mesh      *mesh.Mesh
 	localName string
+	store     *store.Store
 }
 
 // New creates a scheduler that uses the mesh for peer awareness.
 func New(m *mesh.Mesh, localName string) *Scheduler {
 	return &Scheduler{mesh: m, localName: localName}
+}
+
+// SetStore sets the store for reading node labels.
+func (s *Scheduler) SetStore(st *store.Store) {
+	s.store = st
+}
+
+// getNodeLabels loads labels for a node from the store.
+func (s *Scheduler) getNodeLabels(nodeName string) map[string]string {
+	labels := make(map[string]string)
+	if s.store == nil {
+		return labels
+	}
+	data, _ := s.store.Get("meta", "node_labels:"+nodeName)
+	if data != nil {
+		json.Unmarshal(data, &labels)
+	}
+	return labels
 }
 
 // Pick selects the best node to run the given service.
@@ -106,14 +128,43 @@ func (s *Scheduler) matchesConstraints(node mesh.NodeInfo, svc hivefile.ServiceD
 	if svc.Resources.Memory != "" {
 		required, err := hivefile.ParseMemory(svc.Resources.Memory)
 		if err == nil && required > 0 {
-			// Only reject if we have resource info for this node
 			if node.MemAvail > 0 && node.MemAvail < uint64(required) {
 				return false
 			}
 		}
 	}
 
+	// CPU constraint: reject nodes that don't have enough CPU cores
+	if svc.Resources.CPUs > 0 && node.CPUCores > 0 {
+		if float64(node.CPUCores) < svc.Resources.CPUs {
+			return false
+		}
+	}
+
+	// Custom placement constraints: key=value, key!=value
+	for _, constraint := range svc.Constraints {
+		if !matchConstraint(s.getNodeLabels(node.Name), constraint) {
+			return false
+		}
+	}
+
 	return true
+}
+
+// matchConstraint evaluates a single constraint expression against node labels.
+// Supported: "key=value" (equality), "key!=value" (inequality).
+func matchConstraint(labels map[string]string, expr string) bool {
+	if idx := strings.Index(expr, "!="); idx > 0 {
+		key, value := expr[:idx], expr[idx+2:]
+		return labels[key] != value
+	}
+	if idx := strings.Index(expr, "="); idx > 0 {
+		key, value := expr[:idx], expr[idx+1:]
+		return labels[key] == value
+	}
+	// Bare key = must be present with any value
+	_, ok := labels[expr]
+	return ok
 }
 
 // score computes a fitness score for a node. Higher is better.
