@@ -998,6 +998,106 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 				}
 				replicasRunning = uint32(len(existingContainers))
 			}
+		} else if isUpdate && strategy == "canary" {
+			// Canary strategy: deploy 1 canary replica with low traffic weight,
+			// health check it, then promote by replacing remaining replicas.
+			// Requires ingress to be configured for weighted routing.
+			if svcDef.Ingress.Port == 0 {
+				return nil, status.Errorf(codes.InvalidArgument, "canary strategy requires [ingress] to be configured for service %q", name)
+			}
+			canaryWeight := svcDef.Deploy.CanaryWeight
+			if canaryWeight <= 0 {
+				canaryWeight = 10 // default 10% to canary
+			}
+
+			slog.Info("canary deploy: deploying canary replica", "service", name, "weight", canaryWeight)
+
+			// Deploy 1 canary replica at offset index
+			canaryIdx := replicas // offset to avoid conflicts
+			canaryTarget := s.nodeName
+			if s.scheduler != nil {
+				if c, err := s.scheduler.Pick(svcDef); err == nil {
+					canaryTarget = c.NodeName
+				}
+			}
+			var canaryID string
+			if canaryTarget == s.nodeName {
+				id, err := s.deployLocalReplica(ctx, name, canaryIdx, svcDef, env, memBytes, networkName)
+				if err != nil {
+					return nil, status.Errorf(codes.Internal, "canary deploy failed: %v", err)
+				}
+				canaryID = id
+			}
+
+			// Configure proxy with canary weight
+			if s.proxyMgr != nil {
+				if err := s.proxyMgr.EnsureProxy(ctx, name, svcDef, networkName); err != nil {
+					slog.Warn("canary: failed to update proxy", "error", err)
+				}
+			}
+
+			// Health check canary
+			canaryHealthy := true
+			if svcDef.Health.Port > 0 {
+				checkTimeout := 5 * time.Second
+				if d, parseErr := time.ParseDuration(svcDef.Health.Timeout); parseErr == nil && d > 0 {
+					checkTimeout = d
+				}
+				canaryHealthy = false
+				for attempt := 0; attempt < 10; attempt++ {
+					time.Sleep(checkTimeout)
+					cfg := health.Config{
+						Type: health.CheckHTTP,
+						Host: "127.0.0.1",
+						Port: svcDef.Health.Port,
+						Path: svcDef.Health.Path,
+					}
+					result := s.health.Check(ctx, cfg)
+					if result.Healthy {
+						canaryHealthy = true
+						break
+					}
+				}
+			}
+
+			if canaryHealthy {
+				slog.Info("canary deploy: canary healthy, promoting", "service", name)
+				// Remove canary offset replica
+				if canaryID != "" {
+					warnErr(s.container.Stop(ctx, canaryID, 10), "failed to stop container")
+					warnErr(s.container.Remove(ctx, canaryID), "failed to remove container")
+				}
+				// Rolling replace all existing replicas with new version
+				for _, old := range existingContainers {
+					replicaIdx := 0
+					if label := old.Labels["hive.replica"]; label != "" {
+						fmt.Sscanf(label, "%d", &replicaIdx)
+					}
+					warnErr(s.container.Stop(ctx, old.ID, 10), "failed to stop container")
+					warnErr(s.container.Remove(ctx, old.ID), "failed to remove container")
+					id, err := s.deployLocalReplica(ctx, name, replicaIdx, svcDef, env, memBytes, networkName)
+					if err != nil {
+						slog.Error("canary promotion failed", "service", name, "replica", replicaIdx, "error", err)
+						continue
+					}
+					containerIDs = append(containerIDs, id)
+					replicasRunning++
+					if replicasRunning == 1 {
+						primaryNode = s.nodeName
+					}
+				}
+			} else {
+				// Rollback canary — remove canary, keep existing
+				slog.Warn("canary deploy: canary failed health check, rolling back", "service", name)
+				if canaryID != "" {
+					warnErr(s.container.Stop(ctx, canaryID, 10), "failed to stop container")
+					warnErr(s.container.Remove(ctx, canaryID), "failed to remove container")
+				}
+				for _, old := range existingContainers {
+					containerIDs = append(containerIDs, old.ID)
+				}
+				replicasRunning = uint32(len(existingContainers))
+			}
 		} else {
 			// Recreate strategy (or fresh deploy): stop all existing containers first, then deploy
 			for _, c := range existingContainers {
@@ -2173,6 +2273,51 @@ func (s *Server) getNodeLabels(nodeName string) map[string]string {
 		json.Unmarshal(data, &labels)
 	}
 	return labels
+}
+
+// DeployStack deploys a stack of multiple Hivefiles as a single unit.
+func (s *Server) DeployStack(ctx context.Context, req *hivev1.DeployStackRequest) (*hivev1.DeployServiceResponse, error) {
+	if len(req.HivefileTomls) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "at least one Hivefile is required")
+	}
+
+	// Parse and merge all Hivefiles
+	var hivefiles []*hivefile.Hivefile
+	for i, toml := range req.HivefileTomls {
+		hf, err := hivefile.Parse([]byte(toml))
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "hivefile %d: %v", i+1, err)
+		}
+		hivefiles = append(hivefiles, hf)
+	}
+
+	merged, err := hivefile.MergeHivefiles(hivefiles)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "merge stack: %v", err)
+	}
+
+	slog.Info("deploying stack", "name", req.StackName, "services", len(merged.Service))
+
+	// Store stack membership
+	var svcNames []string
+	for name := range merged.Service {
+		svcNames = append(svcNames, name)
+	}
+	if stackJSON, err := json.Marshal(svcNames); err == nil {
+		stackName := req.StackName
+		if stackName == "" {
+			stackName = "default"
+		}
+		warnErr(s.store.Put("meta", "stack:"+stackName, stackJSON), "failed to persist stack membership")
+	}
+
+	// Serialize the merged Hivefile back to TOML for DeployService
+	mergedTOML, err := hivefile.MarshalHivefile(merged)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "marshal merged hivefile: %v", err)
+	}
+
+	return s.DeployService(ctx, &hivev1.DeployServiceRequest{HivefileToml: string(mergedTOML)})
 }
 
 // ListContainers lists containers, optionally filtered.

@@ -101,8 +101,9 @@ type ResourceDef struct {
 
 // DeployDef configures deployment strategy.
 type DeployDef struct {
-	Strategy string `toml:"strategy"`
-	MaxSurge int    `toml:"max_surge"`
+	Strategy     string `toml:"strategy"`
+	MaxSurge     int    `toml:"max_surge"`
+	CanaryWeight int    `toml:"canary_weight"` // traffic weight for canary replica (default 10%)
 }
 
 // DependsDef defines service dependencies.
