@@ -8,6 +8,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/jalsarraf0/hive/daemon/internal/store"
@@ -206,4 +209,30 @@ func Import(s *store.Store, b *ClusterBackup, overwrite bool) (int, int, error) 
 	}
 
 	return svcCount, secCount, nil
+}
+
+// RunScheduledBackup exports cluster state to a timestamped file in the given directory.
+func RunScheduledBackup(s *store.Store, outputDir string) error {
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		return fmt.Errorf("create backup dir: %w", err)
+	}
+
+	b, err := Export(s)
+	if err != nil {
+		return fmt.Errorf("export: %w", err)
+	}
+
+	data, err := Marshal(b)
+	if err != nil {
+		return err
+	}
+
+	filename := fmt.Sprintf("hive-backup-%s.json", time.Now().UTC().Format("20060102-150405"))
+	path := filepath.Join(outputDir, filename)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("write backup: %w", err)
+	}
+
+	slog.Info("scheduled backup completed", "path", path, "size", len(data))
+	return nil
 }

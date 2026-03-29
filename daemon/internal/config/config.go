@@ -21,6 +21,20 @@ type Config struct {
 	HTTP      HTTPConfig      `toml:"http"`
 	WireGuard WireGuardConfig `toml:"wireguard"`
 	Hooks     []HookConfig    `toml:"hooks"`
+	Backup    BackupConfig    `toml:"backup"`
+	Admission AdmissionConfig `toml:"admission"`
+}
+
+// BackupConfig holds automated backup settings.
+type BackupConfig struct {
+	Schedule string `toml:"schedule"` // cron expression, e.g. "0 2 * * *"
+	Path     string `toml:"path"`     // output directory for backup files
+}
+
+// AdmissionConfig holds admission webhook settings.
+type AdmissionConfig struct {
+	URL     string `toml:"url"`     // webhook URL called before deploy/update/scale
+	Timeout string `toml:"timeout"` // request timeout, e.g. "10s"
 }
 
 // HookConfig defines a webhook to fire on lifecycle events.
@@ -52,7 +66,10 @@ type SecurityConfig struct {
 
 // LoggingConfig holds log settings.
 type LoggingConfig struct {
-	Level string `toml:"level"`
+	Level      string `toml:"level"`
+	Driver     string `toml:"driver"`      // "file" or "syslog" (empty = no external sink)
+	Path       string `toml:"path"`        // file path for file driver
+	SyslogHost string `toml:"syslog_host"` // host:port for syslog driver
 }
 
 // HTTPConfig holds web console HTTP server settings.
