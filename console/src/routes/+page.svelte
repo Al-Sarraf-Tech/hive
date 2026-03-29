@@ -1,12 +1,14 @@
 <script>
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { api } from '$lib/api.js';
+  import { api, isAuthenticated } from '$lib/api.js';
   import { nodeBadge, eventIcon, timeAgo, fmtBytes } from '$lib/utils.js';
 
   let status = $state(null);
   let error = $state(null);
   let loading = $state(true);
+  let featuredApps = $state([]);
+  let authed = $state(false);
 
   async function refresh() {
     try {
@@ -19,8 +21,19 @@
     }
   }
 
+  async function loadFeaturedApps() {
+    try {
+      const fn = isAuthenticated() ? api.listApps : api.publicListApps;
+      const data = await fn('');
+      const popular = ['postgres', 'redis', 'grafana', 'nginx', 'jellyfin', 'traefik'];
+      featuredApps = (data.apps || []).filter(a => popular.includes(a.id)).slice(0, 6);
+    } catch { /* silent — app store is optional */ }
+  }
+
   onMount(() => {
+    authed = isAuthenticated();
     refresh();
+    loadFeaturedApps();
     const interval = setInterval(refresh, 3000);
     return () => clearInterval(interval);
   });
@@ -128,4 +141,41 @@
       {/if}
     </div>
   </div>
+
+  <!-- Quick Deploy from App Store -->
+  {#if featuredApps.length > 0}
+    <div class="card" style="margin-top:1.5rem">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">
+        <div class="card-title">Quick Deploy</div>
+        <div style="display:flex; gap:0.5rem; align-items:center">
+          {#if authed}
+            <span style="font-size:0.7rem; color:var(--green)">● Signed in — click to deploy</span>
+          {:else}
+            <span style="font-size:0.7rem; color:var(--text-muted)">○ <a href="/login" style="color:var(--cyan)">Sign in</a> to deploy</span>
+          {/if}
+          <a href="/appstore" class="btn btn-sm" style="text-decoration:none; font-size:0.7rem">Browse all {featuredApps.length > 0 ? '35' : ''} apps →</a>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:0.75rem">
+        {#each featuredApps as app}
+          <div
+            class="card clickable"
+            style="padding:0.75rem; cursor:pointer; border:1px solid var(--border)"
+            onclick={() => goto(`/appstore/${app.id}`)}
+            role="button"
+            tabindex="0"
+            onkeydown={(e) => { if (e.key === 'Enter') goto(`/appstore/${app.id}`); }}
+          >
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.375rem">
+              <span style="font-size:1.25rem">{app.icon}</span>
+              <span style="font-weight:600; font-size:0.85rem">{app.name}</span>
+            </div>
+            <p class="muted" style="font-size:0.7rem; margin:0; line-height:1.3">
+              {app.description.length > 60 ? app.description.slice(0, 57) + '...' : app.description}
+            </p>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
 {/if}
