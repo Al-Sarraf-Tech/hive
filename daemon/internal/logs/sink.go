@@ -56,6 +56,8 @@ func (s *FileSink) Close() error {
 
 // SyslogSink sends log entries to a remote syslog server via UDP.
 type SyslogSink struct {
+	mu   sync.Mutex
+	conn net.Conn
 	host string
 }
 
@@ -64,7 +66,11 @@ func NewSyslogSink(host string) (*SyslogSink, error) {
 	if host == "" {
 		return nil, fmt.Errorf("syslog host is required")
 	}
-	return &SyslogSink{host: host}, nil
+	conn, err := net.Dial("udp", host)
+	if err != nil {
+		return nil, fmt.Errorf("dial syslog %s: %w", host, err)
+	}
+	return &SyslogSink{conn: conn, host: host}, nil
 }
 
 func (s *SyslogSink) Write(entry Entry) error {
@@ -75,15 +81,14 @@ func (s *SyslogSink) Write(entry Entry) error {
 		entry.ContainerID,
 		entry.Line,
 	)
-	conn, err := net.Dial("udp", s.host)
-	if err != nil {
-		return fmt.Errorf("dial syslog %s: %w", s.host, err)
-	}
-	defer conn.Close()
-	_, err = conn.Write([]byte(msg))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.conn.Write([]byte(msg))
 	return err
 }
 
 func (s *SyslogSink) Close() error {
-	return nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.conn.Close()
 }

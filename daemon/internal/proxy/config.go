@@ -134,6 +134,9 @@ func safeNginxName(s string) bool {
 // still start — requests will get 502 until a backend recovers.
 // GenerateNginxTLSConf renders an nginx.conf with TLS termination for the given service.
 func GenerateNginxTLSConf(serviceName string, listenPort int, upstreams []Upstream) []byte {
+	if !safeNginxName(serviceName) {
+		serviceName = "default"
+	}
 	var safe []Upstream
 	for _, u := range upstreams {
 		if safeNginxName(u.Addr) {
@@ -150,6 +153,10 @@ func GenerateNginxTLSConf(serviceName string, listenPort int, upstreams []Upstre
 }
 
 func GenerateNginxConf(serviceName string, listenPort int, upstreams []Upstream) []byte {
+	// Validate service name is safe for nginx config
+	if !safeNginxName(serviceName) {
+		serviceName = "default"
+	}
 	// Filter unsafe upstream addresses to prevent nginx config injection
 	var safe []Upstream
 	for _, u := range upstreams {

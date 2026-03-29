@@ -143,8 +143,12 @@ func (m *Manager) EnsureProxy(ctx context.Context, serviceName string, svcDef hi
 			if err != nil {
 				return fmt.Errorf("read TLS key: %w", err)
 			}
-			os.WriteFile(certPath, certData, 0o644)
-			os.WriteFile(keyPath, keyData, 0o600)
+			if err := os.WriteFile(certPath, certData, 0o644); err != nil {
+				return fmt.Errorf("write TLS cert: %w", err)
+			}
+			if err := os.WriteFile(keyPath, keyData, 0o600); err != nil {
+				return fmt.Errorf("write TLS key: %w", err)
+			}
 		} else {
 			// Generate self-signed cert if none exists
 			if _, err := os.Stat(certPath); os.IsNotExist(err) {
