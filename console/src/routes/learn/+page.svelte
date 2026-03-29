@@ -336,7 +336,7 @@ hive node label add worker-01 region=us-east</pre>
 <span class="tok-key">replicas</span> = <span class="tok-num">1</span>
 
 <span class="tok-section">[service.db.env]</span>
-<span class="tok-key">POSTGRES_PASSWORD</span> = <span class="tok-str">"<span class="tok-placeholder">{{ secret:db-pass }}</span>"</span></pre>
+<span class="tok-key">POSTGRES_PASSWORD</span> = <span class="tok-str">"<span class="tok-placeholder">{"{{ secret:db-pass }}"}</span>"</span></pre>
       </div>
 
       <div class="callout callout-info">
@@ -361,8 +361,8 @@ hive node label add worker-01 region=us-east</pre>
         </div>
         <pre><span class="tok-section">[service.app.env]</span>
 <span class="tok-key">APP_ENV</span> = <span class="tok-str">"production"</span>
-<span class="tok-key">DATABASE_URL</span> = <span class="tok-str">"<span class="tok-placeholder">{{ secret:db-url }}</span>"</span>
-<span class="tok-key">API_KEY</span> = <span class="tok-str">"<span class="tok-placeholder">{{ secret:api-key }}</span>"</span></pre>
+<span class="tok-key">DATABASE_URL</span> = <span class="tok-str">"<span class="tok-placeholder">{"{{ secret:db-url }}"}</span>"</span>
+<span class="tok-key">API_KEY</span> = <span class="tok-str">"<span class="tok-placeholder">{"{{ secret:api-key }}"}</span>"</span></pre>
       </div>
 
       <p>Secrets are stored encrypted (age/X25519) and injected at deploy time. Manage them via:</p>
@@ -707,7 +707,7 @@ hive registry rm ghcr.io      <span class="tok-comment"># remove credentials</sp
 <span class="tok-key">replicas</span> = <span class="tok-num">1</span>
 
 <span class="tok-section">[service.my-app.env]</span>
-<span class="tok-key">API_KEY</span> = <span class="tok-str">"<span class="tok-placeholder">{{ config:api_key }}</span>"</span></pre>
+<span class="tok-key">API_KEY</span> = <span class="tok-str">"<span class="tok-placeholder">{"{{ config:api_key }}"}</span>"</span></pre>
       </div>
 
       <p>Custom recipes can be added via the CLI (<code>hive app add recipe.toml</code>) or the App Store's custom app feature.</p>
