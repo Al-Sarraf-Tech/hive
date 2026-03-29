@@ -1,4 +1,4 @@
-# Hive v2.0
+# Hive v2.5
 
 **Deploy and manage Docker containers across multiple computers from one place.**
 
@@ -177,6 +177,14 @@ hive secret rotate <key> [<value>]      Rotate secret + rolling-restart referenc
 hive cron                               List active cron jobs
 hive daemon [install|start|stop|status] Manage hived as a system service
 hive top                                Launch the TUI dashboard
+hive app ls [--category <cat>]          Browse available apps
+hive app search <query>                 Search apps by name/tag
+hive app info <id>                      Show app details and config
+hive app install <id> [--config K=V]    Install an app from the catalog
+hive app installed                      List installed apps
+hive registry login <url> [--username]  Store registry credentials
+hive registry ls                        List configured registries
+hive registry rm <url>                  Remove registry credentials
 ```
 
 **Global flags:**
@@ -350,6 +358,39 @@ cpu_target = 70       # scale up when CPU > 70%
 cooldown_up = "60s"
 cooldown_down = "300s"
 ```
+
+### App Store (v2.5)
+13 built-in apps ready to deploy in one command:
+
+| App | Category | Image |
+|-----|----------|-------|
+| PostgreSQL | database | postgres:16-alpine |
+| MySQL | database | mysql:8 |
+| MongoDB | database | mongo:7 |
+| Redis | cache | redis:7-alpine |
+| Nginx | webserver | nginx:alpine |
+| RabbitMQ | messaging | rabbitmq:3-management-alpine |
+| Grafana | monitoring | grafana/grafana:11-alpine |
+| Prometheus | monitoring | prom/prometheus:latest |
+| Loki | monitoring | grafana/loki:3.0.0 |
+| Traefik | proxy | traefik:v3 |
+| MinIO | storage | minio/minio:latest |
+| Gitea | devtools | gitea/gitea:latest |
+| Docker Registry | devtools | registry:2 |
+
+```bash
+hive app ls                                    # browse catalog
+hive app install postgres --config db_password=secret  # one-click deploy
+```
+
+Users can also add custom apps via the API.
+
+### Docker Registry Login (v2.5)
+```bash
+hive registry login ghcr.io --username myuser  # stores encrypted credentials
+hive registry ls                               # list configured registries
+```
+Credentials are encrypted with age (X25519) and stored in the local vault. When pulling images, hived automatically uses matching registry credentials.
 
 ### Admission Webhooks (v2.0)
 ```toml
