@@ -1,8 +1,8 @@
 <script>
-  import { api } from '$lib/api.js';
+  import { api, isAuthenticated } from '$lib/api.js';
   import { goto } from '$app/navigation';
 
-  let activeSection = $state('intro');
+  let activeSection = $state('what-is-hive');
   let playgroundInput = $state(`# Try editing this Hivefile!
 [service.web]
 image = "nginx:alpine"
@@ -26,7 +26,10 @@ cpus = 0.5
   let copiedId = $state('');
 
   const sections = [
+    { id: 'what-is-hive', label: 'What is Hive?' },
+    { id: 'how-it-works', label: 'How It Works' },
     { id: 'intro', label: 'Getting Started' },
+    { id: 'clustering', label: 'Clustering' },
     { id: 'hivefile', label: 'Hivefile Basics' },
     { id: 'services', label: 'Services' },
     { id: 'env', label: 'Environment & Secrets' },
@@ -36,12 +39,18 @@ cpus = 0.5
     { id: 'deploy-strategies', label: 'Deploy Strategies' },
     { id: 'ingress', label: 'Ingress & TLS' },
     { id: 'cron', label: 'Cron Jobs' },
-    { id: 'recipes', label: 'App Store Recipes' },
+    { id: 'appstore', label: 'App Store' },
+    { id: 'cli', label: 'CLI Commands' },
+    { id: 'recipes', label: 'Custom Recipes' },
     { id: 'playground', label: 'Playground' },
     { id: 'reference', label: 'Quick Reference' },
   ];
 
   async function validate() {
+    if (!isAuthenticated()) {
+      validationResult = { valid: false, errors: ['Sign in to validate against the live daemon. The TOML syntax looks correct based on structure.'] };
+      return;
+    }
     validating = true;
     try {
       validationResult = await api.validate(playgroundInput, false);
@@ -89,6 +98,95 @@ cpus = 0.5
 
   <!-- Content -->
   <div>
+    <!-- What is Hive? -->
+    <section id="what-is-hive" class="learn-section">
+      <h2>What is Hive?</h2>
+      <p>
+        Hive is a <strong>container orchestrator</strong> — it deploys and manages Docker containers across multiple machines from one place.
+        Think of it as the middle ground between Docker Compose (single machine) and Kubernetes (enterprise complexity).
+      </p>
+
+      <div class="grid-3" style="margin:1.25rem 0">
+        <div class="card" style="text-align:center; padding:1.25rem">
+          <div style="font-size:2rem; margin-bottom:0.5rem">📦</div>
+          <div style="font-weight:700; font-size:0.9rem; margin-bottom:0.25rem">Deploy</div>
+          <div class="muted" style="font-size:0.8rem">Write a TOML file, run one command. Hive pulls images, creates containers, sets up networking.</div>
+        </div>
+        <div class="card" style="text-align:center; padding:1.25rem">
+          <div style="font-size:2rem; margin-bottom:0.5rem">🔄</div>
+          <div style="font-weight:700; font-size:0.9rem; margin-bottom:0.25rem">Manage</div>
+          <div class="muted" style="font-size:0.8rem">Scale replicas, roll back, rotate secrets, monitor health — all from CLI, TUI, or this console.</div>
+        </div>
+        <div class="card" style="text-align:center; padding:1.25rem">
+          <div style="font-size:2rem; margin-bottom:0.5rem">🌐</div>
+          <div style="font-weight:700; font-size:0.9rem; margin-bottom:0.25rem">Cluster</div>
+          <div class="muted" style="font-size:0.8rem">Add machines to your cluster with one command. Hive distributes containers across nodes automatically.</div>
+        </div>
+      </div>
+
+      <h3>What Hive does for you</h3>
+      <ul>
+        <li><strong>Container lifecycle</strong> — pull images, create/start/stop/remove containers</li>
+        <li><strong>Health monitoring</strong> — HTTP, TCP, or exec health checks with auto-restart on failure</li>
+        <li><strong>Load balancing</strong> — built-in nginx ingress proxy with health-aware failover</li>
+        <li><strong>Secret management</strong> — encrypted at rest (age/X25519), injected at deploy time</li>
+        <li><strong>Multi-node scheduling</strong> — place replicas across nodes based on resources and constraints</li>
+        <li><strong>Rolling updates</strong> — zero-downtime deploys with health checks between each replica</li>
+        <li><strong>App Store</strong> — 35+ pre-configured apps ready to deploy in one click</li>
+        <li><strong>Encrypted mesh</strong> — optional WireGuard overlay for secure node-to-node communication</li>
+      </ul>
+
+      <div class="callout callout-info">
+        <div class="callout-title">Who is Hive for?</div>
+        If you run 1-20 machines (homelab, small team, staging environment) and want to manage containers
+        without the complexity of Kubernetes, Hive is for you. It works on Linux and Windows, needs no cloud provider,
+        and runs on a Raspberry Pi or a datacenter server equally well.
+      </div>
+    </section>
+
+    <!-- How It Works -->
+    <section id="how-it-works" class="learn-section">
+      <h2>How It Works</h2>
+      <p>Hive has four components that work together:</p>
+
+      <div class="grid-2" style="margin:1rem 0">
+        <div class="card" style="padding:1rem">
+          <div style="font-weight:700; color:var(--cyan); margin-bottom:0.25rem">hived (daemon)</div>
+          <div class="muted" style="font-size:0.8rem">Runs on every node. Manages containers via Docker API, participates in gossip mesh, serves gRPC + HTTP APIs. Written in Go.</div>
+        </div>
+        <div class="card" style="padding:1rem">
+          <div style="font-weight:700; color:var(--green); margin-bottom:0.25rem">hive (CLI)</div>
+          <div class="muted" style="font-size:0.8rem">Command-line tool for deploying, scaling, managing services. Connects to hived via gRPC. Written in Rust.</div>
+        </div>
+        <div class="card" style="padding:1rem">
+          <div style="font-weight:700; color:var(--purple); margin-bottom:0.25rem">hivetop (TUI)</div>
+          <div class="muted" style="font-size:0.8rem">Real-time terminal dashboard with 4 tabs: overview, nodes, services, logs. Written in Rust with ratatui.</div>
+        </div>
+        <div class="card" style="padding:1rem">
+          <div style="font-weight:700; color:var(--yellow); margin-bottom:0.25rem">Console (Web UI)</div>
+          <div class="muted" style="font-size:0.8rem">This web interface. Built with SvelteKit, embedded in hived. 18 pages for full cluster management.</div>
+        </div>
+      </div>
+
+      <h3>The deploy flow</h3>
+      <ol>
+        <li>You write a <strong>Hivefile</strong> (TOML) describing your services — or pick one from the App Store</li>
+        <li>Hive <strong>parses</strong> the file, validates it, resolves secret placeholders</li>
+        <li>The <strong>scheduler</strong> picks which node(s) should run each replica based on resources and constraints</li>
+        <li>Hive <strong>pulls the image</strong> (with registry auth if configured), creates a Docker network, starts containers</li>
+        <li>Health checks begin immediately — if a container fails, Hive auto-restarts it</li>
+        <li>If ingress is configured, an nginx proxy container is created for load balancing</li>
+      </ol>
+
+      <h3>Networking</h3>
+      <p>Nodes discover each other via <strong>SWIM gossip</strong> (UDP port 7946) — no central coordinator. State is eventually consistent across all nodes. For secure communication, Hive uses:</p>
+      <ul>
+        <li><strong>mTLS</strong> — mutual TLS on the mesh gRPC port (7948) with auto-generated certificates</li>
+        <li><strong>WireGuard</strong> — optional encrypted overlay network (userspace, no root required)</li>
+        <li><strong>Gossip encryption</strong> — optional AES-256 for cluster membership traffic</li>
+      </ul>
+    </section>
+
     <!-- Getting Started -->
     <section id="intro" class="learn-section">
       <h2>Getting Started</h2>
@@ -102,12 +200,87 @@ cpus = 0.5
         TOML is designed to be <strong>easy to read and write</strong>. Unlike YAML, it has no significant whitespace issues.
         Unlike JSON, it supports comments and is human-friendly. Every Hivefile is valid TOML.
       </div>
+
+      <h3>Install Hive</h3>
+      <div class="code-block">
+        <div class="code-block-header">
+          <span class="code-block-lang">Shell — one-line install</span>
+          <button class="code-block-copy" onclick={() => copyBlock('install', 'curl -fsSL https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.sh | bash')}>
+            {copiedId === 'install' ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+        <pre>curl -fsSL https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.sh | bash</pre>
+      </div>
+      <p>This installs <code>hived</code>, <code>hive</code>, and <code>hivetop</code> to <code>~/.local/bin</code>.</p>
+
+      <h3>Start the daemon</h3>
+      <div class="code-block">
+        <div class="code-block-header">
+          <span class="code-block-lang">Shell — start hived</span>
+          <button class="code-block-copy" onclick={() => copyBlock('start', 'hive setup')}>
+            {copiedId === 'start' ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+        <pre>hive setup                           <span class="tok-comment"># interactive first-time wizard</span>
+<span class="tok-comment"># OR manually:</span>
+hived --data-dir /var/lib/hive --log-level info</pre>
+      </div>
+
       <h3>Three ways to deploy</h3>
       <ol>
         <li><strong>CLI:</strong> <code>hive deploy my-app.toml</code> — direct from terminal</li>
         <li><strong>Web Console:</strong> Use the <a href="/deploy">Deploy</a> page to paste or edit TOML</li>
-        <li><strong>App Store:</strong> One-click install from the <a href="/appstore">App Store</a> catalog</li>
+        <li><strong>App Store:</strong> One-click install from the <a href="/appstore">App Store</a> — 35 apps ready to go</li>
       </ol>
+    </section>
+
+    <!-- Clustering -->
+    <section id="clustering" class="learn-section">
+      <h2>Clustering</h2>
+      <p>Hive clusters are peer-to-peer — every node is equal. There's no control plane to manage or single point of failure.</p>
+
+      <h3>Create a cluster</h3>
+      <div class="code-block">
+        <div class="code-block-header">
+          <span class="code-block-lang">Shell — cluster setup</span>
+          <button class="code-block-copy" onclick={() => copyBlock('cluster', '# On the first node:\nhive init --name my-cluster\n# Output: Join Code: HIVE-AB12-CD34\n\n# On other nodes:\nhive setup --join HIVE-AB12-CD34')}>
+            {copiedId === 'cluster' ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+        <pre><span class="tok-comment"># On the first node:</span>
+hive init --name my-cluster
+<span class="tok-comment"># Output: Join Code: HIVE-AB12-CD34</span>
+
+<span class="tok-comment"># On other nodes:</span>
+hive setup --join HIVE-AB12-CD34</pre>
+      </div>
+
+      <p>When a node joins, Hive automatically:</p>
+      <ul>
+        <li>Exchanges gossip metadata (CPU, memory, disk, capabilities)</li>
+        <li>Generates a TLS certificate signed by the cluster CA</li>
+        <li>Sets up WireGuard mesh overlay (if enabled)</li>
+        <li>Begins participating in container scheduling</li>
+      </ul>
+
+      <h3>Node labels and constraints</h3>
+      <p>Label nodes to control where services run:</p>
+      <div class="code-block">
+        <div class="code-block-header">
+          <span class="code-block-lang">Shell — labels</span>
+        </div>
+        <pre>hive node label add worker-01 gpu=true
+hive node label add worker-01 region=us-east</pre>
+      </div>
+      <p>Then use constraints in your Hivefile:</p>
+      <div class="code-block">
+        <div class="code-block-header">
+          <span class="code-block-lang">TOML — placement constraints</span>
+        </div>
+        <pre><span class="tok-section">[service.ml-model]</span>
+<span class="tok-key">image</span> = <span class="tok-str">"myapp/model:latest"</span>
+<span class="tok-key">constraints</span> = <span class="tok-bracket">[</span><span class="tok-str">"gpu=true"</span>, <span class="tok-str">"region=us-east"</span><span class="tok-bracket">]</span></pre>
+      </div>
     </section>
 
     <!-- Hivefile Basics -->
@@ -394,9 +567,116 @@ cpus = 0.5
       </div>
     </section>
 
-    <!-- Recipes -->
+    <!-- App Store -->
+    <section id="appstore" class="learn-section">
+      <h2>App Store</h2>
+      <p>The App Store has 35 pre-configured apps you can deploy in one click — no Hivefile writing needed.</p>
+
+      <h3>Browse and install</h3>
+      <div class="code-block">
+        <div class="code-block-header">
+          <span class="code-block-lang">Shell — app store commands</span>
+          <button class="code-block-copy" onclick={() => copyBlock('appstore-cmds', 'hive app ls                                    # browse all apps\nhive app ls --category database                 # filter by category\nhive app search grafana                          # search by name\nhive app info postgres                           # see config fields\nhive app install postgres --config db_password=secret  # install')}>
+            {copiedId === 'appstore-cmds' ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+        <pre>hive app ls                                    <span class="tok-comment"># browse all 35 apps</span>
+hive app ls --category database                 <span class="tok-comment"># filter by category</span>
+hive app search grafana                          <span class="tok-comment"># search by name/tag</span>
+hive app info postgres                           <span class="tok-comment"># see details + config fields</span>
+hive app install postgres --config db_password=secret  <span class="tok-comment"># deploy!</span></pre>
+      </div>
+
+      <p>Or use the <a href="/appstore">App Store page</a> in this console — browse, configure, and install without writing any TOML.</p>
+
+      <div class="callout callout-tip">
+        <div class="callout-title">No sign-in needed to browse</div>
+        The App Store is publicly accessible. Sign in only when you're ready to deploy. You can explore all 35 apps,
+        read their configs, and preview the generated TOML without an account.
+      </div>
+
+      <h3>Categories</h3>
+      <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin:0.75rem 0">
+        <span class="badge">🗃 database</span>
+        <span class="badge">⚡ cache</span>
+        <span class="badge">🌐 webserver</span>
+        <span class="badge">📊 monitoring</span>
+        <span class="badge">🔀 proxy</span>
+        <span class="badge">✉ messaging</span>
+        <span class="badge">💾 storage</span>
+        <span class="badge">🔧 devtools</span>
+        <span class="badge">🎬 media</span>
+        <span class="badge">📋 productivity</span>
+        <span class="badge">🛡 security</span>
+        <span class="badge">🌍 networking</span>
+        <span class="badge">▶ automation</span>
+      </div>
+    </section>
+
+    <!-- CLI Commands -->
+    <section id="cli" class="learn-section">
+      <h2>CLI Commands</h2>
+      <p>The <code>hive</code> CLI is the primary way to interact with your cluster. Here are the most important commands:</p>
+
+      <h3>Cluster management</h3>
+      <div class="code-block">
+        <div class="code-block-header"><span class="code-block-lang">Shell</span></div>
+        <pre>hive setup                    <span class="tok-comment"># interactive first-run wizard</span>
+hive init --name my-cluster   <span class="tok-comment"># create a new cluster</span>
+hive join --code HIVE-XXXX    <span class="tok-comment"># join an existing cluster</span>
+hive status                   <span class="tok-comment"># cluster health summary</span>
+hive nodes                    <span class="tok-comment"># list all nodes</span></pre>
+      </div>
+
+      <h3>Deploy and manage</h3>
+      <div class="code-block">
+        <div class="code-block-header"><span class="code-block-lang">Shell</span></div>
+        <pre>hive deploy app.toml          <span class="tok-comment"># deploy from Hivefile</span>
+hive ps                       <span class="tok-comment"># list running services</span>
+hive logs web -f              <span class="tok-comment"># stream service logs</span>
+hive scale web 5              <span class="tok-comment"># scale to 5 replicas</span>
+hive stop web                 <span class="tok-comment"># stop a service</span>
+hive restart web              <span class="tok-comment"># rolling restart</span>
+hive rollback web             <span class="tok-comment"># revert to previous version</span>
+hive exec web "ls -la"        <span class="tok-comment"># run command in container</span></pre>
+      </div>
+
+      <h3>Updates and secrets</h3>
+      <div class="code-block">
+        <div class="code-block-header"><span class="code-block-lang">Shell</span></div>
+        <pre>hive update web --image nginx:1.27   <span class="tok-comment"># update image with rolling restart</span>
+hive update web --env API_KEY=new    <span class="tok-comment"># update env var</span>
+hive secret set db-pass              <span class="tok-comment"># set a secret (reads from stdin)</span>
+hive secret rotate db-pass           <span class="tok-comment"># rotate + restart referencing services</span>
+hive secret ls                       <span class="tok-comment"># list secrets</span></pre>
+      </div>
+
+      <h3>Validation and preview</h3>
+      <div class="code-block">
+        <div class="code-block-header"><span class="code-block-lang">Shell</span></div>
+        <pre>hive validate app.toml        <span class="tok-comment"># check for errors without deploying</span>
+hive diff app.toml            <span class="tok-comment"># preview what would change</span></pre>
+      </div>
+
+      <h3>Docker registries</h3>
+      <div class="code-block">
+        <div class="code-block-header"><span class="code-block-lang">Shell</span></div>
+        <pre>hive registry login ghcr.io   <span class="tok-comment"># store credentials (encrypted)</span>
+hive registry ls              <span class="tok-comment"># list configured registries</span>
+hive registry rm ghcr.io      <span class="tok-comment"># remove credentials</span></pre>
+      </div>
+
+      <div class="callout callout-info">
+        <div class="callout-title">Global flags</div>
+        All commands accept <code>--addr host:port</code> (default: 127.0.0.1:7947) and
+        <code>--ca-cert path</code> for TLS connections. Set <code>HIVE_ADDR</code> and
+        <code>HIVE_CA_CERT</code> env vars to avoid repeating them.
+      </div>
+    </section>
+
+    <!-- Custom Recipes -->
     <section id="recipes" class="learn-section">
-      <h2>App Store Recipes</h2>
+      <h2>Custom Recipes</h2>
       <p>Recipes are TOML templates with metadata for the App Store. They include a <code>[recipe]</code> header with config field definitions, plus standard service blocks.</p>
 
       <div class="code-block">
