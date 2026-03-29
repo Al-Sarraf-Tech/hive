@@ -1,0 +1,40 @@
+[recipe]
+id = "grafana"
+name = "Grafana"
+description = "Analytics and monitoring dashboards"
+icon = "📊"
+category = "monitoring"
+tags = ["dashboard", "metrics", "visualization"]
+image = "grafana/grafana:11-alpine"
+version = "11"
+min_memory = "256M"
+platforms = ["linux/amd64"]
+
+  [recipe.config.admin_password]
+  label = "Admin Password"
+  type = "secret"
+  required = true
+
+[service.grafana]
+image = "grafana/grafana:11-alpine"
+replicas = 1
+
+  [service.grafana.env]
+  GF_SECURITY_ADMIN_PASSWORD = "{{ config:admin_password }}"
+
+  [service.grafana.health]
+  type = "http"
+  path = "/api/health"
+  port = 3000
+  interval = "30s"
+
+  [service.grafana.ports]
+  "3000" = "3000"
+
+  [[service.grafana.volumes]]
+  name = "grafana-data"
+  target = "/var/lib/grafana"
+
+  [service.grafana.resources]
+  memory = "256M"
+  cpus = 0.5

@@ -1,0 +1,33 @@
+[recipe]
+id = "gitea"
+name = "Gitea"
+description = "Lightweight self-hosted Git service"
+icon = "🍵"
+category = "devtools"
+tags = ["git", "source-control", "ci"]
+image = "gitea/gitea:latest"
+version = "latest"
+min_memory = "256M"
+platforms = ["linux/amd64"]
+
+[service.gitea]
+image = "gitea/gitea:latest"
+replicas = 1
+
+  [service.gitea.health]
+  type = "http"
+  path = "/"
+  port = 3000
+  interval = "30s"
+
+  [service.gitea.ports]
+  "3000" = "3000"
+  "2222" = "22"
+
+  [[service.gitea.volumes]]
+  name = "gitea-data"
+  target = "/data"
+
+  [service.gitea.resources]
+  memory = "256M"
+  cpus = 0.5

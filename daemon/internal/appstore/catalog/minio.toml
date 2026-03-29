@@ -1,0 +1,48 @@
+[recipe]
+id = "minio"
+name = "MinIO"
+description = "S3-compatible object storage"
+icon = "📦"
+category = "storage"
+tags = ["s3", "object-storage", "storage"]
+image = "minio/minio:latest"
+version = "latest"
+min_memory = "256M"
+platforms = ["linux/amd64"]
+
+  [recipe.config.root_user]
+  label = "Root User"
+  type = "string"
+  required = false
+  default = "minioadmin"
+
+  [recipe.config.root_password]
+  label = "Root Password"
+  type = "secret"
+  required = true
+
+[service.minio]
+image = "minio/minio:latest"
+replicas = 1
+
+  [service.minio.env]
+  MINIO_ROOT_USER = "{{ config:root_user }}"
+  MINIO_ROOT_PASSWORD = "{{ config:root_password }}"
+
+  [service.minio.health]
+  type = "http"
+  path = "/minio/health/live"
+  port = 9000
+  interval = "30s"
+
+  [service.minio.ports]
+  "9000" = "9000"
+  "9001" = "9001"
+
+  [[service.minio.volumes]]
+  name = "minio-data"
+  target = "/data"
+
+  [service.minio.resources]
+  memory = "256M"
+  cpus = 0.5

@@ -1,0 +1,46 @@
+[recipe]
+id = "mysql"
+name = "MySQL"
+description = "Popular open-source relational database"
+icon = "🐬"
+category = "database"
+tags = ["sql", "relational", "database"]
+image = "mysql:8"
+version = "8"
+min_memory = "512M"
+platforms = ["linux/amd64"]
+
+  [recipe.config.root_password]
+  label = "Root Password"
+  type = "secret"
+  required = true
+
+  [recipe.config.database]
+  label = "Database Name"
+  type = "string"
+  required = false
+  default = "app"
+
+[service.mysql]
+image = "mysql:8"
+replicas = 1
+
+  [service.mysql.env]
+  MYSQL_ROOT_PASSWORD = "{{ config:root_password }}"
+  MYSQL_DATABASE = "{{ config:database }}"
+
+  [service.mysql.health]
+  type = "tcp"
+  port = 3306
+  interval = "15s"
+
+  [service.mysql.ports]
+  "3306" = "3306"
+
+  [[service.mysql.volumes]]
+  name = "mysql-data"
+  target = "/var/lib/mysql"
+
+  [service.mysql.resources]
+  memory = "512M"
+  cpus = 0.5

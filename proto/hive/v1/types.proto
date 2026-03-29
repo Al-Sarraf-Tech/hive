@@ -174,3 +174,42 @@ enum EventType {
   EVENT_TYPE_SECRET_UPDATED = 12;
   EVENT_TYPE_NODE_UPDATED = 13;
 }
+
+// ─── App Store ────────────────────────────────────────────────────
+
+message AppDefinition {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string icon = 4;
+  string category = 5;
+  repeated string tags = 6;
+  string image = 7;
+  string version = 8;
+  repeated AppConfigField config_fields = 9;
+  string min_memory = 10;
+  repeated string platforms = 11;
+  bool builtin = 12;
+}
+
+message AppConfigField {
+  string key = 1;
+  string label = 2;
+  string type = 3;         // "string", "secret", "int", "bool"
+  bool required = 4;
+  string default_value = 5;
+  string description = 6;
+}
+
+message InstalledApp {
+  string app_id = 1;
+  string service_name = 2;
+  map<string, string> config = 3;
+  google.protobuf.Timestamp installed_at = 4;
+}
+
+message RegistryCredential {
+  string url = 1;
+  string username = 2;
+  google.protobuf.Timestamp created_at = 3;
+}

@@ -1,3 +1,4 @@
+pub mod app;
 pub mod backup;
 pub mod cron;
 pub mod daemon;
@@ -9,6 +10,7 @@ pub mod join;
 pub mod logs;
 pub mod nodes;
 pub mod ps;
+pub mod registry;
 pub mod restart;
 pub mod rollback;
 pub mod scale;

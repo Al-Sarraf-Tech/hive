@@ -198,7 +198,7 @@ func (s *MeshServer) StartContainer(ctx context.Context, req *hivev1.StartContai
 	}
 
 	// Pull image
-	if err := s.container.PullImage(ctx, svc.Image); err != nil {
+	if err := s.container.PullImage(ctx, svc.Image, nil); err != nil {
 		slog.Warn("image pull failed (may be local)", "image", svc.Image, "error", err)
 	}
 

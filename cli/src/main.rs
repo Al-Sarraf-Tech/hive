@@ -156,6 +156,18 @@ enum Commands {
     /// List cron jobs
     Cron,
 
+    /// Browse and install apps from the catalog
+    App {
+        #[command(subcommand)]
+        action: AppAction,
+    },
+
+    /// Manage Docker registry credentials
+    Registry {
+        #[command(subcommand)]
+        action: RegistryAction,
+    },
+
     /// Launch the TUI dashboard
     Top,
 
@@ -226,6 +238,58 @@ enum SecretAction {
         key: String,
         /// New secret value (omit to read from stdin)
         value: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum AppAction {
+    /// List available apps
+    Ls {
+        /// Filter by category (database, cache, monitoring, etc.)
+        #[arg(long)]
+        category: Option<String>,
+    },
+    /// Search apps by name, description, or tag
+    Search {
+        /// Search query
+        query: String,
+    },
+    /// Show app details and config fields
+    Info {
+        /// App ID (e.g., postgres, redis, grafana)
+        id: String,
+    },
+    /// Install an app from the catalog
+    Install {
+        /// App ID
+        id: String,
+        /// Custom service name (defaults to app ID)
+        #[arg(long)]
+        name: Option<String>,
+        /// Config values (KEY=VALUE, repeatable)
+        #[arg(long = "config", short = 'c')]
+        config: Vec<String>,
+    },
+    /// List installed apps
+    Installed,
+}
+
+#[derive(Subcommand)]
+enum RegistryAction {
+    /// Log in to a container registry
+    Login {
+        /// Registry URL (e.g., docker.io, ghcr.io)
+        url: String,
+        /// Username (prompts if not provided)
+        #[arg(long)]
+        username: Option<String>,
+    },
+    /// List configured registries
+    Ls,
+    /// Remove registry credentials
+    Rm {
+        /// Registry URL
+        url: String,
     },
 }
 
@@ -393,5 +457,44 @@ async fn main() -> Result<()> {
             )
             .await
         }
+        Commands::App { action } => match action {
+            AppAction::Ls { category } => {
+                commands::app::list(category.as_deref(), &cli.addr, cli.ca_cert.as_deref()).await
+            }
+            AppAction::Search { query } => {
+                commands::app::search(&query, &cli.addr, cli.ca_cert.as_deref()).await
+            }
+            AppAction::Info { id } => {
+                commands::app::info(&id, &cli.addr, cli.ca_cert.as_deref()).await
+            }
+            AppAction::Install { id, name, config } => {
+                commands::app::install(
+                    &id,
+                    name.as_deref(),
+                    &config,
+                    &cli.addr,
+                    cli.ca_cert.as_deref(),
+                )
+                .await
+            }
+            AppAction::Installed => {
+                commands::app::installed(&cli.addr, cli.ca_cert.as_deref()).await
+            }
+        },
+        Commands::Registry { action } => match action {
+            RegistryAction::Login { url, username } => {
+                commands::registry::login(
+                    &url,
+                    username.as_deref(),
+                    &cli.addr,
+                    cli.ca_cert.as_deref(),
+                )
+                .await
+            }
+            RegistryAction::Ls => commands::registry::list(&cli.addr, cli.ca_cert.as_deref()).await,
+            RegistryAction::Rm { url } => {
+                commands::registry::remove(&url, &cli.addr, cli.ca_cert.as_deref()).await
+            }
+        },
     }
 }

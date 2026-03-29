@@ -1,0 +1,32 @@
+[recipe]
+id = "prometheus"
+name = "Prometheus"
+description = "Metrics collection and alerting"
+icon = "🔥"
+category = "monitoring"
+tags = ["metrics", "monitoring", "alerting"]
+image = "prom/prometheus:latest"
+version = "latest"
+min_memory = "256M"
+platforms = ["linux/amd64"]
+
+[service.prometheus]
+image = "prom/prometheus:latest"
+replicas = 1
+
+  [service.prometheus.health]
+  type = "http"
+  path = "/-/healthy"
+  port = 9090
+  interval = "30s"
+
+  [service.prometheus.ports]
+  "9090" = "9090"
+
+  [[service.prometheus.volumes]]
+  name = "prom-data"
+  target = "/prometheus"
+
+  [service.prometheus.resources]
+  memory = "256M"
+  cpus = 0.5

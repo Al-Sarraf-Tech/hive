@@ -1,0 +1,46 @@
+[recipe]
+id = "mongo"
+name = "MongoDB"
+description = "Document-oriented NoSQL database"
+icon = "🍃"
+category = "database"
+tags = ["nosql", "document", "database"]
+image = "mongo:7"
+version = "7"
+min_memory = "512M"
+platforms = ["linux/amd64"]
+
+  [recipe.config.root_username]
+  label = "Root Username"
+  type = "string"
+  required = false
+  default = "admin"
+
+  [recipe.config.root_password]
+  label = "Root Password"
+  type = "secret"
+  required = true
+
+[service.mongo]
+image = "mongo:7"
+replicas = 1
+
+  [service.mongo.env]
+  MONGO_INITDB_ROOT_USERNAME = "{{ config:root_username }}"
+  MONGO_INITDB_ROOT_PASSWORD = "{{ config:root_password }}"
+
+  [service.mongo.health]
+  type = "tcp"
+  port = 27017
+  interval = "15s"
+
+  [service.mongo.ports]
+  "27017" = "27017"
+
+  [[service.mongo.volumes]]
+  name = "mongo-data"
+  target = "/data/db"
+
+  [service.mongo.resources]
+  memory = "512M"
+  cpus = 0.5

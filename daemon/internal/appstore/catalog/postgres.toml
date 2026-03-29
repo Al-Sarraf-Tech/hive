@@ -1,0 +1,53 @@
+[recipe]
+id = "postgres"
+name = "PostgreSQL"
+description = "Powerful open-source relational database"
+icon = "🐘"
+category = "database"
+tags = ["sql", "relational", "database"]
+image = "postgres:16-alpine"
+version = "16"
+min_memory = "256M"
+platforms = ["linux/amd64"]
+
+  [recipe.config.db_name]
+  label = "Database Name"
+  type = "string"
+  required = false
+  default = "app"
+
+  [recipe.config.db_user]
+  label = "Database User"
+  type = "string"
+  required = false
+  default = "app"
+
+  [recipe.config.db_password]
+  label = "Database Password"
+  type = "secret"
+  required = true
+
+[service.postgres]
+image = "postgres:16-alpine"
+replicas = 1
+
+  [service.postgres.env]
+  POSTGRES_DB = "{{ config:db_name }}"
+  POSTGRES_USER = "{{ config:db_user }}"
+  POSTGRES_PASSWORD = "{{ config:db_password }}"
+
+  [service.postgres.health]
+  type = "tcp"
+  port = 5432
+  interval = "15s"
+
+  [service.postgres.ports]
+  "5432" = "5432"
+
+  [[service.postgres.volumes]]
+  name = "pg-data"
+  target = "/var/lib/postgresql/data"
+
+  [service.postgres.resources]
+  memory = "256M"
+  cpus = 0.5

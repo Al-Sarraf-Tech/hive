@@ -1,0 +1,32 @@
+[recipe]
+id = "loki"
+name = "Loki"
+description = "Log aggregation system by Grafana Labs"
+icon = "📝"
+category = "monitoring"
+tags = ["logs", "monitoring", "grafana"]
+image = "grafana/loki:3.0.0"
+version = "3.0"
+min_memory = "256M"
+platforms = ["linux/amd64"]
+
+[service.loki]
+image = "grafana/loki:3.0.0"
+replicas = 1
+
+  [service.loki.health]
+  type = "http"
+  path = "/ready"
+  port = 3100
+  interval = "30s"
+
+  [service.loki.ports]
+  "3100" = "3100"
+
+  [[service.loki.volumes]]
+  name = "loki-data"
+  target = "/loki"
+
+  [service.loki.resources]
+  memory = "256M"
+  cpus = 0.5

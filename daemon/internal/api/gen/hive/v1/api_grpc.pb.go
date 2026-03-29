@@ -20,40 +20,50 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	HiveAPI_GetClusterStatus_FullMethodName = "/hive.v1.HiveAPI/GetClusterStatus"
-	HiveAPI_InitCluster_FullMethodName      = "/hive.v1.HiveAPI/InitCluster"
-	HiveAPI_JoinCluster_FullMethodName      = "/hive.v1.HiveAPI/JoinCluster"
-	HiveAPI_ListNodes_FullMethodName        = "/hive.v1.HiveAPI/ListNodes"
-	HiveAPI_GetNode_FullMethodName          = "/hive.v1.HiveAPI/GetNode"
-	HiveAPI_DrainNode_FullMethodName        = "/hive.v1.HiveAPI/DrainNode"
-	HiveAPI_ValidateHivefile_FullMethodName = "/hive.v1.HiveAPI/ValidateHivefile"
-	HiveAPI_DeployService_FullMethodName    = "/hive.v1.HiveAPI/DeployService"
-	HiveAPI_ListServices_FullMethodName     = "/hive.v1.HiveAPI/ListServices"
-	HiveAPI_GetService_FullMethodName       = "/hive.v1.HiveAPI/GetService"
-	HiveAPI_StopService_FullMethodName      = "/hive.v1.HiveAPI/StopService"
-	HiveAPI_ScaleService_FullMethodName     = "/hive.v1.HiveAPI/ScaleService"
-	HiveAPI_RollbackService_FullMethodName  = "/hive.v1.HiveAPI/RollbackService"
-	HiveAPI_RestartService_FullMethodName   = "/hive.v1.HiveAPI/RestartService"
-	HiveAPI_UpdateService_FullMethodName    = "/hive.v1.HiveAPI/UpdateService"
-	HiveAPI_ListContainers_FullMethodName   = "/hive.v1.HiveAPI/ListContainers"
-	HiveAPI_ContainerLogs_FullMethodName    = "/hive.v1.HiveAPI/ContainerLogs"
-	HiveAPI_ExecContainer_FullMethodName    = "/hive.v1.HiveAPI/ExecContainer"
-	HiveAPI_SetSecret_FullMethodName        = "/hive.v1.HiveAPI/SetSecret"
-	HiveAPI_ListSecrets_FullMethodName      = "/hive.v1.HiveAPI/ListSecrets"
-	HiveAPI_DeleteSecret_FullMethodName     = "/hive.v1.HiveAPI/DeleteSecret"
-	HiveAPI_RotateSecret_FullMethodName     = "/hive.v1.HiveAPI/RotateSecret"
-	HiveAPI_SetNodeLabel_FullMethodName     = "/hive.v1.HiveAPI/SetNodeLabel"
-	HiveAPI_RemoveNodeLabel_FullMethodName  = "/hive.v1.HiveAPI/RemoveNodeLabel"
-	HiveAPI_DeployStack_FullMethodName      = "/hive.v1.HiveAPI/DeployStack"
-	HiveAPI_StreamEvents_FullMethodName     = "/hive.v1.HiveAPI/StreamEvents"
-	HiveAPI_ListCronJobs_FullMethodName     = "/hive.v1.HiveAPI/ListCronJobs"
-	HiveAPI_GetServiceHealth_FullMethodName = "/hive.v1.HiveAPI/GetServiceHealth"
-	HiveAPI_DiffDeploy_FullMethodName       = "/hive.v1.HiveAPI/DiffDeploy"
-	HiveAPI_ListVolumes_FullMethodName      = "/hive.v1.HiveAPI/ListVolumes"
-	HiveAPI_CreateVolume_FullMethodName     = "/hive.v1.HiveAPI/CreateVolume"
-	HiveAPI_DeleteVolume_FullMethodName     = "/hive.v1.HiveAPI/DeleteVolume"
-	HiveAPI_ExportCluster_FullMethodName    = "/hive.v1.HiveAPI/ExportCluster"
-	HiveAPI_ImportCluster_FullMethodName    = "/hive.v1.HiveAPI/ImportCluster"
+	HiveAPI_GetClusterStatus_FullMethodName  = "/hive.v1.HiveAPI/GetClusterStatus"
+	HiveAPI_InitCluster_FullMethodName       = "/hive.v1.HiveAPI/InitCluster"
+	HiveAPI_JoinCluster_FullMethodName       = "/hive.v1.HiveAPI/JoinCluster"
+	HiveAPI_ListNodes_FullMethodName         = "/hive.v1.HiveAPI/ListNodes"
+	HiveAPI_GetNode_FullMethodName           = "/hive.v1.HiveAPI/GetNode"
+	HiveAPI_DrainNode_FullMethodName         = "/hive.v1.HiveAPI/DrainNode"
+	HiveAPI_ValidateHivefile_FullMethodName  = "/hive.v1.HiveAPI/ValidateHivefile"
+	HiveAPI_DeployService_FullMethodName     = "/hive.v1.HiveAPI/DeployService"
+	HiveAPI_ListServices_FullMethodName      = "/hive.v1.HiveAPI/ListServices"
+	HiveAPI_GetService_FullMethodName        = "/hive.v1.HiveAPI/GetService"
+	HiveAPI_StopService_FullMethodName       = "/hive.v1.HiveAPI/StopService"
+	HiveAPI_ScaleService_FullMethodName      = "/hive.v1.HiveAPI/ScaleService"
+	HiveAPI_RollbackService_FullMethodName   = "/hive.v1.HiveAPI/RollbackService"
+	HiveAPI_RestartService_FullMethodName    = "/hive.v1.HiveAPI/RestartService"
+	HiveAPI_UpdateService_FullMethodName     = "/hive.v1.HiveAPI/UpdateService"
+	HiveAPI_ListContainers_FullMethodName    = "/hive.v1.HiveAPI/ListContainers"
+	HiveAPI_ContainerLogs_FullMethodName     = "/hive.v1.HiveAPI/ContainerLogs"
+	HiveAPI_ExecContainer_FullMethodName     = "/hive.v1.HiveAPI/ExecContainer"
+	HiveAPI_SetSecret_FullMethodName         = "/hive.v1.HiveAPI/SetSecret"
+	HiveAPI_ListSecrets_FullMethodName       = "/hive.v1.HiveAPI/ListSecrets"
+	HiveAPI_DeleteSecret_FullMethodName      = "/hive.v1.HiveAPI/DeleteSecret"
+	HiveAPI_RotateSecret_FullMethodName      = "/hive.v1.HiveAPI/RotateSecret"
+	HiveAPI_SetNodeLabel_FullMethodName      = "/hive.v1.HiveAPI/SetNodeLabel"
+	HiveAPI_RemoveNodeLabel_FullMethodName   = "/hive.v1.HiveAPI/RemoveNodeLabel"
+	HiveAPI_DeployStack_FullMethodName       = "/hive.v1.HiveAPI/DeployStack"
+	HiveAPI_StreamEvents_FullMethodName      = "/hive.v1.HiveAPI/StreamEvents"
+	HiveAPI_ListCronJobs_FullMethodName      = "/hive.v1.HiveAPI/ListCronJobs"
+	HiveAPI_GetServiceHealth_FullMethodName  = "/hive.v1.HiveAPI/GetServiceHealth"
+	HiveAPI_DiffDeploy_FullMethodName        = "/hive.v1.HiveAPI/DiffDeploy"
+	HiveAPI_ListVolumes_FullMethodName       = "/hive.v1.HiveAPI/ListVolumes"
+	HiveAPI_CreateVolume_FullMethodName      = "/hive.v1.HiveAPI/CreateVolume"
+	HiveAPI_DeleteVolume_FullMethodName      = "/hive.v1.HiveAPI/DeleteVolume"
+	HiveAPI_ExportCluster_FullMethodName     = "/hive.v1.HiveAPI/ExportCluster"
+	HiveAPI_ImportCluster_FullMethodName     = "/hive.v1.HiveAPI/ImportCluster"
+	HiveAPI_ListApps_FullMethodName          = "/hive.v1.HiveAPI/ListApps"
+	HiveAPI_GetApp_FullMethodName            = "/hive.v1.HiveAPI/GetApp"
+	HiveAPI_SearchApps_FullMethodName        = "/hive.v1.HiveAPI/SearchApps"
+	HiveAPI_InstallApp_FullMethodName        = "/hive.v1.HiveAPI/InstallApp"
+	HiveAPI_ListInstalledApps_FullMethodName = "/hive.v1.HiveAPI/ListInstalledApps"
+	HiveAPI_AddCustomApp_FullMethodName      = "/hive.v1.HiveAPI/AddCustomApp"
+	HiveAPI_RemoveCustomApp_FullMethodName   = "/hive.v1.HiveAPI/RemoveCustomApp"
+	HiveAPI_RegistryLogin_FullMethodName     = "/hive.v1.HiveAPI/RegistryLogin"
+	HiveAPI_ListRegistries_FullMethodName    = "/hive.v1.HiveAPI/ListRegistries"
+	HiveAPI_RemoveRegistry_FullMethodName    = "/hive.v1.HiveAPI/RemoveRegistry"
 )
 
 // HiveAPIClient is the client API for HiveAPI service.
@@ -111,6 +121,18 @@ type HiveAPIClient interface {
 	// ─── Backup/Restore ─────────────────────────────────────
 	ExportCluster(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ExportClusterResponse, error)
 	ImportCluster(ctx context.Context, in *ImportClusterRequest, opts ...grpc.CallOption) (*ImportClusterResponse, error)
+	// ─── App Store ──────────────────────────────────────────
+	ListApps(ctx context.Context, in *ListAppsRequest, opts ...grpc.CallOption) (*ListAppsResponse, error)
+	GetApp(ctx context.Context, in *GetAppRequest, opts ...grpc.CallOption) (*AppDefinition, error)
+	SearchApps(ctx context.Context, in *SearchAppsRequest, opts ...grpc.CallOption) (*ListAppsResponse, error)
+	InstallApp(ctx context.Context, in *InstallAppRequest, opts ...grpc.CallOption) (*DeployServiceResponse, error)
+	ListInstalledApps(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListInstalledAppsResponse, error)
+	AddCustomApp(ctx context.Context, in *AddCustomAppRequest, opts ...grpc.CallOption) (*AppDefinition, error)
+	RemoveCustomApp(ctx context.Context, in *RemoveCustomAppRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// ─── Registry ─────────────────────────────────────────────
+	RegistryLogin(ctx context.Context, in *RegistryLoginRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ListRegistries(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListRegistriesResponse, error)
+	RemoveRegistry(ctx context.Context, in *RemoveRegistryRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type hiveAPIClient struct {
@@ -479,6 +501,106 @@ func (c *hiveAPIClient) ImportCluster(ctx context.Context, in *ImportClusterRequ
 	return out, nil
 }
 
+func (c *hiveAPIClient) ListApps(ctx context.Context, in *ListAppsRequest, opts ...grpc.CallOption) (*ListAppsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAppsResponse)
+	err := c.cc.Invoke(ctx, HiveAPI_ListApps_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hiveAPIClient) GetApp(ctx context.Context, in *GetAppRequest, opts ...grpc.CallOption) (*AppDefinition, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AppDefinition)
+	err := c.cc.Invoke(ctx, HiveAPI_GetApp_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hiveAPIClient) SearchApps(ctx context.Context, in *SearchAppsRequest, opts ...grpc.CallOption) (*ListAppsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAppsResponse)
+	err := c.cc.Invoke(ctx, HiveAPI_SearchApps_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hiveAPIClient) InstallApp(ctx context.Context, in *InstallAppRequest, opts ...grpc.CallOption) (*DeployServiceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeployServiceResponse)
+	err := c.cc.Invoke(ctx, HiveAPI_InstallApp_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hiveAPIClient) ListInstalledApps(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListInstalledAppsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListInstalledAppsResponse)
+	err := c.cc.Invoke(ctx, HiveAPI_ListInstalledApps_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hiveAPIClient) AddCustomApp(ctx context.Context, in *AddCustomAppRequest, opts ...grpc.CallOption) (*AppDefinition, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AppDefinition)
+	err := c.cc.Invoke(ctx, HiveAPI_AddCustomApp_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hiveAPIClient) RemoveCustomApp(ctx context.Context, in *RemoveCustomAppRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, HiveAPI_RemoveCustomApp_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hiveAPIClient) RegistryLogin(ctx context.Context, in *RegistryLoginRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, HiveAPI_RegistryLogin_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hiveAPIClient) ListRegistries(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListRegistriesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListRegistriesResponse)
+	err := c.cc.Invoke(ctx, HiveAPI_ListRegistries_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hiveAPIClient) RemoveRegistry(ctx context.Context, in *RemoveRegistryRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, HiveAPI_RemoveRegistry_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // HiveAPIServer is the server API for HiveAPI service.
 // All implementations must embed UnimplementedHiveAPIServer
 // for forward compatibility.
@@ -534,6 +656,18 @@ type HiveAPIServer interface {
 	// ─── Backup/Restore ─────────────────────────────────────
 	ExportCluster(context.Context, *emptypb.Empty) (*ExportClusterResponse, error)
 	ImportCluster(context.Context, *ImportClusterRequest) (*ImportClusterResponse, error)
+	// ─── App Store ──────────────────────────────────────────
+	ListApps(context.Context, *ListAppsRequest) (*ListAppsResponse, error)
+	GetApp(context.Context, *GetAppRequest) (*AppDefinition, error)
+	SearchApps(context.Context, *SearchAppsRequest) (*ListAppsResponse, error)
+	InstallApp(context.Context, *InstallAppRequest) (*DeployServiceResponse, error)
+	ListInstalledApps(context.Context, *emptypb.Empty) (*ListInstalledAppsResponse, error)
+	AddCustomApp(context.Context, *AddCustomAppRequest) (*AppDefinition, error)
+	RemoveCustomApp(context.Context, *RemoveCustomAppRequest) (*emptypb.Empty, error)
+	// ─── Registry ─────────────────────────────────────────────
+	RegistryLogin(context.Context, *RegistryLoginRequest) (*emptypb.Empty, error)
+	ListRegistries(context.Context, *emptypb.Empty) (*ListRegistriesResponse, error)
+	RemoveRegistry(context.Context, *RemoveRegistryRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedHiveAPIServer()
 }
 
@@ -645,6 +779,36 @@ func (UnimplementedHiveAPIServer) ExportCluster(context.Context, *emptypb.Empty)
 }
 func (UnimplementedHiveAPIServer) ImportCluster(context.Context, *ImportClusterRequest) (*ImportClusterResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ImportCluster not implemented")
+}
+func (UnimplementedHiveAPIServer) ListApps(context.Context, *ListAppsRequest) (*ListAppsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListApps not implemented")
+}
+func (UnimplementedHiveAPIServer) GetApp(context.Context, *GetAppRequest) (*AppDefinition, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetApp not implemented")
+}
+func (UnimplementedHiveAPIServer) SearchApps(context.Context, *SearchAppsRequest) (*ListAppsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SearchApps not implemented")
+}
+func (UnimplementedHiveAPIServer) InstallApp(context.Context, *InstallAppRequest) (*DeployServiceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InstallApp not implemented")
+}
+func (UnimplementedHiveAPIServer) ListInstalledApps(context.Context, *emptypb.Empty) (*ListInstalledAppsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListInstalledApps not implemented")
+}
+func (UnimplementedHiveAPIServer) AddCustomApp(context.Context, *AddCustomAppRequest) (*AppDefinition, error) {
+	return nil, status.Error(codes.Unimplemented, "method AddCustomApp not implemented")
+}
+func (UnimplementedHiveAPIServer) RemoveCustomApp(context.Context, *RemoveCustomAppRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemoveCustomApp not implemented")
+}
+func (UnimplementedHiveAPIServer) RegistryLogin(context.Context, *RegistryLoginRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method RegistryLogin not implemented")
+}
+func (UnimplementedHiveAPIServer) ListRegistries(context.Context, *emptypb.Empty) (*ListRegistriesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListRegistries not implemented")
+}
+func (UnimplementedHiveAPIServer) RemoveRegistry(context.Context, *RemoveRegistryRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemoveRegistry not implemented")
 }
 func (UnimplementedHiveAPIServer) mustEmbedUnimplementedHiveAPIServer() {}
 func (UnimplementedHiveAPIServer) testEmbeddedByValue()                 {}
@@ -1265,6 +1429,186 @@ func _HiveAPI_ImportCluster_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HiveAPI_ListApps_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAppsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).ListApps(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_ListApps_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).ListApps(ctx, req.(*ListAppsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HiveAPI_GetApp_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAppRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).GetApp(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_GetApp_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).GetApp(ctx, req.(*GetAppRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HiveAPI_SearchApps_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SearchAppsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).SearchApps(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_SearchApps_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).SearchApps(ctx, req.(*SearchAppsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HiveAPI_InstallApp_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InstallAppRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).InstallApp(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_InstallApp_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).InstallApp(ctx, req.(*InstallAppRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HiveAPI_ListInstalledApps_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).ListInstalledApps(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_ListInstalledApps_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).ListInstalledApps(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HiveAPI_AddCustomApp_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddCustomAppRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).AddCustomApp(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_AddCustomApp_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).AddCustomApp(ctx, req.(*AddCustomAppRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HiveAPI_RemoveCustomApp_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveCustomAppRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).RemoveCustomApp(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_RemoveCustomApp_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).RemoveCustomApp(ctx, req.(*RemoveCustomAppRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HiveAPI_RegistryLogin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegistryLoginRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).RegistryLogin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_RegistryLogin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).RegistryLogin(ctx, req.(*RegistryLoginRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HiveAPI_ListRegistries_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).ListRegistries(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_ListRegistries_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).ListRegistries(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HiveAPI_RemoveRegistry_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveRegistryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HiveAPIServer).RemoveRegistry(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HiveAPI_RemoveRegistry_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HiveAPIServer).RemoveRegistry(ctx, req.(*RemoveRegistryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // HiveAPI_ServiceDesc is the grpc.ServiceDesc for HiveAPI service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1399,6 +1743,46 @@ var HiveAPI_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ImportCluster",
 			Handler:    _HiveAPI_ImportCluster_Handler,
+		},
+		{
+			MethodName: "ListApps",
+			Handler:    _HiveAPI_ListApps_Handler,
+		},
+		{
+			MethodName: "GetApp",
+			Handler:    _HiveAPI_GetApp_Handler,
+		},
+		{
+			MethodName: "SearchApps",
+			Handler:    _HiveAPI_SearchApps_Handler,
+		},
+		{
+			MethodName: "InstallApp",
+			Handler:    _HiveAPI_InstallApp_Handler,
+		},
+		{
+			MethodName: "ListInstalledApps",
+			Handler:    _HiveAPI_ListInstalledApps_Handler,
+		},
+		{
+			MethodName: "AddCustomApp",
+			Handler:    _HiveAPI_AddCustomApp_Handler,
+		},
+		{
+			MethodName: "RemoveCustomApp",
+			Handler:    _HiveAPI_RemoveCustomApp_Handler,
+		},
+		{
+			MethodName: "RegistryLogin",
+			Handler:    _HiveAPI_RegistryLogin_Handler,
+		},
+		{
+			MethodName: "ListRegistries",
+			Handler:    _HiveAPI_ListRegistries_Handler,
+		},
+		{
+			MethodName: "RemoveRegistry",
+			Handler:    _HiveAPI_RemoveRegistry_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -1,0 +1,32 @@
+[recipe]
+id = "registry"
+name = "Docker Registry"
+description = "Private container image registry"
+icon = "🐋"
+category = "devtools"
+tags = ["docker", "registry", "images"]
+image = "registry:2"
+version = "2"
+min_memory = "128M"
+platforms = ["linux/amd64"]
+
+[service.registry]
+image = "registry:2"
+replicas = 1
+
+  [service.registry.health]
+  type = "http"
+  path = "/v2/"
+  port = 5000
+  interval = "30s"
+
+  [service.registry.ports]
+  "5000" = "5000"
+
+  [[service.registry.volumes]]
+  name = "registry-data"
+  target = "/var/lib/registry"
+
+  [service.registry.resources]
+  memory = "128M"
+  cpus = 0.25

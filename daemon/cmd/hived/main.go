@@ -28,6 +28,7 @@ import (
 	"github.com/jalsarraf0/hive/daemon/internal/mesh"
 	"github.com/jalsarraf0/hive/daemon/internal/metrics"
 	"github.com/jalsarraf0/hive/daemon/internal/pki"
+	"github.com/jalsarraf0/hive/daemon/internal/appstore"
 	"github.com/jalsarraf0/hive/daemon/internal/platform"
 	"github.com/jalsarraf0/hive/daemon/internal/proxy"
 	"github.com/jalsarraf0/hive/daemon/internal/scheduler"
@@ -376,6 +377,16 @@ func main() {
 			})
 		})
 	}
+	// Set up app store and registry manager
+	appStore, appStoreErr := appstore.New(stateStore)
+	if appStoreErr != nil {
+		slog.Warn("failed to initialize app store", "error", appStoreErr)
+	} else {
+		apiServer.SetAppStore(appStore)
+	}
+	registryMgr := appstore.NewRegistryManager(vault, stateStore)
+	apiServer.SetRegistryManager(registryMgr)
+
 	// Set up ingress proxy manager
 	proxyMgr := proxy.NewManager(containerProvider, stateStore, dataDir, nodeName, hiveMesh)
 	apiServer.SetProxyManager(proxyMgr)

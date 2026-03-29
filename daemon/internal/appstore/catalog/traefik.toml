@@ -1,0 +1,29 @@
+[recipe]
+id = "traefik"
+name = "Traefik"
+description = "Cloud-native reverse proxy and load balancer"
+icon = "🔀"
+category = "proxy"
+tags = ["proxy", "load-balancer", "ingress"]
+image = "traefik:v3"
+version = "3"
+min_memory = "128M"
+platforms = ["linux/amd64"]
+
+[service.traefik]
+image = "traefik:v3"
+replicas = 1
+
+  [service.traefik.health]
+  type = "http"
+  path = "/ping"
+  port = 8080
+  interval = "15s"
+
+  [service.traefik.ports]
+  "80" = "80"
+  "8080" = "8080"
+
+  [service.traefik.resources]
+  memory = "128M"
+  cpus = 0.25

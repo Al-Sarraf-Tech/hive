@@ -1,0 +1,43 @@
+[recipe]
+id = "rabbitmq"
+name = "RabbitMQ"
+description = "Message broker with management UI"
+icon = "🐰"
+category = "messaging"
+tags = ["queue", "messaging", "amqp"]
+image = "rabbitmq:3-management-alpine"
+version = "3"
+min_memory = "256M"
+platforms = ["linux/amd64"]
+
+  [recipe.config.default_user]
+  label = "Admin Username"
+  type = "string"
+  required = false
+  default = "admin"
+
+  [recipe.config.default_pass]
+  label = "Admin Password"
+  type = "secret"
+  required = true
+
+[service.rabbitmq]
+image = "rabbitmq:3-management-alpine"
+replicas = 1
+
+  [service.rabbitmq.env]
+  RABBITMQ_DEFAULT_USER = "{{ config:default_user }}"
+  RABBITMQ_DEFAULT_PASS = "{{ config:default_pass }}"
+
+  [service.rabbitmq.health]
+  type = "tcp"
+  port = 5672
+  interval = "15s"
+
+  [service.rabbitmq.ports]
+  "5672" = "5672"
+  "15672" = "15672"
+
+  [service.rabbitmq.resources]
+  memory = "256M"
+  cpus = 0.5

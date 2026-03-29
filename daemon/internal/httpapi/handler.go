@@ -122,6 +122,20 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("POST /api/v1/diff", h.diffDeploy)
 	h.mux.HandleFunc("GET /api/v1/services/{name}/health", h.getServiceHealth)
 
+	// App Store
+	h.mux.HandleFunc("GET /api/v1/apps/search", h.searchApps)      // before {id} to avoid collision
+	h.mux.HandleFunc("GET /api/v1/apps/installed", h.listInstalledApps)
+	h.mux.HandleFunc("GET /api/v1/apps", h.listApps)
+	h.mux.HandleFunc("GET /api/v1/apps/{id}", h.getApp)
+	h.mux.HandleFunc("POST /api/v1/apps/{id}/install", h.installApp)
+	h.mux.HandleFunc("POST /api/v1/apps/custom", h.addCustomApp)
+	h.mux.HandleFunc("DELETE /api/v1/apps/custom/{id}", h.removeCustomApp)
+
+	// Registry
+	h.mux.HandleFunc("GET /api/v1/registries", h.listRegistriesHTTP)
+	h.mux.HandleFunc("POST /api/v1/registries", h.registryLogin)
+	h.mux.HandleFunc("DELETE /api/v1/registries/{url}", h.removeRegistry)
+
 	// Serve embedded web console at / — SPA fallback to index.html for client-side routing.
 	// Uses fs.Sub to strip the "build" prefix so files are served at their natural paths.
 	consoleBuild, err := fs.Sub(console.Files, "build")
@@ -760,4 +774,139 @@ func NewServer(addr string, api hivev1.HiveAPIServer, token string, logBuffer *l
 		srv.TLSConfig = tlsConfig
 	}
 	return srv
+}
+
+// ─── App Store HTTP Handlers ─────────────────────────────────
+
+func (h *Handler) listApps(w http.ResponseWriter, r *http.Request) {
+	category := r.URL.Query().Get("category")
+	resp, err := h.api.ListApps(r.Context(), &hivev1.ListAppsRequest{Category: category})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
+}
+
+func (h *Handler) getApp(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	resp, err := h.api.GetApp(r.Context(), &hivev1.GetAppRequest{Id: id})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
+}
+
+func (h *Handler) searchApps(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	resp, err := h.api.SearchApps(r.Context(), &hivev1.SearchAppsRequest{Query: query})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
+}
+
+func (h *Handler) installApp(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var body struct {
+		ServiceName string            `json:"service_name"`
+		Config      map[string]string `json:"config"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	resp, err := h.api.InstallApp(r.Context(), &hivev1.InstallAppRequest{
+		AppId:       id,
+		ServiceName: body.ServiceName,
+		Config:      body.Config,
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
+}
+
+func (h *Handler) listInstalledApps(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.api.ListInstalledApps(r.Context(), nil)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
+}
+
+func (h *Handler) addCustomApp(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var body struct {
+		RecipeToml string `json:"recipe_toml"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	resp, err := h.api.AddCustomApp(r.Context(), &hivev1.AddCustomAppRequest{RecipeToml: body.RecipeToml})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
+}
+
+func (h *Handler) removeCustomApp(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	_, err := h.api.RemoveCustomApp(r.Context(), &hivev1.RemoveCustomAppRequest{Id: id})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ─── Registry HTTP Handlers ──────────────────────────────────
+
+func (h *Handler) registryLogin(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var body struct {
+		URL      string `json:"url"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	_, err := h.api.RegistryLogin(r.Context(), &hivev1.RegistryLoginRequest{
+		Url:      body.URL,
+		Username: body.Username,
+		Password: body.Password,
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) listRegistriesHTTP(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.api.ListRegistries(r.Context(), nil)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
+}
+
+func (h *Handler) removeRegistry(w http.ResponseWriter, r *http.Request) {
+	url := r.PathValue("url")
+	_, err := h.api.RemoveRegistry(r.Context(), &hivev1.RemoveRegistryRequest{Url: url})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

@@ -36,7 +36,8 @@ type Provider interface {
 	Exec(ctx context.Context, id string, cmd []string) (ExecResult, error)
 
 	// PullImage pulls a container image from a registry.
-	PullImage(ctx context.Context, ref string) error
+	// auth may be nil for public images or when using default Docker credentials.
+	PullImage(ctx context.Context, ref string, auth *RegistryAuth) error
 
 	// Inspect returns detailed info about a container.
 	Inspect(ctx context.Context, id string) (*ContainerInfo, error)
@@ -78,6 +79,12 @@ type VolumeInfo struct {
 	Driver     string
 	Mountpoint string
 	CreatedAt  string
+}
+
+// RegistryAuth holds credentials for authenticating to a container registry.
+type RegistryAuth struct {
+	Username string
+	Password string
 }
 
 // ContainerSpec defines what to create.

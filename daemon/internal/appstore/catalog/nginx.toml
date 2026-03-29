@@ -1,0 +1,28 @@
+[recipe]
+id = "nginx"
+name = "Nginx"
+description = "High-performance web server and reverse proxy"
+icon = "🌐"
+category = "webserver"
+tags = ["web", "proxy", "http"]
+image = "nginx:alpine"
+version = "latest"
+min_memory = "32M"
+platforms = ["linux/amd64"]
+
+[service.nginx]
+image = "nginx:alpine"
+replicas = 1
+
+  [service.nginx.health]
+  type = "http"
+  path = "/"
+  port = 80
+  interval = "30s"
+
+  [service.nginx.ports]
+  "8080" = "80"
+
+  [service.nginx.resources]
+  memory = "64M"
+  cpus = 0.25

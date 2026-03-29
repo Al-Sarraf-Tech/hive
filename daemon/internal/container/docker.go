@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -364,8 +365,16 @@ func (d *dockerProvider) Stats(ctx context.Context, id string) (*ContainerStats,
 	}, nil
 }
 
-func (d *dockerProvider) PullImage(ctx context.Context, ref string) error {
-	resp, err := d.cli.ImagePull(ctx, ref, client.ImagePullOptions{})
+func (d *dockerProvider) PullImage(ctx context.Context, ref string, auth *RegistryAuth) error {
+	opts := client.ImagePullOptions{}
+	if auth != nil && auth.Username != "" {
+		authJSON, _ := json.Marshal(map[string]string{
+			"username": auth.Username,
+			"password": auth.Password,
+		})
+		opts.RegistryAuth = base64.URLEncoding.EncodeToString(authJSON)
+	}
+	resp, err := d.cli.ImagePull(ctx, ref, opts)
 	if err != nil {
 		return fmt.Errorf("pull image %q: %w", ref, err)
 	}

@@ -1,0 +1,33 @@
+[recipe]
+id = "redis"
+name = "Redis"
+description = "In-memory data store for caching and messaging"
+icon = "⚡"
+category = "cache"
+tags = ["cache", "key-value", "in-memory"]
+image = "redis:7-alpine"
+version = "7"
+min_memory = "64M"
+platforms = ["linux/amd64"]
+
+  [recipe.config.max_memory]
+  label = "Max Memory"
+  type = "string"
+  required = false
+  default = "64mb"
+
+[service.redis]
+image = "redis:7-alpine"
+replicas = 1
+
+  [service.redis.health]
+  type = "tcp"
+  port = 6379
+  interval = "15s"
+
+  [service.redis.ports]
+  "6379" = "6379"
+
+  [service.redis.resources]
+  memory = "64M"
+  cpus = 0.25

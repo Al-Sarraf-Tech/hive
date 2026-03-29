@@ -1315,6 +1315,350 @@ func (x *Event) GetTimestamp() *timestamppb.Timestamp {
 	return nil
 }
 
+type AppDefinition struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	Icon          string                 `protobuf:"bytes,4,opt,name=icon,proto3" json:"icon,omitempty"`
+	Category      string                 `protobuf:"bytes,5,opt,name=category,proto3" json:"category,omitempty"`
+	Tags          []string               `protobuf:"bytes,6,rep,name=tags,proto3" json:"tags,omitempty"`
+	Image         string                 `protobuf:"bytes,7,opt,name=image,proto3" json:"image,omitempty"`
+	Version       string                 `protobuf:"bytes,8,opt,name=version,proto3" json:"version,omitempty"`
+	ConfigFields  []*AppConfigField      `protobuf:"bytes,9,rep,name=config_fields,json=configFields,proto3" json:"config_fields,omitempty"`
+	MinMemory     string                 `protobuf:"bytes,10,opt,name=min_memory,json=minMemory,proto3" json:"min_memory,omitempty"`
+	Platforms     []string               `protobuf:"bytes,11,rep,name=platforms,proto3" json:"platforms,omitempty"`
+	Builtin       bool                   `protobuf:"varint,12,opt,name=builtin,proto3" json:"builtin,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AppDefinition) Reset() {
+	*x = AppDefinition{}
+	mi := &file_hive_v1_types_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AppDefinition) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AppDefinition) ProtoMessage() {}
+
+func (x *AppDefinition) ProtoReflect() protoreflect.Message {
+	mi := &file_hive_v1_types_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AppDefinition.ProtoReflect.Descriptor instead.
+func (*AppDefinition) Descriptor() ([]byte, []int) {
+	return file_hive_v1_types_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *AppDefinition) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *AppDefinition) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *AppDefinition) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *AppDefinition) GetIcon() string {
+	if x != nil {
+		return x.Icon
+	}
+	return ""
+}
+
+func (x *AppDefinition) GetCategory() string {
+	if x != nil {
+		return x.Category
+	}
+	return ""
+}
+
+func (x *AppDefinition) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
+func (x *AppDefinition) GetImage() string {
+	if x != nil {
+		return x.Image
+	}
+	return ""
+}
+
+func (x *AppDefinition) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *AppDefinition) GetConfigFields() []*AppConfigField {
+	if x != nil {
+		return x.ConfigFields
+	}
+	return nil
+}
+
+func (x *AppDefinition) GetMinMemory() string {
+	if x != nil {
+		return x.MinMemory
+	}
+	return ""
+}
+
+func (x *AppDefinition) GetPlatforms() []string {
+	if x != nil {
+		return x.Platforms
+	}
+	return nil
+}
+
+func (x *AppDefinition) GetBuiltin() bool {
+	if x != nil {
+		return x.Builtin
+	}
+	return false
+}
+
+type AppConfigField struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Label         string                 `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
+	Type          string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"` // "string", "secret", "int", "bool"
+	Required      bool                   `protobuf:"varint,4,opt,name=required,proto3" json:"required,omitempty"`
+	DefaultValue  string                 `protobuf:"bytes,5,opt,name=default_value,json=defaultValue,proto3" json:"default_value,omitempty"`
+	Description   string                 `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AppConfigField) Reset() {
+	*x = AppConfigField{}
+	mi := &file_hive_v1_types_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AppConfigField) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AppConfigField) ProtoMessage() {}
+
+func (x *AppConfigField) ProtoReflect() protoreflect.Message {
+	mi := &file_hive_v1_types_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AppConfigField.ProtoReflect.Descriptor instead.
+func (*AppConfigField) Descriptor() ([]byte, []int) {
+	return file_hive_v1_types_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *AppConfigField) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *AppConfigField) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *AppConfigField) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *AppConfigField) GetRequired() bool {
+	if x != nil {
+		return x.Required
+	}
+	return false
+}
+
+func (x *AppConfigField) GetDefaultValue() string {
+	if x != nil {
+		return x.DefaultValue
+	}
+	return ""
+}
+
+func (x *AppConfigField) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+type InstalledApp struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AppId         string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
+	ServiceName   string                 `protobuf:"bytes,2,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
+	Config        map[string]string      `protobuf:"bytes,3,rep,name=config,proto3" json:"config,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	InstalledAt   *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=installed_at,json=installedAt,proto3" json:"installed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InstalledApp) Reset() {
+	*x = InstalledApp{}
+	mi := &file_hive_v1_types_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InstalledApp) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InstalledApp) ProtoMessage() {}
+
+func (x *InstalledApp) ProtoReflect() protoreflect.Message {
+	mi := &file_hive_v1_types_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InstalledApp.ProtoReflect.Descriptor instead.
+func (*InstalledApp) Descriptor() ([]byte, []int) {
+	return file_hive_v1_types_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *InstalledApp) GetAppId() string {
+	if x != nil {
+		return x.AppId
+	}
+	return ""
+}
+
+func (x *InstalledApp) GetServiceName() string {
+	if x != nil {
+		return x.ServiceName
+	}
+	return ""
+}
+
+func (x *InstalledApp) GetConfig() map[string]string {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+func (x *InstalledApp) GetInstalledAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.InstalledAt
+	}
+	return nil
+}
+
+type RegistryCredential struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Url           string                 `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
+	Username      string                 `protobuf:"bytes,2,opt,name=username,proto3" json:"username,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegistryCredential) Reset() {
+	*x = RegistryCredential{}
+	mi := &file_hive_v1_types_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegistryCredential) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegistryCredential) ProtoMessage() {}
+
+func (x *RegistryCredential) ProtoReflect() protoreflect.Message {
+	mi := &file_hive_v1_types_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegistryCredential.ProtoReflect.Descriptor instead.
+func (*RegistryCredential) Descriptor() ([]byte, []int) {
+	return file_hive_v1_types_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *RegistryCredential) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *RegistryCredential) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+func (x *RegistryCredential) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
 var File_hive_v1_types_proto protoreflect.FileDescriptor
 
 const file_hive_v1_types_proto_rawDesc = "" +
@@ -1427,7 +1771,42 @@ const file_hive_v1_types_proto_rawDesc = "" +
 	"\x04type\x18\x02 \x01(\x0e2\x12.hive.v1.EventTypeR\x04type\x12\x16\n" +
 	"\x06source\x18\x03 \x01(\tR\x06source\x12\x18\n" +
 	"\amessage\x18\x04 \x01(\tR\amessage\x128\n" +
-	"\ttimestamp\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp*\x89\x01\n" +
+	"\ttimestamp\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\xde\x02\n" +
+	"\rAppDefinition\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x12\n" +
+	"\x04icon\x18\x04 \x01(\tR\x04icon\x12\x1a\n" +
+	"\bcategory\x18\x05 \x01(\tR\bcategory\x12\x12\n" +
+	"\x04tags\x18\x06 \x03(\tR\x04tags\x12\x14\n" +
+	"\x05image\x18\a \x01(\tR\x05image\x12\x18\n" +
+	"\aversion\x18\b \x01(\tR\aversion\x12<\n" +
+	"\rconfig_fields\x18\t \x03(\v2\x17.hive.v1.AppConfigFieldR\fconfigFields\x12\x1d\n" +
+	"\n" +
+	"min_memory\x18\n" +
+	" \x01(\tR\tminMemory\x12\x1c\n" +
+	"\tplatforms\x18\v \x03(\tR\tplatforms\x12\x18\n" +
+	"\abuiltin\x18\f \x01(\bR\abuiltin\"\xaf\x01\n" +
+	"\x0eAppConfigField\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05label\x18\x02 \x01(\tR\x05label\x12\x12\n" +
+	"\x04type\x18\x03 \x01(\tR\x04type\x12\x1a\n" +
+	"\brequired\x18\x04 \x01(\bR\brequired\x12#\n" +
+	"\rdefault_value\x18\x05 \x01(\tR\fdefaultValue\x12 \n" +
+	"\vdescription\x18\x06 \x01(\tR\vdescription\"\xfd\x01\n" +
+	"\fInstalledApp\x12\x15\n" +
+	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12!\n" +
+	"\fservice_name\x18\x02 \x01(\tR\vserviceName\x129\n" +
+	"\x06config\x18\x03 \x03(\v2!.hive.v1.InstalledApp.ConfigEntryR\x06config\x12=\n" +
+	"\finstalled_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\vinstalledAt\x1a9\n" +
+	"\vConfigEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"}\n" +
+	"\x12RegistryCredential\x12\x10\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\x12\x1a\n" +
+	"\busername\x18\x02 \x01(\tR\busername\x129\n" +
+	"\n" +
+	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt*\x89\x01\n" +
 	"\n" +
 	"NodeStatus\x12\x1b\n" +
 	"\x17NODE_STATUS_UNSPECIFIED\x10\x00\x12\x15\n" +
@@ -1489,7 +1868,7 @@ func file_hive_v1_types_proto_rawDescGZIP() []byte {
 }
 
 var file_hive_v1_types_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_hive_v1_types_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_hive_v1_types_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_hive_v1_types_proto_goTypes = []any{
 	(NodeStatus)(0),               // 0: hive.v1.NodeStatus
 	(ServiceStatus)(0),            // 1: hive.v1.ServiceStatus
@@ -1507,42 +1886,51 @@ var file_hive_v1_types_proto_goTypes = []any{
 	(*Container)(nil),             // 13: hive.v1.Container
 	(*HealthEvent)(nil),           // 14: hive.v1.HealthEvent
 	(*Event)(nil),                 // 15: hive.v1.Event
-	nil,                           // 16: hive.v1.Node.LabelsEntry
-	nil,                           // 17: hive.v1.Service.LabelsEntry
-	nil,                           // 18: hive.v1.Service.EnvEntry
-	nil,                           // 19: hive.v1.Service.PortsEntry
-	nil,                           // 20: hive.v1.Container.PortsEntry
-	(*timestamppb.Timestamp)(nil), // 21: google.protobuf.Timestamp
+	(*AppDefinition)(nil),         // 16: hive.v1.AppDefinition
+	(*AppConfigField)(nil),        // 17: hive.v1.AppConfigField
+	(*InstalledApp)(nil),          // 18: hive.v1.InstalledApp
+	(*RegistryCredential)(nil),    // 19: hive.v1.RegistryCredential
+	nil,                           // 20: hive.v1.Node.LabelsEntry
+	nil,                           // 21: hive.v1.Service.LabelsEntry
+	nil,                           // 22: hive.v1.Service.EnvEntry
+	nil,                           // 23: hive.v1.Service.PortsEntry
+	nil,                           // 24: hive.v1.Container.PortsEntry
+	nil,                           // 25: hive.v1.InstalledApp.ConfigEntry
+	(*timestamppb.Timestamp)(nil), // 26: google.protobuf.Timestamp
 }
 var file_hive_v1_types_proto_depIdxs = []int32{
 	0,  // 0: hive.v1.Node.status:type_name -> hive.v1.NodeStatus
 	7,  // 1: hive.v1.Node.capabilities:type_name -> hive.v1.NodeCapabilities
 	8,  // 2: hive.v1.Node.resources:type_name -> hive.v1.NodeResources
-	16, // 3: hive.v1.Node.labels:type_name -> hive.v1.Node.LabelsEntry
-	21, // 4: hive.v1.Node.joined_at:type_name -> google.protobuf.Timestamp
-	21, // 5: hive.v1.Node.last_seen:type_name -> google.protobuf.Timestamp
+	20, // 3: hive.v1.Node.labels:type_name -> hive.v1.Node.LabelsEntry
+	26, // 4: hive.v1.Node.joined_at:type_name -> google.protobuf.Timestamp
+	26, // 5: hive.v1.Node.last_seen:type_name -> google.protobuf.Timestamp
 	1,  // 6: hive.v1.Service.status:type_name -> hive.v1.ServiceStatus
-	17, // 7: hive.v1.Service.labels:type_name -> hive.v1.Service.LabelsEntry
+	21, // 7: hive.v1.Service.labels:type_name -> hive.v1.Service.LabelsEntry
 	2,  // 8: hive.v1.Service.deploy_strategy:type_name -> hive.v1.DeployStrategy
 	10, // 9: hive.v1.Service.health_check:type_name -> hive.v1.HealthCheck
 	11, // 10: hive.v1.Service.resource_spec:type_name -> hive.v1.ResourceSpec
-	18, // 11: hive.v1.Service.env:type_name -> hive.v1.Service.EnvEntry
-	19, // 12: hive.v1.Service.ports:type_name -> hive.v1.Service.PortsEntry
+	22, // 11: hive.v1.Service.env:type_name -> hive.v1.Service.EnvEntry
+	23, // 12: hive.v1.Service.ports:type_name -> hive.v1.Service.PortsEntry
 	12, // 13: hive.v1.Service.volumes:type_name -> hive.v1.VolumeMount
-	21, // 14: hive.v1.Service.created_at:type_name -> google.protobuf.Timestamp
-	21, // 15: hive.v1.Service.updated_at:type_name -> google.protobuf.Timestamp
+	26, // 14: hive.v1.Service.created_at:type_name -> google.protobuf.Timestamp
+	26, // 15: hive.v1.Service.updated_at:type_name -> google.protobuf.Timestamp
 	3,  // 16: hive.v1.HealthCheck.type:type_name -> hive.v1.HealthCheckType
 	4,  // 17: hive.v1.Container.status:type_name -> hive.v1.ContainerStatus
-	21, // 18: hive.v1.Container.started_at:type_name -> google.protobuf.Timestamp
-	20, // 19: hive.v1.Container.ports:type_name -> hive.v1.Container.PortsEntry
-	21, // 20: hive.v1.HealthEvent.timestamp:type_name -> google.protobuf.Timestamp
+	26, // 18: hive.v1.Container.started_at:type_name -> google.protobuf.Timestamp
+	24, // 19: hive.v1.Container.ports:type_name -> hive.v1.Container.PortsEntry
+	26, // 20: hive.v1.HealthEvent.timestamp:type_name -> google.protobuf.Timestamp
 	5,  // 21: hive.v1.Event.type:type_name -> hive.v1.EventType
-	21, // 22: hive.v1.Event.timestamp:type_name -> google.protobuf.Timestamp
-	23, // [23:23] is the sub-list for method output_type
-	23, // [23:23] is the sub-list for method input_type
-	23, // [23:23] is the sub-list for extension type_name
-	23, // [23:23] is the sub-list for extension extendee
-	0,  // [0:23] is the sub-list for field type_name
+	26, // 22: hive.v1.Event.timestamp:type_name -> google.protobuf.Timestamp
+	17, // 23: hive.v1.AppDefinition.config_fields:type_name -> hive.v1.AppConfigField
+	25, // 24: hive.v1.InstalledApp.config:type_name -> hive.v1.InstalledApp.ConfigEntry
+	26, // 25: hive.v1.InstalledApp.installed_at:type_name -> google.protobuf.Timestamp
+	26, // 26: hive.v1.RegistryCredential.created_at:type_name -> google.protobuf.Timestamp
+	27, // [27:27] is the sub-list for method output_type
+	27, // [27:27] is the sub-list for method input_type
+	27, // [27:27] is the sub-list for extension type_name
+	27, // [27:27] is the sub-list for extension extendee
+	0,  // [0:27] is the sub-list for field type_name
 }
 
 func init() { file_hive_v1_types_proto_init() }
@@ -1556,7 +1944,7 @@ func file_hive_v1_types_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hive_v1_types_proto_rawDesc), len(file_hive_v1_types_proto_rawDesc)),
 			NumEnums:      6,
-			NumMessages:   15,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

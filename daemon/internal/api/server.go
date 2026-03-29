@@ -19,6 +19,7 @@ import (
 	"time"
 
 	hivev1 "github.com/jalsarraf0/hive/daemon/internal/api/gen/hive/v1"
+	"github.com/jalsarraf0/hive/daemon/internal/appstore"
 	"github.com/jalsarraf0/hive/daemon/internal/backup"
 	"github.com/jalsarraf0/hive/daemon/internal/container"
 	"github.com/jalsarraf0/hive/daemon/internal/cron"
@@ -67,6 +68,8 @@ type Server struct {
 	healthHistory   *health.History // nil if health timeline disabled
 	hookMgr         *hooks.Manager  // nil if no hooks configured
 	proxyMgr        proxyManager    // nil if ingress disabled
+	appStore        *appstore.Store          // nil if app store disabled
+	registryMgr     *appstore.RegistryManager // nil if registry manager disabled
 	deployMu        sync.Mutex      // serializes DeployService to prevent concurrent races
 	certBootstrapMu sync.Mutex      // serializes bootstrapNodeCert to prevent concurrent CSR signing
 }
@@ -108,6 +111,16 @@ type proxyManager interface {
 // SetProxyManager sets the ingress proxy manager.
 func (s *Server) SetProxyManager(pm proxyManager) {
 	s.proxyMgr = pm
+}
+
+// SetAppStore sets the app catalog store.
+func (s *Server) SetAppStore(as *appstore.Store) {
+	s.appStore = as
+}
+
+// SetRegistryManager sets the registry credential manager.
+func (s *Server) SetRegistryManager(rm *appstore.RegistryManager) {
+	s.registryMgr = rm
 }
 
 // SetHookManager sets the webhook hook manager for lifecycle event delivery.
@@ -711,7 +724,7 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 		}
 
 		// Pull image once before deploying replicas
-		if err := s.container.PullImage(ctx, svcDef.Image); err != nil {
+		if err := s.container.PullImage(ctx, svcDef.Image, nil); err != nil {
 			slog.Warn("image pull failed (may be local)", "image", svcDef.Image, "error", err)
 		}
 
@@ -1710,7 +1723,7 @@ func (s *Server) ScaleService(ctx context.Context, req *hivev1.ScaleServiceReque
 			return nil, status.Errorf(codes.InvalidArgument, "service %q: invalid memory %q: %v", req.Name, svcDef.Resources.Memory, err)
 		}
 
-		if pullErr := s.container.PullImage(ctx, svcDef.Image); pullErr != nil {
+		if pullErr := s.container.PullImage(ctx, svcDef.Image, nil); pullErr != nil {
 			slog.Warn("image pull failed (may be local)", "image", svcDef.Image, "error", pullErr)
 		}
 
@@ -1861,7 +1874,7 @@ func (s *Server) RollbackService(ctx context.Context, req *hivev1.RollbackServic
 		return nil, status.Errorf(codes.InvalidArgument, "service %q: invalid memory %q: %v", req.Name, prevDef.Resources.Memory, err)
 	}
 
-	if pullErr := s.container.PullImage(ctx, prevDef.Image); pullErr != nil {
+	if pullErr := s.container.PullImage(ctx, prevDef.Image, nil); pullErr != nil {
 		slog.Warn("image pull failed (may be local)", "image", prevDef.Image, "error", pullErr)
 	}
 
@@ -1960,7 +1973,7 @@ func (s *Server) RestartService(ctx context.Context, req *hivev1.RestartServiceR
 		return nil, status.Errorf(codes.InvalidArgument, "service %q: invalid memory %q: %v", req.Name, svcDef.Resources.Memory, err)
 	}
 
-	if pullErr := s.container.PullImage(ctx, svcDef.Image); pullErr != nil {
+	if pullErr := s.container.PullImage(ctx, svcDef.Image, nil); pullErr != nil {
 		slog.Warn("image pull failed (may be local)", "image", svcDef.Image, "error", pullErr)
 	}
 
@@ -2348,6 +2361,188 @@ func (s *Server) DeployStack(ctx context.Context, req *hivev1.DeployStackRequest
 }
 
 // ListContainers lists containers, optionally filtered.
+// ─── App Store RPCs ──────────────────────────────────────────────
+
+// ListApps returns available apps, optionally filtered by category.
+func (s *Server) ListApps(_ context.Context, req *hivev1.ListAppsRequest) (*hivev1.ListAppsResponse, error) {
+	if s.appStore == nil {
+		return &hivev1.ListAppsResponse{}, nil
+	}
+	apps := s.appStore.List(req.Category)
+	var protoApps []*hivev1.AppDefinition
+	for _, a := range apps {
+		protoApps = append(protoApps, appDefToProto(a))
+	}
+	return &hivev1.ListAppsResponse{Apps: protoApps}, nil
+}
+
+// GetApp returns a single app by ID.
+func (s *Server) GetApp(_ context.Context, req *hivev1.GetAppRequest) (*hivev1.AppDefinition, error) {
+	if s.appStore == nil {
+		return nil, status.Error(codes.NotFound, "app store not initialized")
+	}
+	app, ok := s.appStore.Get(req.Id)
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "app %q not found", req.Id)
+	}
+	return appDefToProto(app), nil
+}
+
+// SearchApps searches the app catalog.
+func (s *Server) SearchApps(_ context.Context, req *hivev1.SearchAppsRequest) (*hivev1.ListAppsResponse, error) {
+	if s.appStore == nil {
+		return &hivev1.ListAppsResponse{}, nil
+	}
+	apps := s.appStore.Search(req.Query)
+	var protoApps []*hivev1.AppDefinition
+	for _, a := range apps {
+		protoApps = append(protoApps, appDefToProto(a))
+	}
+	return &hivev1.ListAppsResponse{Apps: protoApps}, nil
+}
+
+// InstallApp generates a Hivefile from an app template and deploys it.
+func (s *Server) InstallApp(ctx context.Context, req *hivev1.InstallAppRequest) (*hivev1.DeployServiceResponse, error) {
+	if s.appStore == nil {
+		return nil, status.Error(codes.FailedPrecondition, "app store not initialized")
+	}
+	serviceName := req.ServiceName
+	if serviceName == "" {
+		serviceName = req.AppId
+	}
+
+	// Generate Hivefile from template
+	hivefileToml, err := s.appStore.GenerateHivefile(req.AppId, serviceName, req.Config)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "generate hivefile: %v", err)
+	}
+
+	slog.Info("installing app", "app", req.AppId, "service", serviceName)
+
+	// Deploy via existing pipeline
+	resp, err := s.DeployService(ctx, &hivev1.DeployServiceRequest{HivefileToml: hivefileToml})
+	if err != nil {
+		return nil, err
+	}
+
+	// Record installation
+	if recordErr := s.appStore.RecordInstall(req.AppId, serviceName, req.Config); recordErr != nil {
+		slog.Warn("failed to record app installation", "app", req.AppId, "error", recordErr)
+	}
+
+	return resp, nil
+}
+
+// ListInstalledApps returns apps installed from the catalog.
+func (s *Server) ListInstalledApps(_ context.Context, _ *emptypb.Empty) (*hivev1.ListInstalledAppsResponse, error) {
+	if s.appStore == nil {
+		return &hivev1.ListInstalledAppsResponse{}, nil
+	}
+	records := s.appStore.ListInstalled()
+	var protoApps []*hivev1.InstalledApp
+	for _, r := range records {
+		protoApps = append(protoApps, &hivev1.InstalledApp{
+			AppId:       r.AppID,
+			ServiceName: r.ServiceName,
+		})
+	}
+	return &hivev1.ListInstalledAppsResponse{Apps: protoApps}, nil
+}
+
+// AddCustomApp adds a user-defined app to the catalog.
+func (s *Server) AddCustomApp(_ context.Context, req *hivev1.AddCustomAppRequest) (*hivev1.AppDefinition, error) {
+	if s.appStore == nil {
+		return nil, status.Error(codes.FailedPrecondition, "app store not initialized")
+	}
+	app, err := s.appStore.AddCustom(req.RecipeToml)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "add custom app: %v", err)
+	}
+	return appDefToProto(app), nil
+}
+
+// RemoveCustomApp removes a user-defined app.
+func (s *Server) RemoveCustomApp(_ context.Context, req *hivev1.RemoveCustomAppRequest) (*emptypb.Empty, error) {
+	if s.appStore == nil {
+		return nil, status.Error(codes.FailedPrecondition, "app store not initialized")
+	}
+	if err := s.appStore.RemoveCustom(req.Id); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// ─── Registry RPCs ──────────────────────────────────────────────
+
+// RegistryLogin stores encrypted credentials for a container registry.
+func (s *Server) RegistryLogin(_ context.Context, req *hivev1.RegistryLoginRequest) (*emptypb.Empty, error) {
+	if s.registryMgr == nil {
+		return nil, status.Error(codes.FailedPrecondition, "registry manager not initialized")
+	}
+	if err := s.registryMgr.Login(req.Url, req.Username, req.Password); err != nil {
+		return nil, status.Errorf(codes.Internal, "registry login: %v", err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// ListRegistries returns configured registries (without passwords).
+func (s *Server) ListRegistries(_ context.Context, _ *emptypb.Empty) (*hivev1.ListRegistriesResponse, error) {
+	if s.registryMgr == nil {
+		return &hivev1.ListRegistriesResponse{}, nil
+	}
+	records := s.registryMgr.List()
+	var protos []*hivev1.RegistryCredential
+	for _, r := range records {
+		protos = append(protos, &hivev1.RegistryCredential{
+			Url:      r.URL,
+			Username: r.Username,
+		})
+	}
+	return &hivev1.ListRegistriesResponse{Registries: protos}, nil
+}
+
+// RemoveRegistry deletes credentials for a container registry.
+func (s *Server) RemoveRegistry(_ context.Context, req *hivev1.RemoveRegistryRequest) (*emptypb.Empty, error) {
+	if s.registryMgr == nil {
+		return nil, status.Error(codes.FailedPrecondition, "registry manager not initialized")
+	}
+	if err := s.registryMgr.Remove(req.Url); err != nil {
+		return nil, status.Errorf(codes.Internal, "remove registry: %v", err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// appDefToProto converts an AppDef to a protobuf AppDefinition.
+func appDefToProto(a *appstore.AppDef) *hivev1.AppDefinition {
+	var fields []*hivev1.AppConfigField
+	for _, f := range a.ConfigFields {
+		fields = append(fields, &hivev1.AppConfigField{
+			Key:          f.Key,
+			Label:        f.Label,
+			Type:         f.Type,
+			Required:     f.Required,
+			DefaultValue: f.Default,
+			Description:  f.Description,
+		})
+	}
+	return &hivev1.AppDefinition{
+		Id:           a.ID,
+		Name:         a.Name,
+		Description:  a.Description,
+		Icon:         a.Icon,
+		Category:     a.Category,
+		Tags:         a.Tags,
+		Image:        a.Image,
+		Version:      a.Version,
+		ConfigFields: fields,
+		MinMemory:    a.MinMemory,
+		Platforms:    a.Platforms,
+		Builtin:      a.Builtin,
+	}
+}
+
+// ─── Containers ──────────────────────────────────────────────
+
 func (s *Server) ListContainers(ctx context.Context, req *hivev1.ListContainersRequest) (*hivev1.ListContainersResponse, error) {
 	// If a specific remote node was requested, fan out only to that peer.
 	if req.NodeName != "" && req.NodeName != s.nodeName {
