@@ -80,7 +80,10 @@
           {item.label}
         </a>
       {/each}
-      <button class="nav-link" style="margin-top:auto; color:var(--text-muted); border:none; background:none; cursor:pointer; width:100%; text-align:left;" onclick={logout}>
+      <div style="margin-top:auto; padding:0.75rem 1rem; border-top:1px solid var(--border);">
+        <span class="mono muted" style="font-size:0.65rem">Hive v2.5.0</span>
+      </div>
+      <button class="nav-link" style="color:var(--text-muted); border:none; background:none; cursor:pointer; width:100%; text-align:left;" onclick={logout}>
         <span class="mono muted" style="margin-right:0.5rem">←</span>
         Logout
       </button>

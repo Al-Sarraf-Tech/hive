@@ -4,6 +4,11 @@
   import { api } from '$lib/api.js';
   import { serviceBadge, containerBadge, shortId, timeAgo } from '$lib/utils.js';
 
+  const sensitivePattern = /secret|password|token|key/i;
+  function maskSensitive(key, value) {
+    return sensitivePattern.test(key) ? '••••••' : value;
+  }
+
   const name = $derived($page.params.name);
   let service = $state(null);
   let containers = $state([]);
@@ -217,7 +222,7 @@
           <div class="kv-grid" style="margin-top:0.5rem">
             {#each Object.entries(service.env) as [k, v]}
               <span class="kv-key">{k}</span>
-              <span class="kv-val">{/secret|password|token|key/i.test(k) ? '••••••' : v}</span>
+              <span class="kv-val">{maskSensitive(k, v)}</span>
             {/each}
           </div>
         {:else}

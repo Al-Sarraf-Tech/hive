@@ -94,7 +94,7 @@ impl App {
         let conn_color = if connected { Color::Green } else { Color::Red };
 
         let title = format!(
-            " Hive Cluster {} {} ",
+            " Hive v2.5.0 {} {} ",
             conn_indicator,
             if connected {
                 &self.addr
