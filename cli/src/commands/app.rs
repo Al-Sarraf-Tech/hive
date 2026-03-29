@@ -55,10 +55,7 @@ pub async fn search(query: &str, addr: &str, ca_cert: Option<&str>) -> Result<()
         return Ok(());
     }
 
-    println!(
-        "{:<4} {:<15} {:<25} DESCRIPTION",
-        "ICON", "ID", "NAME"
-    );
+    println!("{:<4} {:<15} {:<25} DESCRIPTION", "ICON", "ID", "NAME");
     for app in &resp.apps {
         println!(
             "{:<4} {:<15} {:<25} {}",
