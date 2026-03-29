@@ -2,7 +2,6 @@
   import '../app.css';
   import { page } from '$app/stores';
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
   import { clearTokens } from '$lib/api.js';
 
   let { children } = $props();

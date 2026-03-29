@@ -15,6 +15,7 @@ async function request(path, opts = {}) {
     headers,
   });
   if (res.status === 204) return {};
+  if (res.status === 401) throw new Error('unauthorized');
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;

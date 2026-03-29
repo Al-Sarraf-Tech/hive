@@ -54,9 +54,16 @@
 {#if loading}
   <p class="muted">Connecting to hived...</p>
 {:else if error}
-  <div class="card" style="border-color: var(--red)">
-    <p class="text-red">Failed to connect: {error}</p>
-    <p class="muted mt-1">Is hived running with --http-port 7949?</p>
+  <div class="card" style="border-color: var(--border); padding:2rem; text-align:center">
+    {#if error.includes('unauthorized') || error.includes('401')}
+      <div style="font-size:2rem; margin-bottom:0.75rem">🔒</div>
+      <h3 style="margin:0 0 0.5rem">Sign in to view cluster data</h3>
+      <p class="muted" style="margin-bottom:1rem">The dashboard shows live cluster stats, services, and nodes. Sign in to access.</p>
+      <a href="/login" class="btn btn-primary" style="text-decoration:none">Sign In</a>
+    {:else}
+      <p class="text-red">Failed to connect: {error}</p>
+      <p class="muted mt-1">Is hived running with --http-port 7949?</p>
+    {/if}
   </div>
 {:else if status}
   <div class="stats-grid">

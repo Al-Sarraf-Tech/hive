@@ -32,7 +32,14 @@
   <button class="btn btn-sm" onclick={refresh}>Refresh</button>
 </div>
 
-{#if error}
+{#if error === 'unauthorized'}
+  <div class="card" style="padding:2rem; text-align:center">
+    <div style="font-size:2rem; margin-bottom:0.75rem">🔒</div>
+    <h3 style="margin:0 0 0.5rem">Sign in to view nodes</h3>
+    <p class="muted" style="margin-bottom:1rem">Node information requires authentication.</p>
+    <a href="/login" class="btn btn-primary" style="text-decoration:none">Sign In</a>
+  </div>
+{:else if error}
   <p class="text-red">{error}</p>
 {:else if loading}
   <p class="muted">Loading...</p>
