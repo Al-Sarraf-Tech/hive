@@ -1,6 +1,8 @@
-# Hive v2.5.1
+# Hive v2.5.2
 
 **Deploy and manage Docker containers across multiple computers from one place.**
+
+![Hive Console Demo](docs/demo.gif)
 
 Hive is a single control panel that can install, monitor, and scale your apps on any machine in your network. Point it at your machines, hand it a TOML file describing your services, and it handles the rest — pulling images, scheduling replicas, checking health, managing secrets, and keeping everything running.
 
