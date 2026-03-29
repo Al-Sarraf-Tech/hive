@@ -223,7 +223,10 @@ func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
 		case <-time.After(500 * time.Millisecond):
 			entries := h.logBuffer.Since(lastID, service)
 			for _, e := range entries {
-				data, _ := json.Marshal(e)
+				data, jsonErr := json.Marshal(e)
+				if jsonErr != nil {
+					continue
+				}
 				fmt.Fprintf(w, "data: %s\n\n", data)
 				lastID = e.ID
 			}

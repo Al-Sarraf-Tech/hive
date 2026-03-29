@@ -1020,11 +1020,19 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 					canaryTarget = c.NodeName
 				}
 			}
+			// Deploy canary replica (local or remote)
 			var canaryID string
 			if canaryTarget == s.nodeName {
-				id, err := s.deployLocalReplica(ctx, name, canaryIdx, svcDef, env, memBytes, networkName)
+				id, err := s.deployLocalReplica(ctx, name, canaryIdx, svcDef, cloneEnv(env), memBytes, networkName)
 				if err != nil {
 					return nil, status.Errorf(codes.Internal, "canary deploy failed: %v", err)
+				}
+				canaryID = id
+			} else if s.mesh != nil {
+				// Deploy canary on remote node
+				id, err := s.deployRemoteReplica(ctx, name, canaryIdx, svcDef, env, canaryTarget)
+				if err != nil {
+					return nil, status.Errorf(codes.Internal, "canary deploy on %s failed: %v", canaryTarget, err)
 				}
 				canaryID = id
 			}
@@ -1036,21 +1044,34 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 				}
 			}
 
-			// Health check canary
+			// Health check canary — use configured health check type, not hardcoded HTTP
 			canaryHealthy := true
-			if svcDef.Health.Port > 0 {
+			if svcDef.Health.Port > 0 || len(svcDef.Health.ExecCommand) > 0 {
 				checkTimeout := 5 * time.Second
 				if d, parseErr := time.ParseDuration(svcDef.Health.Timeout); parseErr == nil && d > 0 {
 					checkTimeout = d
 				}
 				canaryHealthy = false
 				for attempt := 0; attempt < 10; attempt++ {
-					time.Sleep(checkTimeout)
+					select {
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					case <-time.After(checkTimeout):
+					}
 					cfg := health.Config{
-						Type: health.CheckHTTP,
 						Host: "127.0.0.1",
 						Port: svcDef.Health.Port,
 						Path: svcDef.Health.Path,
+					}
+					switch svcDef.Health.Type {
+					case "http":
+						cfg.Type = health.CheckHTTP
+					case "tcp":
+						cfg.Type = health.CheckTCP
+					case "exec":
+						cfg.Type = health.CheckExec
+					default:
+						cfg.Type = health.CheckHTTP
 					}
 					result := s.health.Check(ctx, cfg)
 					if result.Healthy {
@@ -1075,7 +1096,7 @@ func (s *Server) DeployService(ctx context.Context, req *hivev1.DeployServiceReq
 					}
 					warnErr(s.container.Stop(ctx, old.ID, 10), "failed to stop container")
 					warnErr(s.container.Remove(ctx, old.ID), "failed to remove container")
-					id, err := s.deployLocalReplica(ctx, name, replicaIdx, svcDef, env, memBytes, networkName)
+					id, err := s.deployLocalReplica(ctx, name, replicaIdx, svcDef, cloneEnv(env), memBytes, networkName)
 					if err != nil {
 						slog.Error("canary promotion failed", "service", name, "replica", replicaIdx, "error", err)
 						continue
@@ -2128,8 +2149,8 @@ func (s *Server) rollingRestart(ctx context.Context, name string, svcDef hivefil
 		warnErr(s.container.Stop(ctx, c.ID, 10), "failed to stop container")
 		warnErr(s.container.Remove(ctx, c.ID), "failed to remove container")
 
-		// Create new container
-		if _, err := s.deployLocalReplica(ctx, name, replicaIdx, svcDef, env, memBytes, networkName); err != nil {
+		// Create new container (clone env to prevent cross-replica mutation)
+		if _, err := s.deployLocalReplica(ctx, name, replicaIdx, svcDef, cloneEnv(env), memBytes, networkName); err != nil {
 			return fmt.Errorf("rolling restart replica %d: %w", replicaIdx, err)
 		}
 
@@ -2242,7 +2263,10 @@ func (s *Server) SetNodeLabel(ctx context.Context, req *hivev1.SetNodeLabelReque
 	}
 	labels := s.getNodeLabels(req.Node)
 	labels[req.Key] = req.Value
-	data, _ := json.Marshal(labels)
+	data, err := json.Marshal(labels)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "marshal labels: %v", err)
+	}
 	if err := s.store.Put("meta", "node_labels:"+req.Node, data); err != nil {
 		return nil, status.Errorf(codes.Internal, "persist label: %v", err)
 	}
@@ -2257,7 +2281,10 @@ func (s *Server) RemoveNodeLabel(ctx context.Context, req *hivev1.RemoveNodeLabe
 	}
 	labels := s.getNodeLabels(req.Node)
 	delete(labels, req.Key)
-	data, _ := json.Marshal(labels)
+	data, err := json.Marshal(labels)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "marshal labels: %v", err)
+	}
 	if err := s.store.Put("meta", "node_labels:"+req.Node, data); err != nil {
 		return nil, status.Errorf(codes.Internal, "persist label: %v", err)
 	}
@@ -2905,11 +2932,13 @@ func (s *Server) bootstrapNodeCert(joinToken string) error {
 		if err != nil {
 			continue
 		}
-		resp, err := peerConn.MeshClient().SignNodeCSR(context.Background(), &hivev1.SignCSRRequest{
+		csrCtx, csrCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		resp, err := peerConn.MeshClient().SignNodeCSR(csrCtx, &hivev1.SignCSRRequest{
 			CsrPem:    csrPEM,
 			NodeName:  local.Name,
 			JoinToken: joinToken,
 		})
+		csrCancel()
 		if err != nil {
 			slog.Debug("peer cannot sign CSR", "peer", peer.Info.Name, "error", err)
 			continue

@@ -14,6 +14,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -199,8 +200,11 @@ func (m *Manager) EnsureProxy(ctx context.Context, serviceName string, svcDef hi
 func (m *Manager) RefreshUpstreams(ctx context.Context, serviceName string) error {
 	// Load service definition from store
 	data, err := m.store.Get("services", serviceName)
-	if err != nil || data == nil {
-		return nil // service doesn't exist or store error — nothing to refresh
+	if err != nil {
+		return fmt.Errorf("load service definition: %w", err)
+	}
+	if data == nil {
+		return nil // service doesn't exist — nothing to refresh
 	}
 
 	var svcDef hivefile.ServiceDef
@@ -254,11 +258,15 @@ func (m *Manager) RemoveProxy(ctx context.Context, serviceName string) error {
 func (m *Manager) collectUpstreams(ctx context.Context, serviceName string, svcDef hivefile.ServiceDef) []Upstream {
 	var upstreams []Upstream
 
-	// Determine container port from service definition
+	// Determine container port from service definition (use lowest host port for determinism)
 	containerPort := "80"
-	for _, cp := range svcDef.Ports {
-		containerPort = cp
-		break
+	if len(svcDef.Ports) > 0 {
+		var ports []string
+		for _, cp := range svcDef.Ports {
+			ports = append(ports, cp)
+		}
+		sort.Strings(ports)
+		containerPort = ports[0]
 	}
 
 	// Local replicas — use Docker network alias for same-network communication
@@ -349,7 +357,10 @@ func generateSelfSignedCert(certPath, keyPath, serviceName string) error {
 	}
 
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-	keyDER, _ := x509.MarshalECPrivateKey(key)
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return fmt.Errorf("marshal private key: %w", err)
+	}
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
 
 	if err := os.WriteFile(certPath, certPEM, 0o644); err != nil {

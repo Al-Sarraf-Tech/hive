@@ -144,11 +144,13 @@ func GenerateNginxTLSConf(serviceName string, listenPort int, upstreams []Upstre
 		}
 	}
 	var buf bytes.Buffer
-	nginxTLSTmpl.Execute(&buf, nginxData{
+	if err := nginxTLSTmpl.Execute(&buf, nginxData{
 		ServiceName: serviceName,
 		ListenPort:  listenPort,
 		Upstreams:   safe,
-	})
+	}); err != nil {
+		return []byte("# template error: " + err.Error())
+	}
 	return buf.Bytes()
 }
 
@@ -166,10 +168,12 @@ func GenerateNginxConf(serviceName string, listenPort int, upstreams []Upstream)
 	}
 	upstreams = safe
 	var buf bytes.Buffer
-	nginxTmpl.Execute(&buf, nginxData{
+	if err := nginxTmpl.Execute(&buf, nginxData{
 		ServiceName: serviceName,
 		ListenPort:  listenPort,
 		Upstreams:   upstreams,
-	})
+	}); err != nil {
+		return []byte("# template error: " + err.Error())
+	}
 	return buf.Bytes()
 }

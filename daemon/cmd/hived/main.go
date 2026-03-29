@@ -436,7 +436,9 @@ func main() {
 				return fmt.Errorf("save renewed cert: %w", err)
 			}
 			if len(caCertPEM) > 0 {
-				_ = pki.SaveCACert(dataDir, caCertPEM)
+				if saveErr := pki.SaveCACert(dataDir, caCertPEM); saveErr != nil {
+					slog.Warn("failed to save updated CA cert", "error", saveErr)
+				}
 			}
 			return nil
 		}

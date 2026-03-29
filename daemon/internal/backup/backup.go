@@ -213,7 +213,7 @@ func Import(s *store.Store, b *ClusterBackup, overwrite bool) (int, int, error) 
 
 // RunScheduledBackup exports cluster state to a timestamped file in the given directory.
 func RunScheduledBackup(s *store.Store, outputDir string) error {
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+	if err := os.MkdirAll(outputDir, 0o700); err != nil {
 		return fmt.Errorf("create backup dir: %w", err)
 	}
 

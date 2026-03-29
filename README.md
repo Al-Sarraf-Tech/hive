@@ -1,4 +1,4 @@
-# Hive v1.0
+# Hive v2.0
 
 **Deploy and manage Docker containers across multiple computers from one place.**
 
@@ -165,9 +165,15 @@ hive scale <service> <replicas>         Scale service replicas
 hive rollback <service>                 Rollback to previous image
 hive restart <service>                  Rolling restart all replicas
 hive exec <service> <command...>        Execute a command in a container
-hive secret set <key> [<value>]         Set or rotate a secret (stdin if no value)
+hive update <svc> [--image] [--replicas] [--env KEY=VALUE]  Update with rolling restart
+hive diff <hivefile.toml>               Dry-run deploy preview
+hive backup [--output <path>]           Export cluster state
+hive restore <file> [--overwrite]       Import cluster state
+hive volume [ls|create|rm]              Manage persistent volumes
+hive secret set <key> [<value>]         Set a secret (stdin if no value)
 hive secret ls                          List secret metadata
 hive secret rm <key>                    Delete a secret
+hive secret rotate <key> [<value>]      Rotate secret + rolling-restart referencing services
 hive cron                               List active cron jobs
 hive daemon [install|start|stop|status] Manage hived as a system service
 hive top                                Launch the TUI dashboard
@@ -292,8 +298,85 @@ Secrets are encrypted at rest using [age](https://age-encryption.org/) (X25519).
 ### WireGuard Mesh (Optional)
 Enable with `-wg` flag or `[wireguard] enabled = true` in config. Each node gets a deterministic `10.47.X.X` mesh address derived from its WireGuard public key. Keys are exchanged automatically via gossip. All daemon-to-daemon gRPC traffic routes through the encrypted tunnel using a userspace TCP/IP stack (no root or kernel modules required). Works across NAT with persistent keepalive.
 
+### Ingress Load Balancer (v1.1+)
+Any service can opt into automatic load balancing by adding `[service.X.ingress]`:
+
+```toml
+[service.web.ingress]
+port = 8080          # external port
+tls = true           # optional: HTTPS with auto-generated self-signed cert
+```
+
+Hive creates an nginx proxy container (`hive-ingress-{service}`) that distributes traffic across all healthy replicas. When a replica fails health checks, it's removed from the upstream pool. When it recovers, it's added back automatically. Supports TLS termination with custom or self-signed certificates.
+
+### Canary Deploys (v2.0)
+```toml
+[service.web.deploy]
+strategy = "canary"
+canary_weight = 10   # 10% of traffic to canary
+```
+
+Deploys one canary replica, health checks it, then promotes by rolling-replacing all existing replicas. Safe automatic rollback if the canary fails.
+
+### Secrets Rotation (v2.0)
+`hive secret rotate KEY` updates a secret value and automatically rolling-restarts every service that references it via `{{ secret:KEY }}` templates. Zero-touch secret rotation across the cluster.
+
+### Placement Constraints (v2.0)
+Label nodes and constrain service placement:
+```bash
+hive node label add worker-01 gpu=true
+```
+```toml
+[service.ml-model]
+constraints = ["gpu=true", "memory>8GB"]
+```
+
+### Multi-Hivefile Stacks (v2.0)
+Deploy multiple Hivefiles as a single unit with shared networking:
+```toml
+name = "my-stack"
+[[stack]]
+file = "frontend.toml"
+[[stack]]
+file = "backend.toml"
+```
+
+### Autoscaling (v2.0)
+```toml
+[service.web.autoscale]
+min = 1
+max = 10
+cpu_target = 70       # scale up when CPU > 70%
+cooldown_up = "60s"
+cooldown_down = "300s"
+```
+
+### Admission Webhooks (v2.0)
+```toml
+[admission]
+url = "http://policy-server:8080/admit"
+timeout = "10s"
+```
+Called before every deploy/update/scale — can reject or allow the operation.
+
+### Backup Scheduling (v2.0)
+```toml
+[backup]
+schedule = "0 2 * * *"
+path = "/var/lib/hive/backups"
+```
+
+### Log Shipping (v2.0)
+```toml
+[logging]
+level = "info"
+driver = "file"        # or "syslog"
+path = "/var/log/hive/containers.jsonl"
+syslog_host = "syslog.internal:514"
+```
+
 ### Scheduling & Placement
-The scheduler evaluates constraints (platform, node pinning, resource requirements) and scores nodes by fitness (CPU/memory headroom, container count) to place replicas. Services with `depends_on` are deployed in topological order.
+The scheduler evaluates constraints (platform, node pinning, resource requirements, CPU cores, custom labels) and scores nodes by fitness (CPU/memory headroom, container count) to place replicas. Services with `depends_on` are deployed in topological order.
 
 ### Scaling & Rollback
 `hive scale web 5` distributes replicas across the cluster. `hive rollback web` reverts to the previous image version, preserving all configuration. `hive restart web` performs a rolling restart of all replicas.
@@ -320,20 +403,22 @@ Services can be deployed with `isolation = "strict"` to restrict network access.
 
 The API is defined in `proto/hive/v1/` with two services:
 
-### HiveAPI (port 7947) — 23 RPCs
+### HiveAPI (port 7947) — 30+ RPCs
 Client-facing API for CLI, TUI, and web console.
 
 | Category | RPCs |
 |----------|------|
 | Cluster | `InitCluster`, `JoinCluster`, `GetClusterStatus` |
-| Nodes | `ListNodes`, `GetNode`, `DrainNode` |
-| Validation | `ValidateHivefile` |
-| Services | `DeployService`, `ListServices`, `GetService`, `StopService`, `ScaleService`, `RollbackService`, `RestartService` |
+| Nodes | `ListNodes`, `GetNode`, `DrainNode`, `SetNodeLabel`, `RemoveNodeLabel` |
+| Validation | `ValidateHivefile`, `DiffDeploy` |
+| Services | `DeployService`, `DeployStack`, `ListServices`, `GetService`, `StopService`, `ScaleService`, `RollbackService`, `RestartService`, `UpdateService` |
 | Containers | `ListContainers`, `ContainerLogs` (stream), `ExecContainer` |
-| Secrets | `SetSecret`, `ListSecrets`, `DeleteSecret` |
+| Secrets | `SetSecret`, `ListSecrets`, `DeleteSecret`, `RotateSecret` |
 | Events | `StreamEvents` (stream) |
 | Cron | `ListCronJobs` |
 | Health | `GetServiceHealth` |
+| Volumes | `ListVolumes`, `CreateVolume`, `DeleteVolume` |
+| Backup | `ExportCluster`, `ImportCluster` |
 
 ### HiveMesh (port 7948, mTLS) — 6 RPCs
 Internal daemon-to-daemon communication.
@@ -373,7 +458,10 @@ hive/
       sysinfo/        System resource queries
       joincode/       Short join code encoding (HIVE-XXXX-XXXX)
       wgmesh/         WireGuard mesh overlay (userspace netstack)
-  cli/              Rust CLI (hive) — 19 commands via gRPC
+      proxy/          Ingress load balancer (nginx proxy management)
+      admission/      Admission webhook client
+      autoscale/      Horizontal autoscaler
+  cli/              Rust CLI (hive) — 24+ commands via gRPC
   tui/              Rust TUI (hivetop) — 4-tab ratatui dashboard with health column
   console/          Svelte 5 web console — 10 pages with dark theme
   proto/            Protobuf definitions (api.proto, mesh.proto, types.proto)
@@ -385,7 +473,7 @@ hive/
 
 ## Building from Source
 
-**Prerequisites:** Go 1.24+, Rust 1.85+, protoc
+**Prerequisites:** Go 1.26+, Rust 1.85+, protoc 29.3+
 
 ```bash
 # Build everything
@@ -453,7 +541,7 @@ CI runs on every push to `main`:
 - **Proto sync** — regenerates protobuf and diffs to catch stale generated code
 
 Release workflow triggers on `v*` tags:
-- Builds `hived` for linux-amd64, linux-arm64, windows-amd64
+- Builds `hived` for linux-amd64, windows-amd64
 - Builds `hive` and `hivetop` for linux-amd64
 - Generates SHA-256 checksums
 - Creates a GitHub Release with all artifacts
@@ -464,7 +552,7 @@ Download pre-built binaries from [GitHub Releases](https://github.com/Al-Sarraf-
 
 | Binary | Platforms | Description |
 |--------|-----------|-------------|
-| `hived` | linux-amd64, linux-arm64, windows-amd64 | Node daemon |
+| `hived` | linux-amd64, windows-amd64 | Node daemon |
 | `hive` | linux-amd64 | CLI |
 | `hivetop` | linux-amd64 | TUI dashboard |
 
