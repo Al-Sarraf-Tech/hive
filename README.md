@@ -1,4 +1,4 @@
-# Hive v2.5.3
+# Hive v2.6.0
 
 **Deploy and manage Docker containers across multiple computers from one place.**
 
@@ -197,6 +197,8 @@ hive app installed                      List installed apps
 hive registry login <url> [--username]  Store registry credentials
 hive registry ls                        List configured registries
 hive registry rm <url>                  Remove registry credentials
+hive discover                           List unmanaged Docker containers
+hive discover adopt <id> [--name]       Adopt a container into Hive
 ```
 
 **Global flags:**
@@ -458,17 +460,21 @@ The web console includes a built-in **Learn** tab with:
 - Complete field reference card
 - Copy-to-clipboard and deploy-from-playground buttons
 
-### One-Shot Installer (v2.5.3)
-Install Hive on any Linux x86_64 machine with a single command:
+### One-Shot Installer (v2.6.0)
+
+**Linux:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.sh | bash
 ```
 
-Options:
-- `--local` — build from source instead of downloading binaries
-- `--service` — set up `hived` as a systemd service
-- `--token TOKEN` — configure HTTP API bearer token
-- `--version VER` — install a specific version
+Options: `--local` (build from source), `--service` (systemd), `--token TOKEN`, `--version VER`
+
+**Windows (PowerShell as Administrator):**
+```powershell
+irm https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.ps1 | iex
+```
+
+Options: `-Version` (specific version), `-Service` (install as Windows service), `-Token` (API token)
 
 ### User Authentication (v2.5.3)
 Hive now includes a full user authentication system with:
@@ -503,6 +509,23 @@ hive registry login ghcr.io --username myuser  # stores encrypted credentials
 hive registry ls                               # list configured registries
 ```
 Credentials are encrypted with age (X25519) and stored in the local vault. When pulling images, hived automatically uses matching registry credentials.
+
+### Container Discovery (v2.6.0)
+Find Docker containers running outside Hive and bring them under management:
+
+```bash
+hive discover                          # list unmanaged containers
+hive discover adopt <id> --name my-svc # adopt into Hive with health checks + scaling
+```
+
+The web console has a **Discover** page (under Observe) that shows all unmanaged containers with an "Adopt" button. Adopting inspects the running container, generates a Hivefile from its config (image, env, ports, volumes), and deploys it through the standard Hive pipeline. Optionally stops the original container.
+
+### Disk Selection (v2.6.0)
+```bash
+hive nodes disks                       # list available disks on each node
+```
+
+The API exposes `GET /api/v1/disks` returning all mounted filesystems with path, total/available bytes, filesystem type, and device. The Settings page shows disk info for storage management.
 
 ### Admission Webhooks (v2.0)
 ```toml
