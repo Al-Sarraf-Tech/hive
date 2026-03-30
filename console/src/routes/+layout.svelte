@@ -143,7 +143,7 @@
         {/each}
       {/each}
       <div style="margin-top:auto; padding:0.75rem 1.25rem; border-top:1px solid var(--border);">
-        <span class="mono muted" style="font-size:0.65rem">Hive v2.5.1</span>
+        <span class="mono muted" style="font-size:0.65rem">Hive v2.6.0</span>
       </div>
       {#if authenticated}
         <button class="nav-link" style="border:none; background:none; cursor:pointer; width:100%; text-align:left;" onclick={logout}>

@@ -123,7 +123,7 @@
 <div class="card" style="padding:1.5rem">
   <div class="card-title" style="margin-bottom:0.75rem">About</div>
   <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; font-size:0.85rem">
-    <span class="muted">Version</span><span>Hive v2.5.0</span>
+    <span class="muted">Version</span><span>Hive v2.6.0</span>
     <span class="muted">Console</span><span>SvelteKit 5</span>
     <span class="muted">Daemon</span><span>Go</span>
     <span class="muted">CLI</span><span>Rust</span>

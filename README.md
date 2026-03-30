@@ -353,7 +353,7 @@ tls = true           # optional: HTTPS with auto-generated self-signed cert
 
 Hive creates an nginx proxy container (`hive-ingress-{service}`) that distributes traffic across all healthy replicas. When a replica fails health checks, it's removed from the upstream pool. When it recovers, it's added back automatically. Supports TLS termination with custom or self-signed certificates.
 
-### Canary Deploys (v2.0)
+### Canary Deploys
 ```toml
 [service.web.deploy]
 strategy = "canary"
@@ -362,10 +362,10 @@ canary_weight = 10   # 10% of traffic to canary
 
 Deploys one canary replica, health checks it, then promotes by rolling-replacing all existing replicas. Safe automatic rollback if the canary fails.
 
-### Secrets Rotation (v2.0)
+### Secrets Rotation
 `hive secret rotate KEY` updates a secret value and automatically rolling-restarts every service that references it via `{{ secret:KEY }}` templates. Zero-touch secret rotation across the cluster.
 
-### Placement Constraints (v2.0)
+### Placement Constraints
 Label nodes and constrain service placement:
 ```bash
 hive node label add worker-01 gpu=true
@@ -375,7 +375,7 @@ hive node label add worker-01 gpu=true
 constraints = ["gpu=true", "memory>8GB"]
 ```
 
-### Multi-Hivefile Stacks (v2.0)
+### Multi-Hivefile Stacks
 Deploy multiple Hivefiles as a single unit with shared networking:
 ```toml
 name = "my-stack"
@@ -385,7 +385,7 @@ file = "frontend.toml"
 file = "backend.toml"
 ```
 
-### Autoscaling (v2.0)
+### Autoscaling
 ```toml
 [service.web.autoscale]
 min = 1
@@ -395,7 +395,7 @@ cooldown_up = "60s"
 cooldown_down = "300s"
 ```
 
-### App Store (v2.5.3)
+### App Store
 35 built-in apps ready to deploy in one command. The App Store is **publicly browsable without authentication** — sign in only when you're ready to deploy.
 
 **Core Infrastructure:**
@@ -451,7 +451,7 @@ hive app install postgres --config db_password=secret  # one-click deploy
 
 Users can also add custom apps via the API or the web console.
 
-### Interactive Tutorial (v2.5.3)
+### Interactive Tutorial
 The web console includes a built-in **Learn** tab with:
 - Step-by-step TOML syntax guide with syntax-highlighted examples
 - Coverage of all Hivefile features: services, health checks, volumes, secrets, deploy strategies, ingress, cron, autoscaling
@@ -459,7 +459,7 @@ The web console includes a built-in **Learn** tab with:
 - Complete field reference card
 - Copy-to-clipboard and deploy-from-playground buttons
 
-### One-Shot Installer (v2.6.0)
+### One-Shot Installer
 
 **Linux:**
 ```bash
@@ -475,7 +475,7 @@ irm https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.ps1 | iex
 
 Options: `-Version` (specific version), `-Service` (install as Windows service), `-Token` (API token)
 
-### User Authentication (v2.5.3)
+### User Authentication
 Hive now includes a full user authentication system with:
 - **argon2id** password hashing (OWASP recommended, memory-hard, GPU-resistant)
 - **HMAC-SHA256 JWT** tokens with auto-generated 256-bit signing keys
@@ -502,14 +502,14 @@ hive user delete bob
 
 The web console auto-detects whether user auth is configured and presents the appropriate login flow (username/password or legacy bearer token). User data is stored in the same bbolt database as cluster state — no external database required.
 
-### Docker Registry Login (v2.5)
+### Docker Registry Login
 ```bash
 hive registry login ghcr.io --username myuser  # stores encrypted credentials
 hive registry ls                               # list configured registries
 ```
 Credentials are encrypted with age (X25519) and stored in the local vault. When pulling images, hived automatically uses matching registry credentials.
 
-### Container Discovery (v2.6.0)
+### Container Discovery
 Find Docker containers running outside Hive and bring them under management:
 
 ```bash
@@ -519,14 +519,14 @@ hive discover adopt <id> --name my-svc # adopt into Hive with health checks + sc
 
 The web console has a **Discover** page (under Observe) that shows all unmanaged containers with an "Adopt" button. Adopting inspects the running container, generates a Hivefile from its config (image, env, ports, volumes), and deploys it through the standard Hive pipeline. Optionally stops the original container.
 
-### Disk Selection (v2.6.0)
+### Disk Selection
 ```bash
 hive nodes disks                       # list available disks on each node
 ```
 
 The API exposes `GET /api/v1/disks` returning all mounted filesystems with path, total/available bytes, filesystem type, and device. The Settings page shows disk info for storage management.
 
-### Admission Webhooks (v2.0)
+### Admission Webhooks
 ```toml
 [admission]
 url = "http://policy-server:8080/admit"
@@ -534,14 +534,14 @@ timeout = "10s"
 ```
 Called before every deploy/update/scale — can reject or allow the operation.
 
-### Backup Scheduling (v2.0)
+### Backup Scheduling
 ```toml
 [backup]
 schedule = "0 2 * * *"
 path = "/var/lib/hive/backups"
 ```
 
-### Log Shipping (v2.0)
+### Log Shipping
 ```toml
 [logging]
 level = "info"
