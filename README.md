@@ -51,19 +51,18 @@ hive CLI (Rust)          hivetop TUI (Rust)          Hive Console (Svelte)
 
 ## Quick Start
 
+**Linux:**
 ```bash
-# One-shot install (Linux x86_64)
 curl -fsSL https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.sh | bash
+```
 
-# Install + set up systemd service
-curl -fsSL https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.sh | bash -s -- --service --token MY_SECRET
+**Windows (PowerShell as Administrator):**
+```powershell
+irm https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.ps1 | iex
+```
 
-# Build from source (requires Go + Rust)
-curl -fsSL https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.sh | bash -s -- --local
-
-# Or clone and build locally
-git clone https://github.com/Al-Sarraf-Tech/hive.git && cd hive
-./install.sh --local --service
+**Then:**
+```bash
 
 # First node — interactive setup (installs Docker if needed, starts daemon)
 hive setup
