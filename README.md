@@ -713,4 +713,4 @@ Download pre-built binaries from [GitHub Releases](https://github.com/Al-Sarraf-
 
 ## License
 
-MIT
+Apache License 2.0 — Copyright 2026 Al-Sarraf Technologies LLC

@@ -41,6 +41,7 @@ func (m *mockProvider) Ping(_ context.Context) error    { return nil }
 func (m *mockProvider) DetectCapabilities() []string     { return []string{"linux/amd64"} }
 func (m *mockProvider) Close() error                     { return nil }
 func (m *mockProvider) PullImage(_ context.Context, _ string, _ *container.RegistryAuth) error { return nil }
+func (m *mockProvider) ListAllContainers(_ context.Context) ([]container.ContainerInfo, error) { return nil, nil }
 func (m *mockProvider) CreateNetwork(_ context.Context, _ string) (string, error) { return "net-1", nil }
 func (m *mockProvider) RemoveNetwork(_ context.Context, _ string) error { return nil }
 

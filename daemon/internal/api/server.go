@@ -2543,6 +2543,136 @@ func appDefToProto(a *appstore.AppDef) *hivev1.AppDefinition {
 
 // ─── Containers ──────────────────────────────────────────────
 
+// ─── Discovery RPCs ─────────────────────────────────────────────
+
+// DiscoverContainers lists Docker containers NOT managed by Hive.
+func (s *Server) DiscoverContainers(ctx context.Context, _ *emptypb.Empty) (*hivev1.DiscoverContainersResponse, error) {
+	all, err := s.container.ListAllContainers(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "list containers: %v", err)
+	}
+	var discovered []*hivev1.DiscoveredContainer
+	for _, c := range all {
+		if c.Labels["hive.managed"] == "true" {
+			continue // skip Hive-managed containers
+		}
+		discovered = append(discovered, &hivev1.DiscoveredContainer{
+			Id:      c.ID,
+			Name:    c.Name,
+			Image:   c.Image,
+			Status:  c.Status,
+			Ports:   c.Ports,
+			Env:     c.Env,
+			Volumes: c.Volumes,
+			Command: c.Command,
+		})
+	}
+	return &hivev1.DiscoverContainersResponse{Containers: discovered}, nil
+}
+
+// AdoptContainer imports an unmanaged container into Hive by generating a Hivefile from its config.
+func (s *Server) AdoptContainer(ctx context.Context, req *hivev1.AdoptContainerRequest) (*hivev1.DeployServiceResponse, error) {
+	if req.ContainerId == "" {
+		return nil, status.Error(codes.InvalidArgument, "container_id is required")
+	}
+	serviceName := req.ServiceName
+	if serviceName == "" {
+		return nil, status.Error(codes.InvalidArgument, "service_name is required")
+	}
+
+	// Inspect the container to get its full config
+	info, err := s.container.Inspect(ctx, req.ContainerId)
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "inspect container: %v", err)
+	}
+
+	// Get detailed info including env/volumes
+	allContainers, _ := s.container.ListAllContainers(ctx)
+	var env []string
+	var volumes []string
+	for _, c := range allContainers {
+		if c.ID == req.ContainerId {
+			env = c.Env
+			volumes = c.Volumes
+			break
+		}
+	}
+
+	// Build Hivefile TOML from container config
+	var tomlLines []string
+	tomlLines = append(tomlLines, fmt.Sprintf("[service.%s]", serviceName))
+	tomlLines = append(tomlLines, fmt.Sprintf("image = %q", info.Image))
+	tomlLines = append(tomlLines, "replicas = 1")
+	tomlLines = append(tomlLines, "")
+
+	// Ports
+	if len(info.Ports) > 0 {
+		tomlLines = append(tomlLines, fmt.Sprintf("[service.%s.ports]", serviceName))
+		for host, container := range info.Ports {
+			tomlLines = append(tomlLines, fmt.Sprintf("%q = %q", host, container))
+		}
+		tomlLines = append(tomlLines, "")
+	}
+
+	// Env vars (filter out common Docker-internal ones)
+	if len(env) > 0 {
+		tomlLines = append(tomlLines, fmt.Sprintf("[service.%s.env]", serviceName))
+		for _, kv := range env {
+			if idx := strings.IndexByte(kv, '='); idx > 0 {
+				key := kv[:idx]
+				val := kv[idx+1:]
+				// Skip PATH and common Docker internals
+				if key == "PATH" || key == "HOME" || key == "HOSTNAME" {
+					continue
+				}
+				tomlLines = append(tomlLines, fmt.Sprintf("%s = %q", key, val))
+			}
+		}
+		tomlLines = append(tomlLines, "")
+	}
+
+	// Volumes
+	if len(volumes) > 0 {
+		for _, v := range volumes {
+			tomlLines = append(tomlLines, fmt.Sprintf("[[service.%s.volumes]]", serviceName))
+			tomlLines = append(tomlLines, fmt.Sprintf("linux = %q", v))
+			tomlLines = append(tomlLines, "")
+		}
+	}
+
+	hivefileToml := strings.Join(tomlLines, "\n")
+	slog.Info("adopting container", "id", container.ShortID(req.ContainerId), "service", serviceName, "image", info.Image)
+
+	// Stop original if requested
+	if req.StopOriginal {
+		warnErr(s.container.Stop(ctx, req.ContainerId, 10), "failed to stop original container")
+		warnErr(s.container.Remove(ctx, req.ContainerId), "failed to remove original container")
+	}
+
+	// Deploy via standard pipeline
+	return s.DeployService(ctx, &hivev1.DeployServiceRequest{HivefileToml: hivefileToml})
+}
+
+// ─── Disk RPCs ──────────────────────────────────────────────
+
+// ListDisks returns available filesystems on this node.
+func (s *Server) ListDisks(_ context.Context, _ *emptypb.Empty) (*hivev1.ListDisksResponse, error) {
+	disks := sysinfo.ListDisks()
+	var entries []*hivev1.DiskEntry
+	for _, d := range disks {
+		entries = append(entries, &hivev1.DiskEntry{
+			Path:           d.Path,
+			TotalBytes:     d.Total,
+			AvailableBytes: d.Available,
+			Fstype:         d.FSType,
+			Device:         d.Device,
+		})
+	}
+	return &hivev1.ListDisksResponse{Disks: entries}, nil
+}
+
+// ─── Containers ──────────────────────────────────────────────
+
 func (s *Server) ListContainers(ctx context.Context, req *hivev1.ListContainersRequest) (*hivev1.ListContainersResponse, error) {
 	// If a specific remote node was requested, fan out only to that peer.
 	if req.NodeName != "" && req.NodeName != s.nodeName {

@@ -31,6 +31,7 @@
       label: 'Observe',
       items: [
         { href: '/containers', label: 'Containers', icon: 'box' },
+        { href: '/discover', label: 'Discover', icon: 'search' },
         { href: '/logs', label: 'Logs', icon: 'terminal' },
         { href: '/cron', label: 'Cron', icon: 'clock' },
       ]

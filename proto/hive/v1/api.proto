@@ -87,6 +87,13 @@ service HiveAPI {
   rpc RegistryLogin(RegistryLoginRequest) returns (google.protobuf.Empty);
   rpc ListRegistries(google.protobuf.Empty) returns (ListRegistriesResponse);
   rpc RemoveRegistry(RemoveRegistryRequest) returns (google.protobuf.Empty);
+
+  // ─── Discovery ────────────────────────────────────────────
+  rpc DiscoverContainers(google.protobuf.Empty) returns (DiscoverContainersResponse);
+  rpc AdoptContainer(AdoptContainerRequest) returns (DeployServiceResponse);
+
+  // ─── Disks ────────────────────────────────────────────────
+  rpc ListDisks(google.protobuf.Empty) returns (ListDisksResponse);
 }
 
 // ─── Cluster Management ───────────────────────────────────────
@@ -464,4 +471,41 @@ message ListRegistriesResponse {
 
 message RemoveRegistryRequest {
   string url = 1;
+}
+
+// ─── Discovery ──────────────────────────────────────────────
+
+message DiscoveredContainer {
+  string id = 1;
+  string name = 2;
+  string image = 3;
+  string status = 4;
+  map<string, string> ports = 5;
+  repeated string env = 6;
+  repeated string volumes = 7;
+  repeated string command = 8;
+}
+
+message DiscoverContainersResponse {
+  repeated DiscoveredContainer containers = 1;
+}
+
+message AdoptContainerRequest {
+  string container_id = 1;
+  string service_name = 2;
+  bool stop_original = 3;
+}
+
+// ─── Disks ──────────────────────────────────────────────────
+
+message DiskEntry {
+  string path = 1;
+  uint64 total_bytes = 2;
+  uint64 available_bytes = 3;
+  string fstype = 4;
+  string device = 5;
+}
+
+message ListDisksResponse {
+  repeated DiskEntry disks = 1;
 }

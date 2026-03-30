@@ -35,6 +35,9 @@ type Provider interface {
 	// Exec runs a command inside a running container.
 	Exec(ctx context.Context, id string, cmd []string) (ExecResult, error)
 
+	// ListAllContainers returns ALL containers on the host, including unmanaged ones.
+	ListAllContainers(ctx context.Context) ([]ContainerInfo, error)
+
 	// PullImage pulls a container image from a registry.
 	// auth may be nil for public images or when using default Docker credentials.
 	PullImage(ctx context.Context, ref string, auth *RegistryAuth) error
@@ -120,6 +123,9 @@ type ContainerInfo struct {
 	CreatedAt int64
 	Labels    map[string]string
 	Ports     map[string]string
+	Env       []string // KEY=VALUE pairs (populated by ListAllContainers/Inspect)
+	Volumes   []string // source:target[:ro] (populated by ListAllContainers/Inspect)
+	Command   []string // container command (populated by ListAllContainers/Inspect)
 }
 
 // LogOpts configures log retrieval.

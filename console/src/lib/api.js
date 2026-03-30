@@ -128,6 +128,15 @@ export const api = {
     method: 'PATCH', body: JSON.stringify(updates)
   }),
 
+  // Discovery
+  discoverContainers: () => request('/discover'),
+  adoptContainer: (id, serviceName, stopOriginal) => request(`/discover/${encodeURIComponent(id)}/adopt`, {
+    method: 'POST', body: JSON.stringify({ service_name: serviceName, stop_original: stopOriginal })
+  }),
+
+  // Disks
+  listDisks: () => request('/disks'),
+
   // Registry
   registryLogin: (url, username, password) => request('/registries', {
     method: 'POST', body: JSON.stringify({ url, username, password })

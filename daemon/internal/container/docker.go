@@ -111,6 +111,43 @@ func (d *dockerProvider) ListContainers(ctx context.Context, filters map[string]
 	return out, nil
 }
 
+func (d *dockerProvider) ListAllContainers(ctx context.Context) ([]ContainerInfo, error) {
+	result, err := d.cli.ContainerList(ctx, client.ContainerListOptions{All: true})
+	if err != nil {
+		return nil, fmt.Errorf("list all containers: %w", err)
+	}
+	var out []ContainerInfo
+	for _, c := range result.Items {
+		cname := ""
+		if len(c.Names) > 0 {
+			cname = strings.TrimPrefix(c.Names[0], "/")
+		}
+		ports := make(map[string]string)
+		for _, p := range c.Ports {
+			if p.PublicPort > 0 {
+				ports[fmt.Sprintf("%d", p.PublicPort)] = fmt.Sprintf("%d", p.PrivatePort)
+			}
+		}
+		var env, volumes, command []string
+		if inspResult, inspErr := d.cli.ContainerInspect(ctx, c.ID, client.ContainerInspectOptions{}); inspErr == nil {
+			ctr := inspResult.Container
+			if ctr.Config != nil {
+				env = ctr.Config.Env
+				command = ctr.Config.Cmd
+			}
+			if ctr.HostConfig != nil {
+				volumes = ctr.HostConfig.Binds
+			}
+		}
+		out = append(out, ContainerInfo{
+			ID: c.ID, Name: cname, Image: c.Image, Status: string(c.State),
+			CreatedAt: c.Created, Labels: c.Labels, Ports: ports,
+			Env: env, Volumes: volumes, Command: command,
+		})
+	}
+	return out, nil
+}
+
 func (d *dockerProvider) CreateAndStart(ctx context.Context, spec ContainerSpec) (string, error) {
 	// Build port bindings — validate port values before using MustParsePort
 	portBindings := network.PortMap{}

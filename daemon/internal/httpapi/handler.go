@@ -203,6 +203,13 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("POST /api/v1/registries", h.registryLogin)
 	h.mux.HandleFunc("DELETE /api/v1/registries/{url}", h.removeRegistry)
 
+	// Discovery
+	h.mux.HandleFunc("GET /api/v1/discover", h.discoverContainers)
+	h.mux.HandleFunc("POST /api/v1/discover/{id}/adopt", h.adoptContainer)
+
+	// Disks
+	h.mux.HandleFunc("GET /api/v1/disks", h.listDisks)
+
 	// Serve embedded web console at / — SPA fallback to index.html for client-side routing.
 	// Uses fs.Sub to strip the "build" prefix so files are served at their natural paths.
 	consoleBuild, err := fs.Sub(console.Files, "build")
@@ -976,4 +983,47 @@ func (h *Handler) removeRegistry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ─── Discovery HTTP Handlers ─────────────────────────────────
+
+func (h *Handler) discoverContainers(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.api.DiscoverContainers(r.Context(), nil)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
+}
+
+func (h *Handler) adoptContainer(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var body struct {
+		ServiceName  string `json:"service_name"`
+		StopOriginal bool   `json:"stop_original"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	resp, err := h.api.AdoptContainer(r.Context(), &hivev1.AdoptContainerRequest{
+		ContainerId:  id,
+		ServiceName:  body.ServiceName,
+		StopOriginal: body.StopOriginal,
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
+}
+
+func (h *Handler) listDisks(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.api.ListDisks(r.Context(), nil)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeProto(w, resp)
 }
