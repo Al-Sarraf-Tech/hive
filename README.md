@@ -708,7 +708,9 @@ The Dockerfile produces a minimal distroless image running as nonroot.
 - **CORS protection** — mutation endpoints enforce same-origin policy; read-only allows any origin
 - **Container labeling** — all managed containers tagged `hive.managed=true` for audit
 
-## CI/CD
+## CI/CD & Orchestration
+
+This project is governed by the [Haskell Orchestrator](https://github.com/Al-Sarraf-Tech/Haskell-Orchestrator) — a Haskell-based multi-agent CI/CD governance framework for pre-push validation, code quality enforcement, and release management across the Al-Sarraf-Tech organization.
 
 CI runs on every push to `main`:
 - **Repo Guard** — ownership verification + thermal safety
