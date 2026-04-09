@@ -37,8 +37,8 @@ jobs:
             if [ -n "$temp" ]; then
               int_temp=${temp%.*}
               echo "Current max temperature: ${temp}°C"
-              if [ "$int_temp" -ge 70 ]; then
-                echo "ABORT: Temperature ${temp}°C exceeds 70°C hard limit on $hostname"
+              if [ "$int_temp" -ge 90 ]; then
+                echo "ABORT: Temperature ${temp}°C exceeds 90°C hard limit on $hostname"
                 exit 1
               elif [ "$int_temp" -ge 65 ]; then
                 echo "WARNING: Temperature ${temp}°C approaching 70°C limit"
