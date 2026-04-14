@@ -1,53 +1,53 @@
 # Hive v2.6.0
 
-**Deploy and manage Docker containers across multiple computers from one place.**
+**Lightweight cross-platform container orchestrator for 2–20 machines.**
 
-![Hive Console Demo](docs/demo.gif)
+[![CI](https://github.com/Al-Sarraf-Tech/hive/actions/workflows/ci.yml/badge.svg)](https://github.com/Al-Sarraf-Tech/hive/actions/workflows/ci.yml)
+[![Release](https://github.com/Al-Sarraf-Tech/hive/actions/workflows/release.yml/badge.svg)](https://github.com/Al-Sarraf-Tech/hive/releases)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-Hive is a single control panel that can install, monitor, and scale your apps on any machine in your network. Point it at your machines, hand it a TOML file describing your services, and it handles the rest — pulling images, scheduling replicas, checking health, managing secrets, and keeping everything running.
+Hive fills the gap between Docker Compose (single machine) and Kubernetes (enterprise complexity). Point it at your machines, hand it a TOML file describing your services, and it handles the rest — pulling images, distributing replicas, checking health, managing secrets, and keeping everything running.
 
-No Kubernetes. No YAML mountains. No PhD required.
+**Design principles:**
 
-## What Is This?
+- No control plane — every node is equal, state shared via SWIM gossip
+- Cross-platform — Linux and Windows nodes in the same cluster
+- Minimal binaries — one daemon (`hived`), one CLI (`hive`), one TUI (`hivetop`), one web console
+- TOML config — readable service definitions, no YAML
+- Security by default — mTLS between nodes, age-encrypted secrets at rest, argon2id user auth
+- Validate before deploy — `hive validate` catches errors before anything touches Docker
 
-Hive sits in the gap between Docker Compose (single machine) and Kubernetes (enterprise complexity). If you run 2-20 machines and want to manage containers across all of them without a week of setup, Hive is for you.
-
-**Core design principles:**
-
-- **No control plane** — every node is equal, state is shared via SWIM gossip protocol
-- **Cross-platform** — Linux and Windows nodes in the same cluster
-- **Minimal binaries** — one daemon (`hived`), one CLI (`hive`), one TUI (`hivetop`), one web console
-- **TOML config** — readable service definitions, not YAML walls
-- **Security by default** — mTLS between nodes, encrypted secrets at rest
-- **Validate before you deploy** — `hive validate` catches errors before anything touches Docker
-- **Health timeline** — per-service health history, not just a snapshot
-- **Cluster-wide visibility** — see every container across every node from one dashboard
+---
 
 ## Architecture
 
 ```
-hive CLI (Rust)          hivetop TUI (Rust)          Hive Console (Svelte)
-       \                       |                        /
-        --------  gRPC  --------              HTTP JSON
-                    |                            |
-        +-----------+-----------+    +-----------+
-        |           |           |    |
-    hived (Go)  hived (Go)  hived (Go)
-    Linux node  Windows node  ARM node
-        |           |           |
-        +--- SWIM gossip (UDP) -+
-        +--- gRPC mesh (mTLS) --+
+  hive CLI (Rust)       hivetop TUI (Rust)      Hive Console (Svelte 5)
+        |                       |                        |
+        |        gRPC (7947)    |             HTTP/JSON (7949)
+        +------- hived ─────────+────────────────────────+
+                   |
+          +--------+--------+
+          |                 |
+       hived             hived
+     (Linux node)     (Windows node)
+          |                 |
+          +── SWIM gossip (UDP 7946) ──+
+          +── gRPC mesh, mTLS (7948) ──+
+          +── WireGuard overlay (UDP 39471, optional) ──+
 ```
 
 ### Ports
 
-| Port | Protocol | Purpose |
-|------|----------|---------|
-| 7946 | UDP | SWIM gossip — cluster membership, failure detection |
-| 7947 | gRPC | Client API — CLI, TUI, integrations (optional TLS) |
-| 7948 | gRPC | Mesh API — daemon-to-daemon communication (mTLS) |
-| 7949 | HTTP | Web console, Prometheus metrics at `/metrics` |
-| 39471 | UDP | WireGuard mesh (optional — encrypted overlay network) |
+| Port  | Protocol | Purpose |
+|-------|----------|---------|
+| 7946  | UDP      | SWIM gossip — cluster membership and failure detection |
+| 7947  | gRPC     | Client API — CLI, TUI, integrations (optional TLS) |
+| 7948  | gRPC     | Mesh API — daemon-to-daemon communication (mTLS) |
+| 7949  | HTTP/S   | Web console + Prometheus metrics at `/metrics` |
+| 39471 | UDP      | WireGuard encrypted overlay (optional) |
+
+---
 
 ## Quick Start
 
@@ -61,31 +61,13 @@ curl -fsSL https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.sh
 irm https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.ps1 | iex
 ```
 
-**Then:**
+**Bootstrap a cluster:**
 ```bash
-
-# First node — interactive setup (installs Docker if needed, starts daemon)
+# First node — interactive wizard (installs Docker if needed, starts daemon, generates join code)
 hive setup
 
-# Second node — join with the code shown by the first node
+# Additional nodes — join with the code shown by the first node
 hive setup --join HIVE-AB12-CD34
-
-# Deploy a service
-hive deploy postgres.toml
-```
-
-Or manually:
-
-```bash
-# Start the daemon (requires Docker or Podman running)
-hived --data-dir /var/lib/hive --log-level info
-
-# Initialize a cluster on your first node
-hive init --name my-cluster
-
-# Join additional nodes (with the short code or full token)
-hive join --code HIVE-AB12-CD34 <first-node-ip>
-hive join <first-node-ip>:7946 --token <join-token>
 
 # Deploy a service
 hive deploy postgres.toml
@@ -96,9 +78,28 @@ hive nodes
 hive status
 ```
 
+Or manually without the wizard:
+
+```bash
+# Start the daemon (requires Docker or Podman running)
+hived --data-dir /var/lib/hive --log-level info
+
+# Initialize a cluster on your first node
+hive init --name my-cluster
+
+# Join additional nodes
+hive join <first-node-ip>:7946 --token <join-token>
+hive join --code HIVE-AB12-CD34 <first-node-ip>
+
+# Deploy
+hive deploy postgres.toml
+```
+
+---
+
 ## Hivefile Format
 
-Services are defined in TOML files. One file can contain multiple services with dependencies, health checks, secrets, cron jobs, and resource constraints.
+Services are defined in TOML files. One file can contain multiple services.
 
 ```toml
 [service.web]
@@ -107,7 +108,7 @@ replicas = 3
 platform = "linux/amd64"
 
   [service.web.health]
-  type = "http"
+  type = "http"       # http | tcp | exec
   path = "/"
   port = 80
   interval = "30s"
@@ -115,18 +116,22 @@ platform = "linux/amd64"
   retries = 3
 
   [service.web.ports]
-  "8080" = "80"
+  "8080" = "80"       # host_port = container_port
 
   [service.web.env]
   APP_ENV = "production"
-  DATABASE_URL = "{{ secret:db-url }}"
+  DATABASE_URL = "{{ secret:db-url }}"   # secret injection
 
   [service.web.resources]
   memory = "512M"
   cpus = 1.0
 
   [service.web.deploy]
-  strategy = "rolling"
+  strategy = "rolling"   # rolling | canary
+
+  [service.web.ingress]
+  port = 8080            # external load-balanced port
+  tls = true             # HTTPS termination
 
   [service.web.depends_on]
   services = ["db", "cache"]
@@ -138,235 +143,42 @@ platform = "linux/amd64"
   windows = "D:\\data:/data"
 
   [[service.web.cron]]
-  schedule = "0 2 * * *"
+  schedule = "0 2 * * *"   # 5-field cron expression
   command = ["cleanup", "--older-than", "7d"]
+
+  [service.web.autoscale]
+  min = 1
+  max = 10
+  cpu_target = 70          # scale up when CPU > 70%
+  cooldown_up = "60s"
+  cooldown_down = "300s"
 
 [service.db]
 image = "postgres:16-alpine"
 replicas = 1
+node = "worker-01"          # pin to specific node (optional)
 
   [service.db.health]
   type = "tcp"
   port = 5432
 
   [service.db.env]
-  POSTGRES_DB = "app"
   POSTGRES_PASSWORD = "{{ secret:pg-password }}"
 ```
 
 ### Secret Templating
 
-Environment variables support `{{ secret:key-name }}` syntax. Secrets are decrypted from the encrypted vault at deploy time and injected into the container environment. They never touch disk in plaintext.
+Use `{{ secret:key-name }}` in environment values. Secrets are resolved from the encrypted vault at deploy time and injected directly into the container environment — plaintext never touches disk.
 
-## CLI Reference
+### Deploy Strategies
 
-```
-hive setup [--join <code>] [--yes]      Interactive first-run wizard
-hive init [--name <cluster>]            Initialize a new cluster
-hive join <addrs> --token <token>       Join an existing cluster
-hive join --code <HIVE-XXXX-XXXX> <ip>  Join with a short code
-hive nodes                              List cluster nodes
-hive status                             Show cluster health summary
-hive deploy <hivefile.toml>             Deploy services from a Hivefile
-hive validate <hivefile.toml> [--server] Validate a Hivefile without deploying
-hive ps                                 List running services
-hive logs <service> [-f] [-n <lines>]   Stream service logs
-hive stop <service>                     Stop a service
-hive scale <service> <replicas>         Scale service replicas
-hive rollback <service>                 Rollback to previous image
-hive restart <service>                  Rolling restart all replicas
-hive exec <service> <command...>        Execute a command in a container
-hive update <svc> [--image] [--replicas] [--env KEY=VALUE]  Update with rolling restart
-hive diff <hivefile.toml>               Dry-run deploy preview
-hive backup [--output <path>]           Export cluster state
-hive restore <file> [--overwrite]       Import cluster state
-hive volume [ls|create|rm]              Manage persistent volumes
-hive secret set <key> [<value>]         Set a secret (stdin if no value)
-hive secret ls                          List secret metadata
-hive secret rm <key>                    Delete a secret
-hive secret rotate <key> [<value>]      Rotate secret + rolling-restart referencing services
-hive cron                               List active cron jobs
-hive daemon [install|start|stop|status] Manage hived as a system service
-hive top                                Launch the TUI dashboard
-hive app ls [--category <cat>]          Browse available apps
-hive app search <query>                 Search apps by name/tag
-hive app info <id>                      Show app details and config
-hive app install <id> [--config K=V]    Install an app from the catalog
-hive app installed                      List installed apps
-hive registry login <url> [--username]  Store registry credentials
-hive registry ls                        List configured registries
-hive registry rm <url>                  Remove registry credentials
-hive discover                           List unmanaged Docker containers
-hive discover adopt <id> [--name]       Adopt a container into Hive
-```
-
-**Global flags:**
-- `--addr <host:port>` — hived address (default: `127.0.0.1:7947`, or `$HIVE_ADDR`)
-- `--ca-cert <path>` — TLS CA certificate (or `$HIVE_CA_CERT`)
-
-## TUI Dashboard
-
-`hivetop` provides a real-time terminal dashboard with 4 tabs:
-
-| Tab | Key | Content |
-|-----|-----|---------|
-| Overview | `1` | Cluster summary — total nodes, services, containers |
-| Nodes | `2` | Node list — status, resources, uptime |
-| Services | `3` | Service list — replicas, status, health |
-| Logs | `4` | Real-time event stream |
-
-```bash
-hivetop --addr 127.0.0.1:7947 --refresh 2
-```
-
-Controls: `1-4` switch tabs, `q`/`Esc` quit.
-
-## Web Console
-
-The Svelte 5 web console connects to the HTTP API on port 7949 and provides 18 pages:
-
-- **Overview** — cluster stats, node list, recent events, containers per node
-- **Services** — service list with replicas, status, health badges
-- **Service Detail** — 6 tabs: Overview, Containers, Config, Health Timeline, Logs, Exec
-- **Nodes** — node list with CPU/memory/disk, drain controls
-- **Node Detail** — system info, resource bars, containers on this node
-- **Containers** — cluster-wide container list with service/node filters
-- **Logs** — live log viewer with service filter, line count, auto-refresh
-- **Cron** — scheduled job list with next/last run times
-- **Deploy** — TOML editor with templates (nginx, postgres, redis), validate button, deploy
-- **Secrets** — add/delete secrets, masked values
-- **App Store** — browse 35 curated apps (publicly, no login required), featured section, 14 category filters, LinuxServer.io collection with LSIO badges, one-click install with TOML preview
-- **Learn** — interactive TOML tutorial with syntax-highlighted examples, live validation playground, and complete Hivefile reference card
-- **Users** — user management with role assignment, create/delete users (admin only)
-- **Backup** — export/import cluster state (services, secrets, config) as encrypted backup files
-- **Cluster** — web-based cluster init and node join wizard (no CLI required)
-- **Settings** — Docker registry credentials, cluster version info
-- **Login** — auto-detects auth mode: first-time admin setup, username/password, or legacy bearer token
-
-**Public pages (no login required):**
-- **App Store** — browse all 35 apps, search, filter by category, view details and config fields
-- **Learn** — full interactive tutorial with 18 sections covering every Hive feature
-- **Login** — auto-detects auth mode: first-time admin setup, username/password, or legacy bearer token
-
-**Authenticated pages (show "Sign in" prompt when not logged in):**
-- **Dashboard** — cluster stats, Quick Deploy section with popular apps
-- **Services, Nodes, Containers, Logs** — live cluster data
-- **Deploy, Secrets, Backup, Settings** — management actions
-
-**Enhanced pages:**
-- **Services** — inline quick-update modal (change image, replicas, env vars without redeploying TOML)
-- **Nodes Detail** — interactive label management (add/remove labels for placement constraints)
-- **Secrets** — secret rotation with affected-service preview and auto rolling-restart
-- **Dashboard** — Quick Deploy grid showing 6 popular apps with sign-in status indicator
-
-The console features a polished dark theme with SVG iconography, smooth animations, glassmorphism cards, gradient accents, and responsive mobile layout. All pages are browsable without login — authenticated features show a clear "Sign in to access" prompt. Compiled to static HTML/CSS/JS and served directly by `hived`.
-
-## Daemon Configuration
-
-`hived` reads configuration from a TOML file, with CLI flags taking precedence.
-
-**Default config path:**
-- Linux: `~/.config/hive/hived.toml` (or `$XDG_CONFIG_HOME/hive/hived.toml`)
-- Windows: `%APPDATA%\Hive\hived.toml`
-
-```toml
-[node]
-name = "worker-01"
-advertise_addr = "192.168.1.100"
-data_dir = "/var/lib/hive"
-join = "192.168.1.10:7946,192.168.1.11:7946"
-
-[ports]
-grpc = 7947
-gossip = 7946
-mesh = 7948
-
-[security]
-tls = true
-gossip_key = "hex-encoded-aes256-key"   # 32, 48, or 64 hex chars
-
-[logging]
-level = "info"   # debug, info, warn, error
-
-[http]
-port = 7949
-token = "bearer-token-for-console"      # optional, protects HTTP API
-
-[wireguard]
-enabled = true                          # encrypted mesh overlay (optional)
-port = 39471                            # UDP port for WireGuard tunnel
-```
-
-**CLI flags** (override config file):
-```
-hived [options]
-  -config <path>           Config file path
-  -name <nodename>         Node name (default: hostname)
-  -grpc-port <port>        gRPC API port (default: 7947)
-  -gossip-port <port>      Gossip UDP port (default: 7946)
-  -mesh-port <port>        Mesh gRPC port (default: 7948)
-  -http-port <port>        HTTP API port (default: 7949, 0 to disable)
-  -advertise-addr <addr>   Address advertised to peers
-  -join <addrs>            Comma-separated gossip addresses to join
-  -data-dir <path>         State directory
-  -log-level <level>       Log level
-  -gossip-key <hex>        AES-256 gossip encryption key
-  -tls <bool>              Enable TLS on gRPC API
-  -wg                      Enable WireGuard mesh overlay
-  -wg-port <port>          WireGuard UDP port (default: 39471)
-```
-
-## Recipes
-
-The `recipes/` directory contains one-click deploy templates:
-
-| Recipe | Image | Description |
-|--------|-------|-------------|
-| `postgres` | `postgres:16-alpine` | PostgreSQL with TCP health check, persistent volume |
-| `redis` | `redis:7-alpine` | Redis with configurable max memory |
-| `nginx` | `nginx:alpine` | Nginx with HTTP health check, rolling deploy |
-
-Deploy a recipe: `hive deploy recipes/postgres/recipe.toml`
-
-## Features
-
-### Gossip Mesh
-Nodes discover each other and share state via the SWIM protocol (hashicorp/memberlist). Gossip runs on UDP port 7946. Nodes automatically detect failures and update cluster membership. Gossip traffic can be encrypted with a shared AES-256 key.
-
-### mTLS PKI
-Hive generates a self-signed ECDSA P-256 Certificate Authority on cluster init. Each node gets a certificate signed by the CA. Node-to-node mesh traffic (port 7948) uses mTLS. Certificates auto-renew via CSR signing through mesh peers.
-
-### Encrypted Secrets
-Secrets are encrypted at rest using [age](https://age-encryption.org/) (X25519). They're stored in the local bbolt database and replicated across the cluster via the mesh. On deploy, `{{ secret:key }}` placeholders in environment variables are resolved and injected — plaintext values never touch disk.
-
-### WireGuard Mesh (Optional)
-Enable with `-wg` flag or `[wireguard] enabled = true` in config. Each node gets a deterministic `10.47.X.X` mesh address derived from its WireGuard public key. Keys are exchanged automatically via gossip. All daemon-to-daemon gRPC traffic routes through the encrypted tunnel using a userspace TCP/IP stack (no root or kernel modules required). Works across NAT with persistent keepalive.
-
-### Ingress Load Balancer (v1.1+)
-Any service can opt into automatic load balancing by adding `[service.X.ingress]`:
-
-```toml
-[service.web.ingress]
-port = 8080          # external port
-tls = true           # optional: HTTPS with auto-generated self-signed cert
-```
-
-Hive creates an nginx proxy container (`hive-ingress-{service}`) that distributes traffic across all healthy replicas. When a replica fails health checks, it's removed from the upstream pool. When it recovers, it's added back automatically. Supports TLS termination with custom or self-signed certificates.
-
-### Canary Deploys
-```toml
-[service.web.deploy]
-strategy = "canary"
-canary_weight = 10   # 10% of traffic to canary
-```
-
-Deploys one canary replica, health checks it, then promotes by rolling-replacing all existing replicas. Safe automatic rollback if the canary fails.
-
-### Secrets Rotation
-`hive secret rotate KEY` updates a secret value and automatically rolling-restarts every service that references it via `{{ secret:KEY }}` templates. Zero-touch secret rotation across the cluster.
+| Strategy | Behavior |
+|----------|----------|
+| `rolling` | Replace replicas one at a time; default |
+| `canary`  | Deploy one replica, health check it, then promote by replacing all existing replicas; automatic rollback on failure |
 
 ### Placement Constraints
-Label nodes and constrain service placement:
+
 ```bash
 hive node label add worker-01 gpu=true
 ```
@@ -376,7 +188,7 @@ constraints = ["gpu=true", "memory>8GB"]
 ```
 
 ### Multi-Hivefile Stacks
-Deploy multiple Hivefiles as a single unit with shared networking:
+
 ```toml
 name = "my-stack"
 [[stack]]
@@ -384,6 +196,241 @@ file = "frontend.toml"
 [[stack]]
 file = "backend.toml"
 ```
+
+---
+
+## CLI Reference
+
+**Global flags:**
+- `--addr <host:port>` — hived address (default: `127.0.0.1:7947`, or `$HIVE_ADDR`)
+- `--ca-cert <path>` — TLS CA certificate (or `$HIVE_CA_CERT`)
+
+```
+hive setup [--join <code>] [--name <n>] [--yes]    Interactive first-run wizard
+hive init [--name <cluster>]                        Initialize a new cluster
+hive join <addrs...> [--token <t>] [--code <code>]  Join an existing cluster
+hive status                                         Show cluster health summary
+hive nodes                                          List cluster nodes
+hive ps                                             List running services
+hive deploy <hivefile.toml>                         Deploy services from a Hivefile
+hive diff <hivefile.toml>                           Dry-run deploy preview
+hive validate <hivefile.toml> [--server]            Validate a Hivefile (--server checks cluster state)
+hive stop <service>                                 Stop a service
+hive scale <service> <replicas>                     Scale service replicas
+hive rollback <service>                             Roll back to previous image
+hive restart <service>                              Rolling restart all replicas
+hive update <svc> [--image <img>] [--replicas <n>] [--env KEY=VALUE]
+hive exec <service> <command...>                    Execute a command in a container
+hive logs [<service>] [-f] [-n <lines>] [--all]    Stream service logs
+hive backup [--output <path>]                       Export cluster state to file
+hive restore <file> [--overwrite]                   Import cluster state from file
+hive volume ls                                      List persistent volumes
+hive volume create <name>                           Create a named volume
+hive volume rm <name>                               Delete a volume
+hive secret set <key> [<value>]                     Set a secret (stdin if no value)
+hive secret ls                                      List secret metadata
+hive secret rm <key>                                Delete a secret
+hive secret rotate <key> [<value>]                  Rotate secret + rolling-restart all referencing services
+hive cron                                           List active cron jobs
+hive daemon install|start|stop|status               Manage hived as a system service
+hive top                                            Launch the TUI dashboard
+hive app ls [--category <cat>]                      Browse app catalog
+hive app search <query>                             Search apps by name/tag
+hive app info <id>                                  Show app details and config fields
+hive app install <id> [--name <n>] [--config K=V]  Install an app from the catalog
+hive app installed                                  List installed apps
+hive registry login <url> [--username <u>]         Store registry credentials
+hive registry ls                                    List configured registries
+hive registry rm <url>                              Remove registry credentials
+```
+
+---
+
+## TUI Dashboard
+
+`hivetop` provides a real-time terminal dashboard:
+
+```bash
+hivetop --addr 127.0.0.1:7947 --refresh 2
+```
+
+| Tab | Key | Content |
+|-----|-----|---------|
+| Overview | `1` | Cluster summary — nodes, services, containers |
+| Nodes | `2` | Node list — status, resources, uptime |
+| Services | `3` | Service list — replicas, status, health |
+| Logs | `4` | Real-time event stream |
+
+Controls: `1`–`4` switch tabs, `q`/`Esc` quit.
+
+---
+
+## Web Console
+
+The Svelte 5 web console connects to the HTTP API on port 7949.
+
+**Pages:**
+
+| Page | Auth Required | Description |
+|------|--------------|-------------|
+| Overview (Dashboard) | Yes | Cluster stats, Quick Deploy grid, recent events |
+| Services | Yes | Service list — replicas, status, health badges, inline quick-update |
+| Service Detail | Yes | 6 tabs: Overview, Containers, Config, Health Timeline, Logs, Exec |
+| Nodes | Yes | Node list with CPU/memory/disk, drain controls |
+| Node Detail | Yes | System info, resource bars, containers, label management |
+| Containers | Yes | Cluster-wide container list with service/node filters |
+| Logs | Yes | Live log viewer with service filter and auto-refresh |
+| Cron | Yes | Scheduled job list with next/last run times |
+| Deploy | Yes | TOML editor with templates, validate button, deploy |
+| Secrets | Yes | Add/delete secrets, secret rotation with affected-service preview |
+| Backup | Yes | Export/import cluster state as backup files |
+| Cluster | Yes | Web-based cluster init and node join wizard |
+| Users | Yes (admin) | User management with role assignment |
+| Settings | Yes | Registry credentials, cluster version info |
+| Discover | Yes | List unmanaged Docker containers; adopt into Hive |
+| Webhooks | Yes | Configure lifecycle webhook endpoints |
+| App Store | No | Browse 35 curated apps, search, filter by category, one-click install |
+| Learn | No | Interactive TOML tutorial, live validation playground, field reference |
+| Login | No | First-time admin setup or username/password login |
+
+The console is compiled to static HTML/CSS/JS and served directly by `hived`. Dark theme, responsive layout.
+
+---
+
+## Daemon Configuration
+
+`hived` reads a TOML config file. CLI flags override config file values.
+
+**Default config paths:**
+- Linux: `~/.config/hive/hived.toml` (respects `$XDG_CONFIG_HOME`)
+- Windows: `%APPDATA%\Hive\hived.toml`
+
+```toml
+[node]
+name = "worker-01"
+advertise_addr = "192.168.1.100"
+data_dir = "/var/lib/hive"
+join = "192.168.1.10:7946,192.168.1.11:7946"   # comma-separated peers
+
+[ports]
+grpc = 7947
+gossip = 7946
+mesh = 7948
+
+[security]
+tls = true
+gossip_key = "hex-encoded-aes256-key"   # 16, 24, or 32 bytes (32, 48, or 64 hex chars)
+
+[logging]
+level = "info"          # debug | info | warn | error
+driver = ""             # "file" or "syslog" (empty = stdout only)
+path = "/var/log/hive/containers.jsonl"
+syslog_host = "syslog.internal:514"
+
+[http]
+port = 7949
+token = "bearer-token"  # optional legacy bearer auth (use user accounts instead)
+tls = false             # enable HTTPS on port 7949 (requires hive init)
+
+[wireguard]
+enabled = false
+port = 39471
+
+[backup]
+schedule = "0 2 * * *"
+path = "/var/lib/hive/backups"
+
+[admission]
+url = "http://policy-server:8080/admit"
+timeout = "10s"
+
+[[hooks]]
+type = "pre-deploy"     # pre-deploy | post-deploy | pre-stop | health-fail | *
+url = "http://internal:8080/hooks"
+
+[[hooks]]
+type = "health-fail"
+url = "http://alerts.internal:9000/hive"
+```
+
+**CLI flags** (override config):
+
+```
+hived
+  -config <path>         Config file path
+  -name <nodename>       Node name (default: hostname)
+  -grpc-port <port>      gRPC API port (default: 7947)
+  -gossip-port <port>    Gossip UDP port (default: 7946)
+  -mesh-port <port>      Mesh gRPC port (default: 7948)
+  -http-port <port>      HTTP API port (default: 7949, 0 to disable)
+  -http-tls              Enable HTTPS on HTTP API
+  -advertise-addr <addr> Address advertised to peers
+  -join <addrs>          Comma-separated gossip addresses to join on startup
+  -data-dir <path>       State directory
+  -log-level <level>     Log level (debug, info, warn, error)
+  -gossip-key <hex>      AES-256 gossip encryption key (hex)
+  -tls                   Enable TLS on gRPC API port
+  -wg                    Enable WireGuard mesh overlay
+  -wg-port <port>        WireGuard UDP port (default: 39471)
+```
+
+---
+
+## Features
+
+### SWIM Gossip Mesh
+Nodes discover each other and share state via the SWIM protocol ([hashicorp/memberlist](https://github.com/hashicorp/memberlist)). Nodes automatically detect failures and update cluster membership. Gossip traffic can be AES-256 encrypted with a shared key.
+
+### mTLS PKI
+`hive init` generates a self-signed ECDSA P-256 CA. Each node gets a certificate signed by the CA. Mesh traffic (port 7948) uses mTLS. Certificates auto-renew via CSR signing through mesh peers — no manual rotation required.
+
+### Encrypted Secrets
+Secrets are encrypted at rest with [age](https://age-encryption.org/) (X25519) and stored in the local bbolt database, replicated across the cluster. The `{{ secret:key }}` placeholder is resolved at deploy time; plaintext is never written to disk.
+
+### WireGuard Mesh (Optional)
+Enable with `-wg` or `[wireguard] enabled = true`. Each node gets a deterministic `10.47.X.X` address derived from its WireGuard public key. Keys exchange automatically via gossip. Daemon-to-daemon traffic routes through the encrypted tunnel using a userspace TCP/IP stack — no root or kernel modules required.
+
+### Ingress Load Balancer
+```toml
+[service.web.ingress]
+port = 8080
+tls = true   # HTTPS with auto-generated self-signed cert
+```
+Hive creates an nginx proxy container (`hive-ingress-{service}`) that distributes traffic across healthy replicas. Unhealthy replicas are removed from the upstream pool and re-added on recovery.
+
+### User Authentication
+- **argon2id** password hashing (OWASP recommended, memory-hard)
+- **HMAC-SHA256 JWT** tokens with auto-generated 256-bit signing keys
+- **Roles:** `admin` (full), `operator` (deploy/manage), `viewer` (read-only)
+- **Rate limiting:** 5 failed attempts per 5-minute window per user
+- **First-time setup:** Create an admin account on first visit — no config required
+- **Backwards compatible:** legacy `--http-token` bearer auth still works alongside user accounts
+- User data stored in the same bbolt database as cluster state — no external database
+
+```bash
+# First-time setup
+curl -X POST http://localhost:7949/api/v1/auth/setup \
+  -d '{"username":"admin","password":"secure-password-here"}'
+
+# Login — returns access_token + refresh_token
+curl -X POST http://localhost:7949/api/v1/auth/login \
+  -d '{"username":"admin","password":"secure-password-here"}'
+
+# User management via web console (Users page, admin only)
+```
+
+### Scheduler and Placement
+The scheduler evaluates constraints (platform, node pin, resource requirements, custom labels) and scores nodes by fitness (CPU/memory headroom, container count) to place replicas. Services with `depends_on` deploy in topological order.
+
+### Health Checks
+
+| Type | Trigger |
+|------|---------|
+| `http` | HTTP GET to `path:port`, checks status code |
+| `tcp` | TCP connection to `port` |
+| `exec` | Command exit code inside the container |
+
+Configurable `interval`, `timeout`, and `retries`. Health status feeds into the scheduler and ingress upstream pool.
 
 ### Autoscaling
 ```toml
@@ -395,10 +442,68 @@ cooldown_up = "60s"
 cooldown_down = "300s"
 ```
 
-### App Store
-35 built-in apps ready to deploy in one command. The App Store is **publicly browsable without authentication** — sign in only when you're ready to deploy.
+### Cron Jobs
+5-field cron expressions (`minute hour day month weekday`) embedded in service definitions. Commands run inside service containers on schedule.
 
-**Core Infrastructure:**
+### Admission Webhooks
+Called before every deploy/update/scale operation. Return an error to reject the operation.
+
+```toml
+[admission]
+url = "http://policy-server:8080/admit"
+timeout = "10s"
+```
+
+### Lifecycle Hooks
+Fire HTTP POST payloads on lifecycle events.
+
+```toml
+[[hooks]]
+type = "*"   # pre-deploy | post-deploy | pre-stop | health-fail | *
+url = "http://notifier:8080/events"
+```
+
+Payload: `{"type":"...", "service":"...", "node":"...", "message":"...", "time":"..."}`
+
+### Registry Credentials
+```bash
+hive registry login ghcr.io --username myuser
+hive registry ls
+```
+Credentials encrypted with age (X25519) and stored in the local vault. `hived` automatically uses matching credentials when pulling images.
+
+### Container Discovery
+Find Docker containers running outside Hive and bring them under management via the web console (Discover page) or gRPC API. Inspects the running container, generates a Hivefile from its config, and deploys through the standard pipeline.
+
+### Prometheus Metrics
+`hived` exposes Prometheus-format metrics at `http://localhost:7949/metrics`:
+- gRPC request counts per method
+- Container counts per node
+- CPU, memory, and disk resources
+
+### Log Aggregation
+`hived` tails logs from all managed containers into a 10K-entry ring buffer, accessible via `hive logs <service> -f` or the `ContainerLogs` streaming RPC.
+
+### Backup and Restore
+```bash
+hive backup --output cluster.json   # export services, secrets, config
+hive restore cluster.json           # import to a new or existing cluster
+```
+Scheduled backups supported via `[backup] schedule` config.
+
+---
+
+## App Store
+
+35 built-in apps deployable in one command. Publicly browsable without authentication.
+
+```bash
+hive app ls                                     # browse catalog
+hive app ls --category media                    # filter
+hive app install postgres --config db_password=secret
+```
+
+**Core Infrastructure (20 apps):**
 
 | App | Category | Image |
 |-----|----------|-------|
@@ -423,7 +528,7 @@ cooldown_down = "300s"
 | Keycloak | security | quay.io/keycloak/keycloak:25.0 |
 | HashiCorp Vault | security | hashicorp/vault:1.17 |
 
-**LinuxServer.io Collection** (15 apps with PUID/PGID/TZ, `/config` volume pattern):
+**LinuxServer.io Collection (15 apps, PUID/PGID/TZ, `/config` volume pattern):**
 
 | App | Category | Image |
 |-----|----------|-------|
@@ -443,143 +548,13 @@ cooldown_down = "300s"
 | Code Server | devtools | lscr.io/linuxserver/code-server |
 | WireGuard VPN | networking | lscr.io/linuxserver/wireguard |
 
-```bash
-hive app ls                                    # browse catalog
-hive app ls --category media                   # filter by category
-hive app install postgres --config db_password=secret  # one-click deploy
-```
-
-Users can also add custom apps via the API or the web console.
-
-### Interactive Tutorial
-The web console includes a built-in **Learn** tab with:
-- Step-by-step TOML syntax guide with syntax-highlighted examples
-- Coverage of all Hivefile features: services, health checks, volumes, secrets, deploy strategies, ingress, cron, autoscaling
-- **Live playground** — write TOML and validate against the daemon in real-time
-- Complete field reference card
-- Copy-to-clipboard and deploy-from-playground buttons
-
-### One-Shot Installer
-
-**Linux:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.sh | bash
-```
-
-Options: `--local` (build from source), `--service` (systemd), `--token TOKEN`, `--version VER`
-
-**Windows (PowerShell as Administrator):**
-```powershell
-irm https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.ps1 | iex
-```
-
-Options: `-Version` (specific version), `-Service` (install as Windows service), `-Token` (API token)
-
-### User Authentication
-Hive now includes a full user authentication system with:
-- **argon2id** password hashing (OWASP recommended, memory-hard, GPU-resistant)
-- **HMAC-SHA256 JWT** tokens with auto-generated 256-bit signing keys
-- **Role-based access**: `admin` (full), `operator` (deploy/manage), `viewer` (read-only)
-- **Rate limiting**: 5 failed attempts per 5-minute window per user
-- **First-time setup**: on first visit, create an admin account — no config required
-- **Backwards compatible**: legacy `--http-token` bearer auth still works alongside user auth
-
-```bash
-# First-time setup via CLI
-curl -X POST http://localhost:7949/api/v1/auth/setup \
-  -d '{"username":"admin","password":"secure-password-here"}'
-
-# Login returns JWT tokens
-curl -X POST http://localhost:7949/api/v1/auth/login \
-  -d '{"username":"admin","password":"secure-password-here"}'
-# → {"access_token":"eyJ...","refresh_token":"eyJ..."}
-
-# User management (admin only)
-hive user list
-hive user create bob --role operator
-hive user delete bob
-```
-
-The web console auto-detects whether user auth is configured and presents the appropriate login flow (username/password or legacy bearer token). User data is stored in the same bbolt database as cluster state — no external database required.
-
-### Docker Registry Login
-```bash
-hive registry login ghcr.io --username myuser  # stores encrypted credentials
-hive registry ls                               # list configured registries
-```
-Credentials are encrypted with age (X25519) and stored in the local vault. When pulling images, hived automatically uses matching registry credentials.
-
-### Container Discovery
-Find Docker containers running outside Hive and bring them under management:
-
-```bash
-hive discover                          # list unmanaged containers
-hive discover adopt <id> --name my-svc # adopt into Hive with health checks + scaling
-```
-
-The web console has a **Discover** page (under Observe) that shows all unmanaged containers with an "Adopt" button. Adopting inspects the running container, generates a Hivefile from its config (image, env, ports, volumes), and deploys it through the standard Hive pipeline. Optionally stops the original container.
-
-### Disk Selection
-```bash
-hive nodes disks                       # list available disks on each node
-```
-
-The API exposes `GET /api/v1/disks` returning all mounted filesystems with path, total/available bytes, filesystem type, and device. The Settings page shows disk info for storage management.
-
-### Admission Webhooks
-```toml
-[admission]
-url = "http://policy-server:8080/admit"
-timeout = "10s"
-```
-Called before every deploy/update/scale — can reject or allow the operation.
-
-### Backup Scheduling
-```toml
-[backup]
-schedule = "0 2 * * *"
-path = "/var/lib/hive/backups"
-```
-
-### Log Shipping
-```toml
-[logging]
-level = "info"
-driver = "file"        # or "syslog"
-path = "/var/log/hive/containers.jsonl"
-syslog_host = "syslog.internal:514"
-```
-
-### Scheduling & Placement
-The scheduler evaluates constraints (platform, node pinning, resource requirements, CPU cores, custom labels) and scores nodes by fitness (CPU/memory headroom, container count) to place replicas. Services with `depends_on` are deployed in topological order.
-
-### Scaling & Rollback
-`hive scale web 5` distributes replicas across the cluster. `hive rollback web` reverts to the previous image version, preserving all configuration. `hive restart web` performs a rolling restart of all replicas.
-
-### Health Checks
-Three check types: HTTP (status code), TCP (port open), and exec (command exit code). Configurable interval, timeout, and retry count. Health status feeds into the scheduler and is visible in CLI, TUI, and web console.
-
-### Cron Jobs
-5-field cron expressions (`minute hour day month weekday`) can be embedded in service definitions. The scheduler runs commands inside service containers on schedule.
-
-### Prometheus Metrics
-`hived` exposes Prometheus-format metrics on the HTTP API at `/metrics`:
-- gRPC request counts per method
-- Container counts per node
-- System resources (CPU, memory, disk)
-
-### Log Aggregation
-`hived` tails logs from all managed containers into a ring buffer (10K entries). Logs are accessible via `hive logs <service> -f` or the `ContainerLogs` streaming RPC.
-
-### Network Isolation
-Services can be deployed with `isolation = "strict"` to restrict network access. Managed containers are labeled `hive.managed=true` and `hive.service=<name>` for filtering.
+---
 
 ## gRPC API
 
-The API is defined in `proto/hive/v1/` with two services:
+Defined in `proto/hive/v1/` (`api.proto`, `mesh.proto`, `types.proto`).
 
-### HiveAPI (port 7947) — 30+ RPCs
-Client-facing API for CLI, TUI, and web console.
+### HiveAPI (port 7947) — 48 RPCs
 
 | Category | RPCs |
 |----------|------|
@@ -594,9 +569,11 @@ Client-facing API for CLI, TUI, and web console.
 | Health | `GetServiceHealth` |
 | Volumes | `ListVolumes`, `CreateVolume`, `DeleteVolume` |
 | Backup | `ExportCluster`, `ImportCluster` |
+| Apps | `ListApps`, `GetApp`, `SearchApps`, `InstallApp`, `ListInstalledApps`, `AddCustomApp`, `RemoveCustomApp` |
+| Registry | `RegistryLogin`, `ListRegistries`, `RemoveRegistry` |
+| Discovery | `DiscoverContainers`, `AdoptContainer`, `ListDisks` |
 
-### HiveMesh (port 7948, mTLS) — 6 RPCs
-Internal daemon-to-daemon communication.
+### HiveMesh (port 7948, mTLS) — 7 RPCs
 
 | RPC | Purpose |
 |-----|---------|
@@ -608,80 +585,53 @@ Internal daemon-to-daemon communication.
 | `ReplicateSecret` | Distribute encrypted secrets |
 | `SignNodeCSR` | Sign a certificate signing request for a new node |
 
-## Project Structure
+---
 
-```
-hive/
-  daemon/           Go daemon (hived)
-    cmd/hived/        Entry point, flag parsing, startup
-    internal/
-      api/            gRPC server implementation
-      config/         TOML config file parsing
-      auth/           User auth — argon2id, JWT, RBAC, rate limiting
-      container/      Docker/Podman runtime abstraction
-      cron/           Cron scheduler (5-field expressions)
-      health/         HTTP/TCP/exec health checks
-      hivefile/       TOML service definition parser
-      httpapi/        HTTP/JSON gateway, Prometheus metrics
-      logs/           Ring buffer log aggregation
-      mesh/           SWIM gossip (hashicorp/memberlist)
-      metrics/        Prometheus metric collectors
-      pki/            mTLS certificate authority
-      platform/       OS/arch detection
-      scheduler/      Replica placement algorithm
-      secrets/        age-encrypted secret vault
-      store/          bbolt persistent key-value store
-      sysinfo/        System resource queries
-      joincode/       Short join code encoding (HIVE-XXXX-XXXX)
-      wgmesh/         WireGuard mesh overlay (userspace netstack)
-      proxy/          Ingress load balancer (nginx proxy management)
-      admission/      Admission webhook client
-      autoscale/      Horizontal autoscaler
-  cli/              Rust CLI (hive) — 24+ commands via gRPC
-  tui/              Rust TUI (hivetop) — 4-tab ratatui dashboard with health column
-  console/          Svelte 5 web console — 12 pages with polished dark theme
-  install.sh        One-shot installer (GitHub releases or local build)
-  proto/            Protobuf definitions (api.proto, mesh.proto, types.proto)
-  recipes/          TOML one-click deploy templates
-  .github/          CI and release workflows
-  Dockerfile        Multi-stage distroless build for hived
-  Makefile          Build orchestration
+## Security
+
+| Area | Mechanism |
+|------|-----------|
+| Node auth | mTLS — only CA-signed certificates can join the mesh |
+| Gossip | Optional AES-256 encryption of SWIM traffic |
+| Secrets at rest | age encryption (X25519) in bbolt; plaintext never written to disk |
+| Cert renewal | Automatic CSR-based renewal via mesh peers |
+| HTTP auth | JWT (argon2id, HMAC-SHA256) + optional legacy bearer token |
+| WireGuard overlay | Optional encrypted mesh, userspace (no root required) |
+| Key files | Mode 0600 enforced with symlink attack checks |
+| CORS | Mutation endpoints enforce same-origin; read-only allows any origin |
+| Container labeling | All managed containers tagged `hive.managed=true` for audit |
+| Docker socket | Mounting the socket grants equivalent-to-root host access — run `hived` in trusted environments only |
+
+---
+
+## Installation
+
+### One-Shot Installer
+
+**Linux:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.sh | bash
+
+# Options:
+# --local                 Build from source instead of downloading
+# --version VER           Install a specific version (default: latest)
+# --service               Set up hived as a systemd service
+# --token TOKEN           Set HTTP API bearer token in systemd unit
+# --install-dir DIR       Install to custom directory (default: /usr/local/bin)
 ```
 
-## Building from Source
+**Windows (PowerShell as Administrator):**
+```powershell
+irm https://raw.githubusercontent.com/Al-Sarraf-Tech/hive/main/install.ps1 | iex
 
-**Prerequisites:** Go 1.26+, Rust 1.85+, protoc 29.3+
+# Options: -Version, -Service, -Token
+```
+
+### Docker
 
 ```bash
-# Build everything
-make build
-
-# Individual components
-make build-daemon       # hived binary → dist/hived
-make build-daemon-all   # Cross-compile: linux/amd64, linux/arm64, windows/amd64
-make build-cli          # hive binary → dist/hive
-make build-tui          # hivetop binary → dist/hivetop
-
-# Test
-make test               # Go + Rust tests
-
-# Lint
-make lint               # go vet + cargo fmt + clippy
-
-# Format
-make fmt                # gofmt + cargo fmt
-
-# Regenerate protobuf (requires protoc + Go plugins)
-make proto
-```
-
-## Docker
-
-```bash
-# Build the image
 docker build -t hived .
 
-# Run (requires Docker socket for container management)
 docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v hive-data:/var/lib/hive \
@@ -694,30 +644,120 @@ docker run -d \
 
 The Dockerfile produces a minimal distroless image running as nonroot.
 
-**Security note:** Mounting the Docker socket grants equivalent-to-root host access. Only run `hived` in trusted environments.
+### Pre-Built Binaries
 
-## Security
+Download from [GitHub Releases](https://github.com/Al-Sarraf-Tech/hive/releases). All releases include SHA-256 checksums (`checksums.sha256`).
 
-- **Node authentication** — mTLS on the mesh ensures only nodes with CA-signed certificates can communicate
-- **Gossip encryption** — optional AES-256 encryption for SWIM gossip traffic
-- **Secrets at rest** — age encryption (X25519) in bbolt; plaintext never written to disk
-- **Certificate renewal** — automatic CSR-based renewal prevents certificate expiry
-- **HTTP auth** — optional bearer token protects the web console and HTTP API
-- **WireGuard overlay** — optional encrypted mesh with userspace WireGuard (no root required)
-- **Key file permissions** — 0600 enforced on private keys with symlink attack checks
-- **CORS protection** — mutation endpoints enforce same-origin policy; read-only allows any origin
-- **Container labeling** — all managed containers tagged `hive.managed=true` for audit
+| Binary | Platforms | Description |
+|--------|-----------|-------------|
+| `hived` | linux-amd64, windows-amd64 | Node daemon |
+| `hive` | linux-amd64 | CLI |
+| `hivetop` | linux-amd64 | TUI dashboard |
 
-## CI/CD & Orchestration
+---
 
-This project is governed by the [Haskell Orchestrator](https://github.com/Al-Sarraf-Tech/Haskell-Orchestrator) — a Haskell-based multi-agent CI/CD governance framework for pre-push validation, code quality enforcement, and release management across the Al-Sarraf-Tech organization.
+## Building from Source
 
-CI runs on every push to `main`:
-- **Repo Guard** — ownership verification + thermal safety
-- **Daemon (Go)** — `go vet`, `go test -race`, `govulncheck`, build
-- **CLI (Rust)** — `cargo fmt`, `cargo clippy -D warnings`, `cargo test`, `cargo audit`, release build
-- **TUI (Rust)** — same as CLI
-- **Proto sync** — regenerates protobuf and diffs to catch stale generated code
+**Prerequisites:** Go 1.26+, Rust 1.85+, protoc 29.3+ (only needed to regenerate protos — generated code is committed)
+
+```bash
+# Build all components
+make build
+
+# Individual components
+make build-daemon        # dist/hived (linux, current arch)
+make build-daemon-all    # Cross-compile: linux/amd64, linux/arm64, windows/amd64
+make build-cli           # dist/hive
+make build-tui           # dist/hivetop
+make build-console       # console/build/ (requires Node.js + npm)
+
+# Test
+make test                # go test ./... + cargo test (cli + tui)
+
+# Lint
+make lint                # go vet + staticcheck + cargo fmt + clippy
+
+# Format
+make fmt                 # gofmt + cargo fmt
+
+# Regenerate protobuf Go code
+make proto               # requires protoc with go + grpc plugins
+```
+
+---
+
+## Project Structure
+
+```
+hive/
+  daemon/                Go daemon (hived)
+    cmd/hived/             Entry point, flag parsing, startup
+    internal/
+      api/                 gRPC server implementation
+      auth/                User auth — argon2id, JWT, RBAC, rate limiting
+      config/              TOML config parsing
+      container/           Docker/Podman runtime abstraction
+      cron/                Cron scheduler (5-field expressions)
+      health/              HTTP/TCP/exec health checks + history
+      hivefile/            TOML service definition parser
+      httpapi/             HTTP/JSON gateway, Prometheus metrics, web console serving
+      joincode/            Short join code encoding (HIVE-XXXX-XXXX)
+      logs/                Ring buffer log aggregation (10K entries)
+      mesh/                SWIM gossip (hashicorp/memberlist)
+      metrics/             Prometheus metric collectors
+      pki/                 mTLS certificate authority, CSR renewal
+      platform/            OS/arch detection, platform-specific paths
+      proxy/               Ingress load balancer (nginx proxy management)
+      scheduler/           Replica placement and scoring algorithm
+      secrets/             age-encrypted secret vault
+      store/               bbolt persistent key-value store
+      sysinfo/             CPU, memory, disk queries
+      wgmesh/              WireGuard overlay (userspace netstack)
+      appstore/            App catalog and registry credential manager
+      admission/           Admission webhook client
+      autoscale/           Horizontal autoscaler
+      hooks/               Lifecycle webhook delivery
+  cli/                   Rust CLI (hive) — 24 subcommands via gRPC
+  tui/                   Rust TUI (hivetop) — 4-tab ratatui dashboard
+  console/               Svelte 5 web console — static build, 19 pages
+  proto/                 Protobuf definitions (api.proto, mesh.proto, types.proto)
+  recipes/               TOML one-click deploy templates
+  .github/               CI and release workflows
+  Dockerfile             Multi-stage distroless build for hived
+  Makefile               Build orchestration
+  hive.toml.example      Example Hivefile
+  install.sh             One-shot Linux installer
+  install.ps1            One-shot Windows installer
+```
+
+---
+
+## Recipes
+
+The `recipes/` directory has ready-to-deploy TOML templates:
+
+| Recipe | Image | Notes |
+|--------|-------|-------|
+| `postgres` | postgres:16-alpine | TCP health check, persistent volume |
+| `redis` | redis:7-alpine | Configurable max memory |
+| `nginx` | nginx:alpine | HTTP health check, rolling deploy |
+
+```bash
+hive deploy recipes/postgres/recipe.toml
+```
+
+---
+
+## CI/CD
+
+CI runs on every push to `main` and on pull requests:
+
+| Job | Checks |
+|-----|--------|
+| Repo Guard | Ownership verification, thermal safety |
+| Daemon (Go) | `go vet`, `go test -race`, `govulncheck`, build |
+| CLI (Rust) | `cargo fmt`, `cargo clippy -D warnings`, `cargo test`, `cargo audit`, release build |
+| TUI (Rust) | Same as CLI |
 
 Release workflow triggers on `v*` tags:
 - Builds `hived` for linux-amd64, windows-amd64
@@ -725,15 +765,9 @@ Release workflow triggers on `v*` tags:
 - Generates SHA-256 checksums
 - Creates a GitHub Release with all artifacts
 
-## Releases
+This project is governed by the [Haskell Orchestrator](https://github.com/Al-Sarraf-Tech/Haskell-Orchestrator) — pre-push validation and release management across the Al-Sarraf-Tech organization.
 
-Download pre-built binaries from [GitHub Releases](https://github.com/Al-Sarraf-Tech/hive/releases).
-
-| Binary | Platforms | Description |
-|--------|-----------|-------------|
-| `hived` | linux-amd64, windows-amd64 | Node daemon |
-| `hive` | linux-amd64 | CLI |
-| `hivetop` | linux-amd64 | TUI dashboard |
+---
 
 ## License
 
