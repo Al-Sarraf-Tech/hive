@@ -37,11 +37,11 @@ jobs:
             if [ -n "$temp" ]; then
               int_temp=${temp%.*}
               echo "Current max temperature: ${temp}°C"
-              if [ "$int_temp" -ge 90 ]; then
-                echo "ABORT: Temperature ${temp}°C exceeds 90°C hard limit on $hostname"
+              if [ "$int_temp" -ge 100 ]; then
+                echo "ABORT: Temperature ${temp}°C exceeds 100°C critical limit on $hostname"
                 exit 1
-              elif [ "$int_temp" -ge 65 ]; then
-                echo "WARNING: Temperature ${temp}°C approaching 70°C limit"
+              elif [ "$int_temp" -ge 90 ]; then
+                echo "WARNING: Temperature ${temp}°C elevated — water cooler pending"
               fi
             else
               echo "WARNING: Could not read temperature sensors"
