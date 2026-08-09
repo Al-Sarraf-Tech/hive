@@ -23,7 +23,7 @@ jobs:
   build-daemon:
     name: Build daemon (${{ matrix.target }})
     needs: [guard]
-    runs-on: [self-hosted, Linux, X64, unified-all]
+    runs-on: [self-hosted, dominus]
     strategy:
       matrix:
         include:
@@ -55,7 +55,7 @@ jobs:
   build-rust:
     name: Build Rust (${{ matrix.crate }}-${{ matrix.target }})
     needs: [guard]
-    runs-on: [self-hosted, Linux, X64, unified-all]
+    runs-on: [self-hosted, dominus]
     strategy:
       fail-fast: false
       matrix:
@@ -95,7 +95,7 @@ jobs:
   release:
     name: Create GitHub Release
     needs: [build-daemon, build-rust]
-    runs-on: [self-hosted, Linux, X64, unified-all]
+    runs-on: [self-hosted, dominus]
     steps:
       - uses: actions/checkout@v4
 
