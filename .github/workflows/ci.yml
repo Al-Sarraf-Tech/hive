@@ -23,7 +23,7 @@ jobs:
   daemon:
     name: Daemon (Go)
     needs: [guard]
-    runs-on: [self-hosted, dominus]
+    runs-on: [self-hosted, Linux, X64, ci-heavy]
     steps:
       - uses: actions/checkout@v4
 
@@ -50,7 +50,7 @@ jobs:
   cli:
     name: CLI (Rust)
     needs: [guard]
-    runs-on: [self-hosted, dominus]
+    runs-on: [self-hosted, Linux, X64, ci-heavy]
     steps:
       - uses: actions/checkout@v4
 
@@ -81,7 +81,7 @@ jobs:
   tui:
     name: TUI (Rust)
     needs: [guard]
-    runs-on: [self-hosted, dominus]
+    runs-on: [self-hosted, Linux, X64, ci-heavy]
     steps:
       - uses: actions/checkout@v4
 
@@ -112,7 +112,7 @@ jobs:
   proto-check:
     name: Proto sync check
     needs: [guard]
-    runs-on: [self-hosted, dominus]
+    runs-on: [self-hosted, Linux, X64, ci-heavy]
     steps:
       - uses: actions/checkout@v4
 
