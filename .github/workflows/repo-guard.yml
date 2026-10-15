@@ -9,7 +9,7 @@ on:
 jobs:
   guard:
     name: Repo guard + thermal check
-    runs-on: [self-hosted, dominus]
+    runs-on: [self-hosted, Linux, X64, ci-heavy]
     steps:
       - name: Verify repository ownership
         run: |
